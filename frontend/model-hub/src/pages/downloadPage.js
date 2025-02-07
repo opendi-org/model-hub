@@ -5,21 +5,16 @@ const cdm = {
 
 async function getCDM() {
     const url = "http://localhost:8080/models";
-    console.log("b");
+    console.log(cdm.creator);
     try {
-      const response = await fetch(url,
-        {
-            method: 'GET'
-        }
-      );
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Response status: ${response.status}`);
       }
-      console.log("a");
   
       const json = await response.json();
-      console.log(json);
-      cdm.creator = json.creator;
+      cdm.creator = json.meta.creator;
+      document.getElementById("cdm").innerHTML = cdm.creator;
     } catch (error) {
       console.error(error.message);
     }
@@ -34,7 +29,7 @@ const DownloadPage = () => {
             </h1>
             <img src={opendiIcon} alt="OpenDI Icon" />
             <button onClick={getCDM}>Get CDM</button>
-            <p>{cdm.creator}</p>
+            <p id="cdm">{cdm.creator}</p>
         </div>
     );
 };
