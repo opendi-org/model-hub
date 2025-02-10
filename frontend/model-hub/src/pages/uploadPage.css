@@ -1,0 +1,82 @@
+.profile-assets {
+    display: flex;
+}
+
+.left-nav-outer-container {
+    background-color: #CAE6F1;
+    width: 200px;
+    height: 100vh;
+    padding: 2em;
+}
+
+.account-tabs {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: fixed;
+    width: calc(200px - 2em);
+    gap: 1em;
+    top: 8em;
+}
+
+.logout-container {
+    position: fixed;
+    display: flex;
+    bottom: 0;
+    padding: 0.5em 0 2em 0;
+    width: calc(200px - 2em);
+    justify-content: center;
+    border-top: 1px solid black;
+}
+
+.profile-tab,
+.assets-tab,
+.settings-tab,
+.logout-tab {
+    text-decoration: none;
+    color: black;
+    font-weight: 500;
+}
+
+.asset-contents {
+    background-color: rgb(233, 233, 233);
+    width: 100%;
+    padding: 2em;
+}
+
+.asset-title {
+    margin-top: unset;
+    padding-bottom: 0.83em;
+    border-bottom: 1px solid rgb(200, 200, 200);
+}
+
+.upload-container {
+    background-color: white;
+    margin: 2em 0;
+    border-radius: 20px;
+    padding: 1.5em;
+}
+
+.asset-detail-container {
+    background-color: white;
+    margin: 2em 0;
+    height: fit-content;
+    border-radius: 20px;
+    padding: 1.5em;
+}
+
+.asset-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.asset-detail-table th {
+    border-top: 1px solid rgb(200, 200, 200);
+    border-bottom: 1px solid rgb(200, 200, 200);
+}
+
+.asset-detail-table td,
+th {
+    text-align: left;
+    padding: 5px;
+}
