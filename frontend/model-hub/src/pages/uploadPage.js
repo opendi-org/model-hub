@@ -59,6 +59,7 @@ const UploadPage = () => {
 
                 <Box
                 //getRootProps() is a function that returns props that need to be applied to the root element of the dropzone (in this case, the Box component).
+                //{getRootProps} expands to a series of parameters
                     {...getRootProps()}
                     sx={{
                         border: "2px dashed gray",
