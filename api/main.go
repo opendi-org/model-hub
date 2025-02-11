@@ -45,7 +45,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&multiStatements=true", username, password, hostname, port, dbname)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", username, password, hostname, port, dbname)
 
 	//initialize handler
 	modelHandler, err := handlers.NewModelHandler(dsn)
@@ -62,6 +62,12 @@ func main() {
 	models := router.Group("/models")
 	{
 		models.GET("/", modelHandler.GetModels) // Use the handler method
+	}
+
+	//router gruop for all endpoints related to models
+	model := router.Group("/model")
+	{
+		model.GET("/:id", modelHandler.GetModelById) // Use the handler method
 	}
 
 	// Get the address and port from environment variables

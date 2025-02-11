@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -74,4 +75,57 @@ func (h *ModelHandler) CreateModel() {
 	if err := h.DB.Create(&model).Error; err != nil {
 		fmt.Println("Error creating model: ", err)
 	}
+}
+
+func (h *ModelHandler) UploadModel(c *gin.Context) {
+	var uploadedModel apiTypes.CausalDecisionModel
+
+	c.ShouldBindJSON(&uploadedModel)
+
+	transacation := h.DB.Begin()
+
+	//if what is passed in doesnt aleayd have meta data we need to create meta data
+
+	err := transacation.Create(&uploadedModel.Meta).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		return
+	}
+
+	err = transacation.Create(&uploadedModel).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		return
+	}
+
+	err = transacation.Commit().Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, uploadedModel)
+
+}
+
+func (h *ModelHandler) GetModelById(c *gin.Context) {
+
+	var model apiTypes.CausalDecisionModel
+
+	idString := c.Param("id")
+	id, err := strconv.Atoi(idString)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		return
+	}
+
+	h.DB.First(&model, id)
+
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(http.StatusOK, model)
+
 }
