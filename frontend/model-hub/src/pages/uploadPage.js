@@ -32,7 +32,7 @@ const UploadPage = () => {
     return (
         <Box sx={{ display: "flex", flexDirection: "row", gap: 2, p: 3 }}>
             {/* Left Navigation */}
-            <Card sx={{ p: 2, minWidth: 200, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 112px)' }}>
+            <Card sx={{ p: 2, minWidth: 200, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 144px)' }}>
                 <Tabs orientation="vertical">
                     <Tab label="Profile" component={NavLink} to="" />
                     <Tab label="Assets" component={NavLink} to="" />
@@ -51,7 +51,7 @@ const UploadPage = () => {
             </Card>
 
             {/* Main Content */}
-            <Card sx={{ flex: 1, p: 3 }}>
+            <Card sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                     <Typography variant="h5" fontWeight="bold">My Assets</Typography>
                     
@@ -84,7 +84,7 @@ const UploadPage = () => {
                 </Box>
 
                 {/* Table for Asset Details */}
-                <TableContainer>
+                <TableContainer sx={{ marginTop: '2em' }}>
                     <Table stickyHeader>
                         <TableHead>
                             <TableRow>
