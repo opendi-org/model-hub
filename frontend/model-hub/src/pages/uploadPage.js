@@ -32,8 +32,8 @@ const UploadPage = () => {
     return (
         <Box sx={{ display: "flex", flexDirection: "row", gap: 2, p: 3 }}>
             {/* Left Navigation */}
-            <Card sx={{ p: 2, minWidth: 200, display: 'flex', flexDirection: 'column', height: '100%' }}>
-                <Tabs orientation="vertical" sx={{ borderRight: 1, borderColor: "divider" }}>
+            <Card sx={{ p: 2, minWidth: 200, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 112px)' }}>
+                <Tabs orientation="vertical">
                     <Tab label="Profile" component={NavLink} to="" />
                     <Tab label="Assets" component={NavLink} to="" />
                     <Tab label="Settings" component={NavLink} to="" />
@@ -64,6 +64,8 @@ const UploadPage = () => {
                         border: "2px dashed gray",
                         borderRadius: 2,
                         p: 4,
+                        height: '5em',
+                        alignContent: 'center',
                         textAlign: "center",
                         cursor: "pointer",
                         backgroundColor: isDragActive ? "lightblue" : "transparent",
@@ -82,8 +84,8 @@ const UploadPage = () => {
                 </Box>
 
                 {/* Table for Asset Details */}
-                <TableContainer component={Paper} sx={{ mt: 2 }}>
-                    <Table>
+                <TableContainer>
+                    <Table stickyHeader>
                         <TableHead>
                             <TableRow>
                                 <TableCell><Typography fontWeight="bold">Name</Typography></TableCell>
@@ -94,9 +96,22 @@ const UploadPage = () => {
                                 <TableCell><Typography fontWeight="bold">Actions</Typography></TableCell>
                             </TableRow>
                         </TableHead>
-                        <TableBody>
+                        <TableBody sx={{ maxHeight: '100%' }}>
                             {[{ name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
-                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" }]
+                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                            ]
                               .map((asset, index) => (
                                 <TableRow key={index}>
                                     <TableCell>{asset.name}</TableCell>
