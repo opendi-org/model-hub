@@ -8,9 +8,12 @@ import Home from "./pages";
 import UploadPage from "./pages/uploadPage";
 import DownloadPage from './pages/downloadPage';
 import Navbar from './components/Navbar';
+import {theme} from './Theme'
+import {ThemeProvider} from '@mui/material/styles';
 
 function App() {
   return (
+    <ThemeProvider theme={theme}>
     <Router>
     <Navbar />
     <Routes>
@@ -19,6 +22,7 @@ function App() {
         <Route path="/downloadpage" element={<DownloadPage />} />
     </Routes>
 </Router>
+</ThemeProvider>
   );
 }
 
