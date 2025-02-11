@@ -30,7 +30,7 @@ const UploadPage = () => {
     
     
     return (
-        <Box sx={{ display: "flex", flexDirection: "row", gap: 2, p: 3 }}>
+        <Box sx={{ display: "flex", flexDirection: "row", gap: 2, p: 3, height: 'calc(100vh - 112px)' }}>
             {/* Left Navigation */}
             <Card sx={{ p: 2, minWidth: 200, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 144px)' }}>
                 <Tabs orientation="vertical">
