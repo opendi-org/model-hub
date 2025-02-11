@@ -1,4 +1,4 @@
-import './App.css';
+
 import {
   BrowserRouter as Router,
   Routes,
@@ -12,13 +12,13 @@ import Navbar from './components/Navbar';
 function App() {
   return (
     <Router>
-    <Navbar />
-    <Routes>
-        <Route exact path="/" element={<Home />} />
-        <Route path="/uploadpage" element={<UploadPage />} />
-        <Route path="/downloadpage" element={<DownloadPage />} />
-    </Routes>
-</Router>
+      <Navbar />
+      <Routes>
+          <Route exact path="/" element={<Home />} />
+          <Route path="/uploadpage" element={<UploadPage />} />
+          <Route path="/downloadpage" element={<DownloadPage />} />
+      </Routes>
+    </Router>
   );
 }
 
