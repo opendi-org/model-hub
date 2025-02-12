@@ -1,4 +1,3 @@
-
 package apiTypes
 
 import (
@@ -20,7 +19,7 @@ type Meta struct {
 	ID            int             `gorm:"primaryKey" json:"-"`
 	CreatedAt     time.Time       `json:"-"`
 	UpdatedAt     time.Time       `json:"-"`
-	UUID          string          `gorm:"type:uuid" json:"uuid"`
+	UUID          string          `json:"uuid"`
 	Name          string          `json:"name,omitempty"`
 	Summary       string          `json:"summary,omitempty"`
 	Documentation json.RawMessage `json:"documentation,omitempty"`
