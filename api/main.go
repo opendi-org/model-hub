@@ -6,6 +6,10 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
+	_ "opendi/model-hub/api/docs"
 )
 
 func main() {
@@ -88,6 +92,8 @@ func main() {
 		os.Exit(1)
 	}
 	modelHubPort = val
+
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	router.Run(modelHubAddress + ":" + modelHubPort)
 }
