@@ -30,7 +30,14 @@ func NewModelHandler(dsn string) (*ModelHandler, error) {
 	return &ModelHandler{DB: db}, nil
 }
 
-// Example endpoint that returns models from the database
+// GetModels godoc
+// @Summary      Get all models
+// @Description  gets all models
+// @Tags         models
+// @Produce      json
+// @Success      200
+// @Failure      500
+// @Router       /models/ [get]
 func (h *ModelHandler) GetModels(c *gin.Context) {
 	var models []apiTypes.CausalDecisionModel
 	if err := h.DB.Find(&models).Error; err != nil {
@@ -111,6 +118,16 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 
 }
 
+// GetModels godoc
+// @Summary      Get model by its id
+// @Description  gets models using its id
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        id path int true "Model ID"
+// @Success      200
+// @Failure      400
+// @Router       /model/{id} [get]
 func (h *ModelHandler) GetModelById(c *gin.Context) {
 
 	var model apiTypes.CausalDecisionModel
