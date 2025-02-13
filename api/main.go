@@ -64,7 +64,7 @@ func main() {
 		models.GET("/", modelHandler.GetModels) // Use the handler method
 	}
 
-	//router gruop for all endpoints related to models
+	//router group for all endpoints related to models
 	model := router.Group("/model")
 	{
 		model.GET("/:id", modelHandler.GetModelById) // Use the handler method
