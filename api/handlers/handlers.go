@@ -49,7 +49,16 @@ func NewModelHandler(dsn string) (*ModelHandler, error) {
 // @Router       /v0/models/ [get]
 func (h *ModelHandler) GetModels(c *gin.Context) {
 	var models []apiTypes.CausalDecisionModel
-	if err := h.DB.Find(&models).Error; err != nil {
+	// Updated query to preload associated fields
+	if err := h.DB.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Find(&models).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
@@ -160,15 +169,20 @@ func (h *ModelHandler) GetModelById(c *gin.Context) {
 		return
 	}
 
-	h.DB.First(&model, id)
-
-	// Check if the model was found and if not return a 404
-	if model.ID == 0 {
+	// Updated query with preload for associations
+	if err := h.DB.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		First(&model, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"Error": "Model not found"})
 		return
 	}
 
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(http.StatusOK, model)
-
 }
