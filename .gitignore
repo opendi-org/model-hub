@@ -41,3 +41,5 @@ config.js
 api/docs/docs.go
 api/docs/swagger.json
 api/docs/swagger.yaml
+
+setup/windows/set-env.ps1

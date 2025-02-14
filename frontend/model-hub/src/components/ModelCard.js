@@ -6,25 +6,24 @@ import Button from '@mui/material/Button';
 import { useHistory } from 'react-router-dom';
 import { NavLink } from "react-router-dom";
 
-const ModelCard = ({id}) => {
+const ModelCard = ({id, name, author}) => {
     return (
     <Grid item xs={4}>
         <Card sx={{ minWidth: 275 }}>
             <CardContent>
-                <Typography gutterBottom sx={{ color: 'text.secondary', fontSize: 14 }}>
-                    Lorem Ipsum1
+                <Typography gutterBottom sx={{ color: 'text.primary', fontSize: 14 }}>
+                    {name}
+                </Typography>
+                <Typography gutterBottom sx={{ color: 'text.seconday', fontSize: 12 }}>
+                    {author}
                 </Typography>
                 <Typography variant="body2">
-                    Lorem Ipsum
-                    <br />
-                    Lorem Ipsum
-                    <br />
-                    Lorem Ipsum
+                    Summary
                 </Typography>
                 <Button 
                     variant="contained" 
                     color="primary" 
-                    component={NavLink} to="/model/${id}"
+                    component={NavLink} to={"model/" + id}
                 >
                     View
                 </Button>
