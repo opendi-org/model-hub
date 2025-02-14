@@ -1,0 +1,43 @@
+# Binaries
+*.exe
+*.out
+*.dll
+*.so
+*.dylib
+
+# Build artifacts
+/bin/
+/obj/
+/pkg/
+
+# Vendor dependencies
+/vendor/
+
+# Go modules
+go.sum
+go.mod
+
+# Compiled files
+*.o
+*.a
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.iml
+
+# Test cache
+*.test
+/cover.out
+
+# Ignoring config.js
+config.js
+api/docs/docs.go
+api/docs/swagger.json
+api/docs/swagger.yaml

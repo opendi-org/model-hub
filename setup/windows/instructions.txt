@@ -1,0 +1,16 @@
+Development Instructions for Windows:
+Install Go 1.23.6
+Install MySQL
+
+For each session:
+Run the server process by going to services.msc
+Run:
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Unrestricted -Force 
+to allow your computer to run powershell scripts. 
+Or run:
+Set-ExecutionPolicy -Scope "CurrentUser" -ExecutionPolicy "RemoteSigned"
+For higher protection levels for powershell scripts. 
+
+Run set-env-examples.ps1 to set environment variables for this session. 
+
+echo $env:OPEN_DI_DB_NAME to test that this is working. 
