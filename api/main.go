@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"opendi/model-hub/api/handlers"
+	"github.com/gin-contrib/cors"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,13 @@ import (
 
 func main() {
 	router := gin.Default()
+	
+	router.Use(cors.New(cors.Config{
+        AllowOrigins:     []string{"http://localhost:3000"}, // React frontend URL
+        AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+        AllowHeaders:     []string{"Content-Type", "Authorization"},
+        AllowCredentials: true,
+    }))
 
 	// Construct the Data Source Name (DSN) for the database connection
 
