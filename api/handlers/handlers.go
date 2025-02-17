@@ -23,17 +23,42 @@ func NewModelHandler(dsn string) (*ModelHandler, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = db.AutoMigrate(&apiTypes.CausalDecisionModel{})
+
+	// AutoMigrate all the structs defined in apitypes.go
+	err = db.AutoMigrate(
+		&apiTypes.CausalDecisionModel{},
+		&apiTypes.Meta{},
+		&apiTypes.Diagram{},
+		&apiTypes.DiaElement{},
+		&apiTypes.CausalDependency{},
+	)
 	if err != nil {
 		return nil, err
 	}
+
 	return &ModelHandler{DB: db}, nil
 }
 
-// Example endpoint that returns models from the database
+// GetModels godoc
+// @Summary      Get all models
+// @Description  gets all models
+// @Tags         models
+// @Produce      json
+// @Success      200
+// @Failure      500
+// @Router       /v0/models/ [get]
 func (h *ModelHandler) GetModels(c *gin.Context) {
 	var models []apiTypes.CausalDecisionModel
-	if err := h.DB.Find(&models).Error; err != nil {
+	// Updated query to preload associated fields
+	if err := h.DB.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Find(&models).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
@@ -77,6 +102,16 @@ func (h *ModelHandler) CreateModel() {
 	}
 }
 
+// UploadModel godoc
+// @Summary      Upload a new model
+// @Description  Uploads a causal decision model along with its metadata in a single transaction.
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        model  body  apiTypes.CausalDecisionModel  true  "Causal Decision Model Payload"
+// @Success      201 {object} apiTypes.CausalDecisionModel "Created model"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /v0/models/ [post]
 func (h *ModelHandler) UploadModel(c *gin.Context) {
 	var uploadedModel apiTypes.CausalDecisionModel
 
@@ -111,6 +146,17 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 
 }
 
+// GetModels godoc
+// @Summary      Get model by its id
+// @Description  gets models using its id
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        id path int true "Model ID"
+// @Success      200
+// @Failure      400
+// @Failure      404
+// @Router       /v0/models/{id} [get]
 func (h *ModelHandler) GetModelById(c *gin.Context) {
 
 	var model apiTypes.CausalDecisionModel
@@ -123,9 +169,20 @@ func (h *ModelHandler) GetModelById(c *gin.Context) {
 		return
 	}
 
-	h.DB.First(&model, id)
+	// Updated query with preload for associations
+	if err := h.DB.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		First(&model, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"Error": "Model not found"})
+		return
+	}
 
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(http.StatusOK, model)
-
 }

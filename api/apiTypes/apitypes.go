@@ -60,6 +60,6 @@ type CausalDependency struct {
 	UpdatedAt time.Time `json:"-"`
 	MetaID    int       `json:"-"`
 	Meta      Meta      `json:"meta"`
-	Source    string    `gorm:"type:uuid" json:"source"`
-	Target    string    `gorm:"type:uuid" json:"target"`
+	Source    string    `json:"source"`
+	Target    string    `json:"target"`
 }
