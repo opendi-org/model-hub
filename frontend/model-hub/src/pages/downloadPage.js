@@ -23,7 +23,7 @@ const DownloadPage = () => {
     };
 
     async function getCDM() {
-        const url = "http://localhost:8080/model/1";
+        const url = "http://localhost:8080/v0/models/1";
         console.log(cdm.creator);
         try {
             const response = await fetch(url);
