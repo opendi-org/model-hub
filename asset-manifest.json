@@ -1,0 +1,16 @@
+{
+  "files": {
+    "main.css": "/model-hub/static/css/main.e6c13ad2.css",
+    "main.js": "/model-hub/static/js/main.583dce9a.js",
+    "static/js/488.79274ba3.chunk.js": "/model-hub/static/js/488.79274ba3.chunk.js",
+    "static/media/opendi-icon.png": "/model-hub/static/media/opendi-icon.31a6612d7d8db5a67579.png",
+    "index.html": "/model-hub/index.html",
+    "main.e6c13ad2.css.map": "/model-hub/static/css/main.e6c13ad2.css.map",
+    "main.583dce9a.js.map": "/model-hub/static/js/main.583dce9a.js.map",
+    "488.79274ba3.chunk.js.map": "/model-hub/static/js/488.79274ba3.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.e6c13ad2.css",
+    "static/js/main.583dce9a.js"
+  ]
+}
