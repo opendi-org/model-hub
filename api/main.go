@@ -4,12 +4,20 @@ import (
 	"fmt"
 	"opendi/model-hub/api/handlers"
 	"os"
-
+	"github.com/joho/godotenv"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	router := gin.Default()
+
+	//import environment variables
+	err := godotenv.Load()
+    if err != nil {
+        fmt.Println("Error importing environment variables: ", err)
+		os.Exit(1)
+    }
+
 
 	// Construct the Data Source Name (DSN) for the database connection
 
