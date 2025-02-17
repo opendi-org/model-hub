@@ -5,7 +5,7 @@ import (
 	"opendi/model-hub/api/handlers"
 	"github.com/gin-contrib/cors"
 	"os"
-
+	"github.com/joho/godotenv"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -22,6 +22,14 @@ func main() {
         AllowHeaders:     []string{"Content-Type", "Authorization"},
         AllowCredentials: true,
     }))
+
+	//import environment variables
+	err := godotenv.Load()
+    if err != nil {
+        fmt.Println("Error importing environment variables: ", err)
+		os.Exit(1)
+    }
+
 
 	// Construct the Data Source Name (DSN) for the database connection
 
