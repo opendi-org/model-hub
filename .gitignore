@@ -8,8 +8,42 @@
 *.so
 *.dylib
 
-# Test binary, built with `go test -c`
+# Build artifacts
+/bin/
+/obj/
+/pkg/
+
+# Vendor dependencies
+/vendor/
+
+# Go modules
+go.sum
+go.mod
+
+# Compiled files
+*.o
+*.a
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.iml
+
+# Test cache
 *.test
+/cover.out
+
+# Ignoring config.js
+config.js
+api/docs/docs.go
+api/docs/swagger.json
+api/docs/swagger.yaml
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out

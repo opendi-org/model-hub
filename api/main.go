@@ -3,13 +3,25 @@ package main
 import (
 	"fmt"
 	"opendi/model-hub/api/handlers"
+	"github.com/gin-contrib/cors"
 	"os"
 	"github.com/joho/godotenv"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
+	_ "opendi/model-hub/api/docs"
 )
 
 func main() {
 	router := gin.Default()
+	
+	router.Use(cors.New(cors.Config{
+        AllowOrigins:     []string{"http://localhost:3000"}, // React frontend URL
+        AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+        AllowHeaders:     []string{"Content-Type", "Authorization"},
+        AllowCredentials: true,
+    }))
 
 	//import environment variables
 	err := godotenv.Load()
@@ -67,16 +79,14 @@ func main() {
 	modelHandler.CreateModel()
 
 	//router gruop for all endpoints related to models
-	models := router.Group("/models")
+	models := router.Group("/v0/models")
 	{
-		models.GET("/", modelHandler.GetModels) // Use the handler method
+		models.GET("/", modelHandler.GetModels)       // Get all models
+		models.GET("/:id", modelHandler.GetModelById) // Get a model by ID
+		models.POST("/", modelHandler.UploadModel)    // Upload a model
 	}
 
-	//router gruop for all endpoints related to models
-	model := router.Group("/model")
-	{
-		model.GET("/:id", modelHandler.GetModelById) // Use the handler method
-	}
+	//router group for uploading models
 
 	// Get the address and port from environment variables
 	modelHubAddress := "localhost"
@@ -96,6 +106,8 @@ func main() {
 		os.Exit(1)
 	}
 	modelHubPort = val
+
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	router.Run(modelHubAddress + ":" + modelHubPort)
 }
