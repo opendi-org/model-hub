@@ -6,46 +6,58 @@ import CardActions from '@mui/material/CardActions';
 import CardContent from '@mui/material/CardContent';
 import opendiIcon from '../opendi-icon.png';
 import ModelCard from '../components/ModelCard';
+import { useEffect } from 'react';
+import { useState } from 'react';
+import { useTheme } from '@mui/material/styles';
 const Home = () => {
+    const [models, setModels] = useState([])
+    const theme = useTheme();
+    useEffect(() => {
+        fetch('http://localhost:8080/v0/models')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {console.log(data);
+                setModels(data)})
+            .catch(error => console.error('There was a problem with the fetch operation:', error));
+    }, []);
     return (
         <Container maxWidth={false} sx={{ width: '100%', height: '100vh', alignItems: 'center', justifyContent: 'center', padding: 0, margin: 0 }}>
             <Stack sx={{ height: "100%", width: '100%', alignItems: 'center', justifyContent: 'center' }}>
-                <Paper elevation={1} sx={{ height: "30%", width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 2, backgroundColor: 'grey.300' }}>
+                <Paper elevation={1} sx={{ height: "30%", width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 2, backgroundColor: theme.palette.secondary.main}}>
                     <Typography variant="h4" gutterBottom>
                         Get started with OpenDI
                     </Typography>
                     <Typography variant="subtitle1" gutterBottom>
                         Ut enim ad minim veniam, quis nostrud exercitation ullamco
                     </Typography>
-                    <Button variant="contained" sx={{ backgroundColor: 'lightblue' }} href="https://opendi.org" target="_blank">
+                    <Button variant="contained" color="primary" href="https://opendi.org" target="_blank">
                         Start Here
                     </Button>
                 </Paper>
                 <Stack sx={{ height: "70%", width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 2 }}>
-                    <Stack container spacing={4}>
-                        <Grid item xs={12}>
+                    <Stack spacing={4}>
+                        <Grid xs={12}>
                             <Typography variant="h6">
                                 Category X
                             </Typography>
                         </Grid>
-                        <Grid item xs={12} container spacing={2}>
-                            <ModelCard>
-
-                            </ModelCard>
-                            <ModelCard>
-
-                            </ModelCard>
-                            <ModelCard>
-                            
-                            </ModelCard>
+                        <Grid xs={12} container spacing={2}>
+                            {
+                                models.map((model) => 
+                                <ModelCard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator} />)
+                            }
                         </Grid>
-                        <Grid item xs={12}>
+                        <Grid xs={12}>
                             <Typography variant="h6">
                                 Category Y
                             </Typography>
                         </Grid>
-                        <Grid item xs={12} container spacing={2}>
-                            <Grid item xs={4}>
+                        <Grid xs={12} container spacing={2}>
+                            <Grid xs={4}>
                                 <Card sx={{ minWidth: 275 }}>
                                     <CardContent>
                                         <Typography gutterBottom sx={{ color: 'text.secondary', fontSize: 14 }}>
@@ -61,7 +73,7 @@ const Home = () => {
                                     </CardContent>
                                 </Card>
                             </Grid>
-                            <Grid item xs={4}>
+                            <Grid xs={4}>
                                 <Card sx={{ minWidth: 275 }}>
                                     <CardContent>
                                         <Typography gutterBottom sx={{ color: 'text.secondary', fontSize: 14 }}>
@@ -77,7 +89,7 @@ const Home = () => {
                                     </CardContent>
                                 </Card>
                             </Grid>
-                            <Grid item xs={4}>
+                            <Grid xs={4}>
                                 <Card sx={{ minWidth: 275 }}>
                                     <CardContent>
                                         <Typography gutterBottom sx={{ color: 'text.secondary', fontSize: 14 }}>
