@@ -12,7 +12,7 @@ import {
     Breadcrumbs,
     Chip
 } from "@mui/material";
-
+import { useParams } from "react-router-dom";
 import { useDropzone } from "react-dropzone";
 import { useCallback } from "react";
 
@@ -22,8 +22,10 @@ const DownloadPage = () => {
         creator: 'No CDM loaded'
     };
 
+    const { id } = useParams();
+
     async function getCDM() {
-        const url = "http://localhost:8080/v0/models/1";
+        const url = `http://localhost:8080/v0/models/${id}`;
         console.log(cdm.creator);
         try {
             const response = await fetch(url);
