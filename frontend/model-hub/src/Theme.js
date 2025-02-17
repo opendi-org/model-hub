@@ -1,12 +1,24 @@
 import { createTheme } from '@mui/material/styles';
 
 export const theme = createTheme({
+    components: {
+        MuiTypography: {
+            styleOverrides: {
+                fontFamily: 'Noto Sans, sans-serif',
+            },
+        },
+        MuiPaper: {
+            defaultProps: {
+              color: '#6f8890'
+            },
+          },
+    },
     palette: {
         primary: {
-            main: '#2C5F2D',
+            main: '#63bad6',
         },
         secondary: {
-            main: '#97BC62',
+            main: '#9dafb5',
         }
     },
     typography: {

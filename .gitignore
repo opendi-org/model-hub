@@ -45,6 +45,8 @@ api/docs/docs.go
 api/docs/swagger.json
 api/docs/swagger.yaml
 
+setup/windows/set-env.ps1
+
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
