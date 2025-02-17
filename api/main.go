@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"opendi/model-hub/api/handlers"
+	"github.com/gin-contrib/cors"
 	"os"
-
+	"github.com/joho/godotenv"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -14,6 +15,21 @@ import (
 
 func main() {
 	router := gin.Default()
+	
+	router.Use(cors.New(cors.Config{
+        AllowOrigins:     []string{"http://localhost:3000"}, // React frontend URL
+        AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+        AllowHeaders:     []string{"Content-Type", "Authorization"},
+        AllowCredentials: true,
+    }))
+
+	//import environment variables
+	err := godotenv.Load()
+    if err != nil {
+        fmt.Println("Error importing environment variables: ", err)
+		os.Exit(1)
+    }
+
 
 	// Construct the Data Source Name (DSN) for the database connection
 
