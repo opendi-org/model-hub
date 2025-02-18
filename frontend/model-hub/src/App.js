@@ -6,7 +6,7 @@ import {
 } from "react-router-dom";
 import Home from "./pages";
 import UploadPage from "./pages/uploadPage";
-import DownloadPage from './pages/downloadPage';
+import ModelPage from './pages/downloadPage';
 import Navbar from './components/Navbar';
 import {theme} from './Theme'
 import {ThemeProvider} from '@mui/material/styles';
@@ -19,7 +19,8 @@ function App() {
     <Routes>
         <Route exact path="/" element={<Home />} />
         <Route path="/uploadpage" element={<UploadPage />} />
-        <Route path="/downloadpage" element={<DownloadPage />} />
+        <Route path="/model/:id" element={<ModelPage />} />
+        <Route path="/model" element={<ModelPage />} />
     </Routes>
 </Router>
 </ThemeProvider>

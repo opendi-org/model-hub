@@ -6,7 +6,7 @@ import (
 )
 
 type CausalDecisionModel struct {
-	ID        int       `gorm:"primaryKey" json:"-"`
+	ID        int       `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time `json:"-"`
 	UpdatedAt time.Time `json:"-"`
 	Schema    string    `json:"$schema"`
@@ -16,7 +16,7 @@ type CausalDecisionModel struct {
 }
 
 type Meta struct {
-	ID            int             `gorm:"primaryKey" json:"-"`
+	ID            int             `gorm:"primaryKey" json:"id"`
 	CreatedAt     time.Time       `json:"-"`
 	UpdatedAt     time.Time       `json:"-"`
 	UUID          string          `json:"uuid"`
@@ -32,7 +32,7 @@ type Meta struct {
 }
 
 type Diagram struct {
-	ID           int                `gorm:"primaryKey" json:"-"`
+	ID           int                `gorm:"primaryKey" json:"id"`
 	CreatedAt    time.Time          `json:"-"`
 	UpdatedAt    time.Time          `json:"-"`
 	MetaID       int                `json:"-"`
@@ -60,6 +60,6 @@ type CausalDependency struct {
 	UpdatedAt time.Time `json:"-"`
 	MetaID    int       `json:"-"`
 	Meta      Meta      `json:"meta"`
-	Source    string    `gorm:"type:uuid" json:"source"`
-	Target    string    `gorm:"type:uuid" json:"target"`
+	Source    string    `json:"source"`
+	Target    string    `json:"target"`
 }

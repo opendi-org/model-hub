@@ -20,15 +20,36 @@ import { useCallback } from "react";
 
 const UploadPage = () => {
 
-
     //drag and drop functionality
-    const onDrop = useCallback((acceptedFiles) => {
+    const onDrop = useCallback(async (acceptedFiles) => {
         console.log(acceptedFiles);
+
+        const file = acceptedFiles[0];
+
+        try {
+            // const fileText = await file.text();
+            const response = await fetch("http://localhost:8080/v0/models", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: file
+            });
+
+            if (!response.ok) {
+                throw new Error(`Upload failed: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log("Upload success:", result);
+        } catch (error) {
+            console.error("Error uploading file:", error);
+        }
     }, []);
 
-    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });   
-    
-    
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+
+
     return (
         <Box sx={{ display: "flex", flexDirection: "row", gap: 2, p: 3, height: 'calc(100vh - 112px)' }}>
             {/* Left Navigation */}
@@ -38,10 +59,10 @@ const UploadPage = () => {
                     <Tab label="Assets" component={NavLink} to="" />
                     <Tab label="Settings" component={NavLink} to="" />
                 </Tabs>
-                
+
                 {/* This Box will take up the available space */}
                 <Box sx={{ flexGrow: 1 }} />
-                
+
                 {/* Button is aligned to the bottom */}
                 <Box sx={{ mt: 2 }}>
                     <Button variant="contained" color="error" fullWidth component={NavLink} to="">
@@ -54,12 +75,12 @@ const UploadPage = () => {
             <Card sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                     <Typography variant="h5" fontWeight="bold">My Assets</Typography>
-                    
+
                 </Box>
 
                 <Box
-                //getRootProps() is a function that returns props that need to be applied to the root element of the dropzone (in this case, the Box component).
-                //{getRootProps} expands to a series of parameters
+                    //getRootProps() is a function that returns props that need to be applied to the root element of the dropzone (in this case, the Box component).
+                    //{getRootProps} expands to a series of parameters
                     {...getRootProps()}
                     sx={{
                         border: "2px dashed gray",
@@ -99,32 +120,32 @@ const UploadPage = () => {
                         </TableHead>
                         <TableBody sx={{ maxHeight: '100%' }}>
                             {[{ name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
-                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
-                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
-                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
-                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
-                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
-                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
-                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
-                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
-                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
-                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
-                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
-                              { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
-                              { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                            { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                            { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                            { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                            { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                            { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                            { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                            { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                            { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                            { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                            { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                            { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
+                            { name: "Model X", size: "1.5 MB", date: "2/8/2025", owner: "User X", visibility: "Private" },
+                            { name: "Model Y", size: "1.0 MB", date: "2/8/2025", owner: "User Y", visibility: "Public" },
                             ]
-                              .map((asset, index) => (
-                                <TableRow key={index}>
-                                    <TableCell>{asset.name}</TableCell>
-                                    <TableCell>{asset.size}</TableCell>
-                                    <TableCell>{asset.date}</TableCell>
-                                    <TableCell>{asset.owner}</TableCell>
-                                    <TableCell>{asset.visibility}</TableCell>
-                                    <TableCell>
-                                        <Button variant="outlined">Select</Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
+                                .map((asset, index) => (
+                                    <TableRow key={index}>
+                                        <TableCell>{asset.name}</TableCell>
+                                        <TableCell>{asset.size}</TableCell>
+                                        <TableCell>{asset.date}</TableCell>
+                                        <TableCell>{asset.owner}</TableCell>
+                                        <TableCell>{asset.visibility}</TableCell>
+                                        <TableCell>
+                                            <Button variant="outlined">Select</Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
                         </TableBody>
                     </Table>
                 </TableContainer>
