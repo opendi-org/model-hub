@@ -28,7 +28,7 @@ const UploadPage = () => {
 
         try {
             // const fileText = await file.text();
-            const response = await fetch("http://localhost:8080/v0/models/", {
+            const response = await fetch("http://localhost:8080/v0/models", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
