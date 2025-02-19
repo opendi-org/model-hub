@@ -1,4 +1,4 @@
-Dockerfile.web
+
 # Base image 
 FROM node:22
 
@@ -6,11 +6,11 @@ FROM node:22
 WORKDIR /webapp
 
 # Install dependencies
-COPY frontend/model-hub/package*.json ./
+COPY ./package*.json ./
 RUN npm install
 
 # Bundle app source
-COPY frontend/model-hub .
+COPY . .
 
 # Expose port 3000
 EXPOSE 3000
