@@ -1,3 +1,6 @@
+//
+// COPYRIGHT OpenDI
+//
 
 import {
   BrowserRouter as Router,

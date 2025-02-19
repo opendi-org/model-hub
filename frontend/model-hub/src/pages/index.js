@@ -1,3 +1,7 @@
+//
+// COPYRIGHT OpenDI
+//
+
 import { Button, Container, Typography, Stack } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import Paper from '@mui/material/Paper';

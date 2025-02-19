@@ -1,3 +1,7 @@
+//
+// COPYRIGHT OpenDI
+//
+
 package apiTypes
 
 import (
