@@ -1,3 +1,7 @@
+//
+// COPYRIGHT OpenDI
+//
+
 import { NavLink } from "react-router-dom";
 import opendiIcon from '../opendi-icon.png';
 import * as React from 'react';
