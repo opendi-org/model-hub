@@ -13,7 +13,7 @@ const Home = () => {
     const [models, setModels] = useState([])
     const theme = useTheme();
     useEffect(() => {
-        fetch('http://localhost:8080/v0/models')
+        fetch('http://api:8080/v0/models')
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
