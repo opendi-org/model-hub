@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"time"
-
+	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -74,6 +74,13 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 // This endpoint doesn't actually use the request body to create the model,
 // it just creates a model with a hard-coded Schema and Meta
 func (h *ModelHandler) CreateModel() {
+	docJSON := `{
+		"content": "This CDD was authored by Dr. Lorien Pratt.\nSource: https://www.lorienpratt.com/a-framework-for-how-data-informs-decisions/\n\nAdapted for OpenDI schema compliance by Isaac Kellogg.",
+		"MIMEType": "text/plain"
+	}`
+
+	docRaw := json.RawMessage(docJSON)
+
 	meta := apiTypes.Meta{
 		ID:            1,
 		CreatedAt:     time.Now(),
@@ -81,7 +88,7 @@ func (h *ModelHandler) CreateModel() {
 		UUID:          "1234-5678-9101",
 		Name:          "Test Model",
 		Summary:       "This is a test model",
-		Documentation: nil,
+		Documentation: docRaw,
 		Version:       "1.0",
 		Draft:         false,
 		Creator:       "Test Creator",

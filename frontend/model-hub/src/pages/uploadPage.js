@@ -3,6 +3,8 @@
 //
 
 import { NavLink } from "react-router-dom";
+import { useEffect } from 'react';
+import { useState } from 'react';
 import {
     Box,
     Button,
@@ -15,7 +17,7 @@ import {
     TableContainer,
     TableHead,
     TableRow,
-    Paper,
+    Alert,
     Typography
 } from "@mui/material";
 
@@ -23,6 +25,8 @@ import { useDropzone } from "react-dropzone";
 import { useCallback } from "react";
 
 const UploadPage = () => {
+    const [uploadStatus, setUploadStatus] = useState(null);
+    const [errorMessage, setErrorMessage] = useState("");
 
     //drag and drop functionality
     const onDrop = useCallback(async (acceptedFiles) => {
@@ -46,8 +50,14 @@ const UploadPage = () => {
 
             const result = await response.json();
             console.log("Upload success:", result);
+
+            setUploadStatus("success");
+            setErrorMessage("");
+
         } catch (error) {
             console.error("Error uploading file:", error);
+            setUploadStatus("error");
+            setErrorMessage(error.message || "Upload failed.");
         }
     }, []);
 
@@ -81,6 +91,20 @@ const UploadPage = () => {
                     <Typography variant="h5" fontWeight="bold">My Assets</Typography>
 
                 </Box>
+
+                {/* Show Success Alert */}
+                {uploadStatus === "success" && (
+                    <Alert severity="success" sx={{ mb: 2 }} onClose={() => setUploadStatus(null)}>
+                        File uploaded successfully!
+                    </Alert>
+                )}
+
+                {/* Show Error Alert */}
+                {uploadStatus === "error" && (
+                    <Alert severity="error" sx={{ mb: 2 }} onClose={() => setUploadStatus(null)}>
+                        {errorMessage}
+                    </Alert>
+                )}
 
                 <Box
                     //getRootProps() is a function that returns props that need to be applied to the root element of the dropzone (in this case, the Box component).
