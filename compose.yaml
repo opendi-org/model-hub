@@ -30,6 +30,7 @@ services:
       - "8080:8080"
     #volumes:
     #  - ./api/:/app/
+    restart: unless-stopped
   
   db:
     image: mysql:latest

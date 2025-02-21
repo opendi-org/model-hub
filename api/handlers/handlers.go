@@ -21,7 +21,7 @@ type ModelHandler struct {
 func NewModelHandler(dsn string) (*ModelHandler, error) {
 	var tries = 0
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	for err == nil && tries < 5 {
+	for err != nil && tries < 5 {
 		time.Sleep(5 * time.Second)
 		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 		tries++
