@@ -8,6 +8,9 @@ services:
     environment:
       REACT_APP_MODEL_HUB_ADDRESS: localhost
       REACT_APP_MODEL_HUB_PORT: 8080
+      WATCHPACK_POLLING: true  # For React hot reloading (if necessary)
+    volumes:
+      - ./frontend/model-hub/src:/webapp/src
   api:
     build:
       context: ./api/
@@ -22,8 +25,11 @@ services:
       OPEN_DI_DB_USERNAME: root
       OPENDI_MODEL_HUB_ADDRESS: api
       OPENDI_MODEL_HUB_PORT: 8080
+    #For debugging purposes, may be able to not expose this port later (unsure)
     ports:
       - "8080:8080"
+    #volumes:
+    #  - ./api/:/app/
   
   db:
     image: mysql:latest
