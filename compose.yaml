@@ -4,7 +4,7 @@ services:
       context: ./frontend/model-hub/
       dockerfile: Dockerfile
     ports:
-      - "3000:5000"
+      - "3000:3000"
     environment:
       OPENDI_MODEL_HUB_ADDRESS: api
       OPENDI_MODEL_HUB_POR: = 8080
@@ -12,14 +12,14 @@ services:
     build:
       context: ./api/
       dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
+    depends_on:
+      - db
     environment:
-      OPEN_DI_DB_NAME: = open_di_model_hub
-      OPEN_DI_DB_PORT: = 3306
-      OPEN_DI_DB_HOSTNAME: = db
-      OPEN_DI_DB_PASSWORD: = temp_pass
-      OPEN_DI_DB_USERNAME: = root
+      OPEN_DI_DB_NAME: open_di_model_hub
+      OPEN_DI_DB_PORT: 3306
+      OPEN_DI_DB_HOSTNAME: db
+      OPEN_DI_DB_PASSWORD: temp_pass
+      OPEN_DI_DB_USERNAME: root
   
   db:
     image: mysql:latest
