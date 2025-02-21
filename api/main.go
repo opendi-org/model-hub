@@ -1,3 +1,8 @@
+//
+// COPYRIGHT OpenDI
+//
+
+
 package main
 
 import (
