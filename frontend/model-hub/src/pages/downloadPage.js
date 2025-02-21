@@ -41,18 +41,18 @@ const DownloadPage = () => {
                 return response.json();
             })
             .then(data => {
-                console.log(data);
+                // console.log(data);
                 setModel(data);
             })
             .catch(error => console.error('There was a problem with the fetch operation:', error));
     }, [uuid]);
 
     async function getCDM() {
-        console.log("Creator: " + cdm.creator);
+        // console.log("Creator: " + cdm.creator);
         try {
             const json = model;
             cdm.creator = json.meta.creator;
-            console.log("Creator: " + cdm.creator);
+            // console.log("Creator: " + cdm.creator);
 
             const jsonString = JSON.stringify(json, null, 2);
             const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(jsonString);
