@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
+	//"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -29,11 +29,11 @@ func main() {
 	}))
 
 	//import environment variables
-	err := godotenv.Load()
-	if err != nil {
-		fmt.Println("Error importing environment variables: ", err)
-		os.Exit(1)
-	}
+	//err := godotenv.Load()
+	//if err != nil {
+	//	fmt.Println("Error importing environment variables: ", err)
+	//	os.Exit(1)
+	//}
 
 	// Construct the Data Source Name (DSN) for the database connection
 

@@ -2,9 +2,7 @@ import { Button, Container, Typography, Stack } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import Paper from '@mui/material/Paper';
 import Card from '@mui/material/Card';
-import CardActions from '@mui/material/CardActions';
 import CardContent from '@mui/material/CardContent';
-import opendiIcon from '../opendi-icon.png';
 import ModelCard from '../components/ModelCard';
 import { useEffect } from 'react';
 import { useState } from 'react';
@@ -13,7 +11,7 @@ const Home = () => {
     const [models, setModels] = useState([])
     const theme = useTheme();
     useEffect(() => {
-        fetch('http://api:8080/v0/models')
+        fetch(`http://${process.env.REACT_APP_MODEL_HUB_ADDRESS}:${process.env.REACT_APP_MODEL_HUB_PORT}/v0/models`)
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');

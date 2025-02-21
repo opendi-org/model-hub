@@ -90,7 +90,6 @@ func (h *ModelHandler) CreateModel() {
 	}
 
 	model := apiTypes.CausalDecisionModel{
-		ID:        1,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Schema:    "Test Schema",
