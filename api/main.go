@@ -133,7 +133,7 @@ Instead, the browser treats the redirected request as a new separate request, an
 		*/
 
 		models.GET("", modelHandler.GetModels)       // Get all models
-		models.GET("/:id", modelHandler.GetModelByUUID) // Get a model by ID
+		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
 		models.POST("", modelHandler.UploadModel)    // Upload a model
 	}
 
