@@ -6,8 +6,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      OPENDI_MODEL_HUB_ADDRESS: api
-      OPENDI_MODEL_HUB_POR: = 8080
+      REACT_APP_MODEL_HUB_ADDRESS: localhost
+      REACT_APP_MODEL_HUB_PORT: 8080
   api:
     build:
       context: ./api/
@@ -20,6 +20,10 @@ services:
       OPEN_DI_DB_HOSTNAME: db
       OPEN_DI_DB_PASSWORD: temp_pass
       OPEN_DI_DB_USERNAME: root
+      OPENDI_MODEL_HUB_ADDRESS: api
+      OPENDI_MODEL_HUB_PORT: 8080
+    ports:
+      - "8080:8080"
   
   db:
     image: mysql:latest
