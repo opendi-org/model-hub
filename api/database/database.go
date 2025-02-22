@@ -94,6 +94,7 @@ func CreateExampleModel() {
 		Diagrams:  nil,
 	}
 
+
 	if err := dbInstance.Create(&model).Error; err != nil {
 		fmt.Println("Error creating model: ", err)
 	}
