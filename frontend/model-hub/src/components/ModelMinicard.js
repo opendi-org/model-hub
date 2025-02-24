@@ -6,7 +6,7 @@ import Button from '@mui/material/Button';
 import { useHistory } from 'react-router-dom';
 import { NavLink } from "react-router-dom";
 
-const ModelCard = ({id, name, author}) => {
+const ModelMinicard = ({id, name, author}) => {
     return (
     <Grid item xs={4}>
         <Card sx={{ minWidth: 275 }}>
