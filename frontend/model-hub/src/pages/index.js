@@ -22,7 +22,7 @@ const Home = () => {
                 }
                 return response.json();
             })
-            .then(data => {console.log(data);
+            .then(data => {
                 setModels(data)})
             .catch(error => console.error('There was a problem with the fetch operation:', error));
     }, []);
@@ -50,7 +50,7 @@ const Home = () => {
                         <Grid xs={12} container spacing={2}>
                             {
                                 models.map((model) => 
-                                <ModelMinicard key={model.uuid} name={model.meta.name} id = {model.uuid} author={model.meta.creator} />)
+                                <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator} />)
                             }
                         </Grid>
                         <Grid xs={12}>
