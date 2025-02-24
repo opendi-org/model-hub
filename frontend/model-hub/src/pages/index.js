@@ -3,7 +3,7 @@ import Grid from '@mui/material/Grid2';
 import Paper from '@mui/material/Paper';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import ModelCard from '../components/ModelCard';
+import ModelMinicard from '../components/ModelMinicard';
 import { useEffect } from 'react';
 import { useState } from 'react';
 import { useTheme } from '@mui/material/styles';
@@ -46,7 +46,7 @@ const Home = () => {
                         <Grid xs={12} container spacing={2}>
                             {
                                 models.map((model) => 
-                                <ModelCard key={model.id} name={model.meta.name} id = {model.id} author={model.meta.creator} />)
+                                <ModelMinicard key={model.id} name={model.meta.name} id = {model.id} author={model.meta.creator} />)
                             }
                         </Grid>
                         <Grid xs={12}>
