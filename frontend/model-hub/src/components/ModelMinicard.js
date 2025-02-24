@@ -2,7 +2,7 @@
 // COPYRIGHT OpenDI
 //
 
-import { Typography} from '@mui/material';
+import { CardActions, Typography} from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -12,26 +12,28 @@ import { NavLink } from "react-router-dom";
 
 const ModelMinicard = ({id, name, author}) => {
     return (
-    <Grid item xs={4}>
+    <Grid xs={4}>
         <Card sx={{ minWidth: 275 }}>
             <CardContent>
-                <Typography gutterBottom sx={{ color: 'text.primary', fontSize: 14 }}>
+                <Typography gutterBottom variant="h6" sx={{ color: 'text.primary'}}>
                     {name}
                 </Typography>
-                <Typography gutterBottom sx={{ color: 'text.seconday', fontSize: 12 }}>
+                <Typography gutterBottom variant="body2" sx={{ color: 'text.secondary' }}>
                     {author}
                 </Typography>
                 <Typography variant="body2">
                     Summary
                 </Typography>
-                <Button 
+            </CardContent>
+            <CardActions>
+            <Button 
                     variant="contained" 
                     color="primary" 
                     component={NavLink} to={"model/" + id}
                 >
                     View
                 </Button>
-            </CardContent>
+            </CardActions>
         </Card>
     </Grid>
 )};
