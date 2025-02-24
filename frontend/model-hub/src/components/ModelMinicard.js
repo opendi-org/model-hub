@@ -36,4 +36,4 @@ const ModelMinicard = ({id, name, author}) => {
     </Grid>
 )};
 
-export default ModelCard;
+export default ModelMinicard;
