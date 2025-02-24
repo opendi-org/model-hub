@@ -1,3 +1,7 @@
+//
+// COPYRIGHT OpenDI
+//
+
 package apiTypes
 
 import (
@@ -6,7 +10,7 @@ import (
 )
 
 type CausalDecisionModel struct {
-	ID        int       `gorm:"primaryKey" json:"id"`
+	ID        int       `gorm:"primaryKey" json:"-"`
 	CreatedAt time.Time `json:"-"`
 	UpdatedAt time.Time `json:"-"`
 	Schema    string    `json:"$schema"`
@@ -16,10 +20,10 @@ type CausalDecisionModel struct {
 }
 
 type Meta struct {
-	ID            int             `gorm:"primaryKey" json:"id"`
+	ID            int             `gorm:"primaryKey" json:"-"`
 	CreatedAt     time.Time       `json:"-"`
 	UpdatedAt     time.Time       `json:"-"`
-	UUID          string          `json:"uuid"`
+	UUID          string          `gorm:"unique" json:"uuid"`
 	Name          string          `json:"name,omitempty"`
 	Summary       string          `json:"summary,omitempty"`
 	Documentation json.RawMessage `json:"documentation,omitempty"`
@@ -32,7 +36,7 @@ type Meta struct {
 }
 
 type Diagram struct {
-	ID           int                `gorm:"primaryKey" json:"id"`
+	ID           int                `gorm:"primaryKey" json:"-"`
 	CreatedAt    time.Time          `json:"-"`
 	UpdatedAt    time.Time          `json:"-"`
 	MetaID       int                `json:"-"`

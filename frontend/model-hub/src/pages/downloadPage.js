@@ -1,5 +1,11 @@
+//
+// COPYRIGHT OpenDI
+//
+
 import { NavLink } from "react-router-dom";
 import * as React from 'react';
+import { useEffect } from 'react';
+import { useState } from 'react';
 import opendiIcon from '../opendi-icon.png';
 import {
     Box,
@@ -22,19 +28,31 @@ const DownloadPage = () => {
         creator: 'No CDM loaded'
     };
 
-    const { id } = useParams();
+    const { uuid } = useParams();
+    // console.log( uuid );
+
+    const [model, setModel] = useState({})
+    useEffect(() => {
+        fetch(`http://localhost:8080/v0/models/${uuid}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // console.log(data);
+                setModel(data);
+            })
+            .catch(error => console.error('There was a problem with the fetch operation:', error));
+    }, [uuid]);
 
     async function getCDM() {
-        const url = `http://localhost:8080/v0/models/${id}`;
-        console.log(cdm.creator);
+        // console.log("Creator: " + cdm.creator);
         try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`Response status: ${response.status}`);
-            }
-
-            const json = await response.json();
+            const json = model;
             cdm.creator = json.meta.creator;
+            // console.log("Creator: " + cdm.creator);
 
             const jsonString = JSON.stringify(json, null, 2);
             const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(jsonString);
@@ -110,8 +128,8 @@ const DownloadPage = () => {
                 />
 
                 <Box sx={{ display: "flex", flexDirection: "column", p: 3, flex: 1 }}>
-                    <Typography variant="h4" sx={{ pb: 1 }}> Model Name </Typography>
-                    <Typography variant="subtitle1" sx={{ pb: 2 }}> By: Author Name </Typography>
+                    <Typography variant="h4" sx={{ pb: 1 }}>   {model.meta ? model.meta.name : ""} </Typography>
+                    <Typography variant="subtitle1" sx={{ pb: 2 }}> By: {model.meta ? model.meta.creator : ""} </Typography>
 
                     <Stack direction="row" spacing={1} sx={{ pb: 8 }}>
                         <Chip label="Tag 1" />
@@ -136,15 +154,15 @@ const DownloadPage = () => {
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tabs value={value} onChange={handleChange} aria-label="basic tabs example">
                         <Tab label="Overview" />
-                        <Tab label="Meta Data" />
+                        <Tab label="Documentation" />
                         <Tab label="Item Three" />
                     </Tabs>
                 </Box>
                 <CustomTabPanel value={value} index={0}>
-                    LOREM IPSUM DOLOR
+                    {model.meta ? model.meta.summary : ""}
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={1}>
-                    Metadata
+                {model.meta ? model.meta.documentation.content : ""}
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={2}>
                     Item Three
