@@ -9,6 +9,8 @@ import (
 	"opendi/model-hub/api/handlers"
 	"os"
 
+	"os"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -16,9 +18,12 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	_ "opendi/model-hub/api/docs"
+	"strings"
+	"time"
 )
 
 func main() {
+	fmt.Println("Starting Model Hub API")
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
@@ -69,10 +74,15 @@ func main() {
 		fmt.Println("Environment variable OPEN_DI_DB_NAME is not set or empty")
 		os.Exit(1)
 	}
-
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", username, password, hostname, port, dbname)
-
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
+	hostname = strings.TrimSpace(hostname)
+	port = strings.TrimSpace(port)
+	dbname = strings.TrimSpace(dbname)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True", username, password, hostname, port, dbname)
 	//initialize handler
+	// Wait for 3 seconds to allow the database to start up before initializing the handler
+	time.Sleep(3 * time.Second)
 	modelHandler, err := handlers.NewModelHandler(dsn)
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {

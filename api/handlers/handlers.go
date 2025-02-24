@@ -22,9 +22,12 @@ type ModelHandler struct {
 
 // method for getting an instance of ModelHandler
 func NewModelHandler(dsn string) (*ModelHandler, error) {
+	var tries = 0
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		return nil, err
+	for err != nil && tries < 5 {
+		time.Sleep(5 * time.Second)
+		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+		tries++
 	}
 
 	// AutoMigrate all the structs defined in apitypes.go
@@ -82,7 +85,6 @@ func (h *ModelHandler) CreateModel() {
 	docRaw := json.RawMessage(docJSON)
 
 	meta := apiTypes.Meta{
-		ID:            1,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		UUID:          "1234-5678-9101",
@@ -98,7 +100,6 @@ func (h *ModelHandler) CreateModel() {
 	}
 
 	model := apiTypes.CausalDecisionModel{
-		ID:        1,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Schema:    "Test Schema",
