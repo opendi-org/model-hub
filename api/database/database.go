@@ -7,8 +7,8 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"net/http"
-	"github.com/gin-gonic/gin"
 	"time"
+	"os"
 )
 
 
@@ -16,26 +16,75 @@ import (
 var dbInstance *gorm.DB
 
 
-//initialize db instance
-func InitializeDBInstance(dsn string) (int, error) {
-	var err error
-	dbInstance, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		return 1, err
-	}
+func createTablesIfNotCreated() (error) {
 
 	// AutoMigrate all the structs defined in apitypes.go
-	err = dbInstance.AutoMigrate(
+	err := dbInstance.AutoMigrate(
 		&apiTypes.CausalDecisionModel{},
 		&apiTypes.Meta{},
 		&apiTypes.Diagram{},
 		&apiTypes.DiaElement{},
 		&apiTypes.CausalDependency{},
 	)
+	return err
+
+}
+
+//initialize db instance
+func InitializeDBInstance() (int, error) {
+
+	// Construct the Data Source Name (DSN) for the database connection
+
+	// Check to make sure the environment variables for the database connection are set before using them
+	username, ok := os.LookupEnv("OPEN_DI_DB_USERNAME")
+	if !ok || username == "" {
+		// error exit since the value is empty
+		fmt.Println("Environment variable OPEN_DI_DB_USERNAME is not set or empty")
+		os.Exit(1)
+	}
+	password, ok := os.LookupEnv("OPEN_DI_DB_PASSWORD")
+	if !ok || password == "" {
+		// error exit since the value is empty
+		fmt.Println("Environment variable OPEN_DI_DB_PASSWORD is not set or empty")
+		os.Exit(1)
+	}
+	hostname, ok := os.LookupEnv("OPEN_DI_DB_HOSTNAME")
+	if !ok || hostname == "" {
+		// error exit since the value is empty
+		fmt.Println("Environment variable OPEN_DI_DB_HOSTNAME is not set or empty")
+		os.Exit(1)
+	}
+	port, ok := os.LookupEnv("OPEN_DI_DB_PORT")
+	if !ok || port == "" {
+		// error exit since the value is empty
+		fmt.Println("Environment variable OPEN_DI_DB_PORT is not set or empty")
+		os.Exit(1)
+	}
+	dbname, ok := os.LookupEnv("OPEN_DI_DB_NAME")
+	if !ok || dbname == "" {
+		// error exit since the value is empty
+		fmt.Println("Environment variable OPEN_DI_DB_NAME is not set or empty")
+		os.Exit(1)
+	}
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", username, password, hostname, port, dbname)
+
+	var err error
+	if dbInstance != nil {
+		return 0, nil
+	}
+	dbInstance, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		dbInstance = nil
+		return 1, err
+	}
+
+	err = createTablesIfNotCreated()
 	if err != nil {
 		return 1, err
 	}
-	return 0, err
+
+	return 0, nil
 
 }
 
@@ -45,7 +94,7 @@ func GetDBInstance() *gorm.DB {
 }
 
 //function for getting all models in Go struct  - remember, in Go, public methods have to be capitalized
-func GetAllModels(c *gin.Context) (int, []apiTypes.CausalDecisionModel, error) {
+func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
 	// Updated query to preload associated fields
 	if err := dbInstance.

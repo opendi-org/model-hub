@@ -16,7 +16,7 @@ type ModelHandler struct {
 }
 
 // method for getting an instance of ModelHandler
-func NewModelHandler(dsn string) (*ModelHandler, error) {
+func NewModelHandler() (*ModelHandler, error) {
 
 	return &ModelHandler{}, nil
 }
@@ -31,7 +31,7 @@ func NewModelHandler(dsn string) (*ModelHandler, error) {
 // @Router       /v0/models/ [get]
 func (h *ModelHandler) GetModels(c *gin.Context) {
 	var models []apiTypes.CausalDecisionModel
-	status, models, err := database.GetAllModels(c)
+	status, models, err := database.GetAllModels()
 	if models == nil {
 		c.JSON(status, gin.H{"Error": err.Error()})
 	}

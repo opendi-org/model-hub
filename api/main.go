@@ -32,57 +32,23 @@ func main() {
     }))
 
 	//import environment variables
-	err := godotenv.Load()
+	err := godotenv.Load("./config/.env")
     if err != nil {
         fmt.Println("Error importing environment variables: ", err)
 		os.Exit(1)
     }
 
 
-	// Construct the Data Source Name (DSN) for the database connection
 
-	// Check to make sure the environment variables for the database connection are set before using them
-	username, ok := os.LookupEnv("OPEN_DI_DB_USERNAME")
-	if !ok || username == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_USERNAME is not set or empty")
-		os.Exit(1)
-	}
-	password, ok := os.LookupEnv("OPEN_DI_DB_PASSWORD")
-	if !ok || password == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_PASSWORD is not set or empty")
-		os.Exit(1)
-	}
-	hostname, ok := os.LookupEnv("OPEN_DI_DB_HOSTNAME")
-	if !ok || hostname == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_HOSTNAME is not set or empty")
-		os.Exit(1)
-	}
-	port, ok := os.LookupEnv("OPEN_DI_DB_PORT")
-	if !ok || port == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_PORT is not set or empty")
-		os.Exit(1)
-	}
-	dbname, ok := os.LookupEnv("OPEN_DI_DB_NAME")
-	if !ok || dbname == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_NAME is not set or empty")
-		os.Exit(1)
-	}
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", username, password, hostname, port, dbname)
-
-	ret, err := database.InitializeDBInstance(dsn)
+	ret, err := database.InitializeDBInstance()
 	if ret != 0{
 		fmt.Println("Error initializing database: ", err)
 		os.Exit(1)
 	}
 
 	//initialize handler
-	modelHandler, err := handlers.NewModelHandler(dsn)
+	modelHandler, err := handlers.NewModelHandler()
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
