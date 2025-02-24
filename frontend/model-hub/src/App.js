@@ -1,3 +1,6 @@
+//
+// COPYRIGHT OpenDI
+//
 
 import {
   BrowserRouter as Router,
@@ -19,7 +22,7 @@ function App() {
     <Routes>
         <Route exact path="/" element={<Home />} />
         <Route path="/uploadpage" element={<UploadPage />} />
-        <Route path="/model/:id" element={<ModelPage />} />
+        <Route path="/model/:uuid" element={<ModelPage />} />
         <Route path="/model" element={<ModelPage />} />
     </Routes>
 </Router>

@@ -1,3 +1,7 @@
+//
+// COPYRIGHT OpenDI
+//
+
 package main
 
 import (
@@ -5,9 +9,11 @@ import (
 	"opendi/model-hub/api/handlers"
 	"os"
 
+	"os"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	//"github.com/joho/godotenv"
+	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -29,11 +35,11 @@ func main() {
 	}))
 
 	//import environment variables
-	//err := godotenv.Load()
-	//if err != nil {
-	//	fmt.Println("Error importing environment variables: ", err)
-	//	os.Exit(1)
-	//}
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("Error importing environment variables: ", err)
+		os.Exit(1)
+	}
 
 	// Construct the Data Source Name (DSN) for the database connection
 
@@ -123,9 +129,9 @@ func main() {
 
 		*/
 
-		models.GET("", modelHandler.GetModels)        // Get all models
-		models.GET("/:id", modelHandler.GetModelById) // Get a model by ID
-		models.POST("", modelHandler.UploadModel)     // Upload a model
+		models.GET("", modelHandler.GetModels)            // Get all models
+		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
+		models.POST("", modelHandler.UploadModel)         // Upload a model
 	}
 
 	//router group for uploading models

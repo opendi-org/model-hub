@@ -1,12 +1,15 @@
+//
+// COPYRIGHT OpenDI
+//
+
 package handlers
 
 import (
 	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
-	"strconv"
 	"time"
-
+	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -74,13 +77,20 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 // This endpoint doesn't actually use the request body to create the model,
 // it just creates a model with a hard-coded Schema and Meta
 func (h *ModelHandler) CreateModel() {
+	docJSON := `{
+		"content": "This CDD was authored by Dr. Lorien Pratt.\nSource: https://www.lorienpratt.com/a-framework-for-how-data-informs-decisions/\n\nAdapted for OpenDI schema compliance by Isaac Kellogg.",
+		"MIMEType": "text/plain"
+	}`
+
+	docRaw := json.RawMessage(docJSON)
+
 	meta := apiTypes.Meta{
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		UUID:          "1234-5678-9101",
 		Name:          "Test Model",
 		Summary:       "This is a test model",
-		Documentation: nil,
+		Documentation: docRaw,
 		Version:       "1.0",
 		Draft:         false,
 		Creator:       "Test Creator",
@@ -111,66 +121,83 @@ func (h *ModelHandler) CreateModel() {
 // @Produce      json
 // @Param        model  body  apiTypes.CausalDecisionModel  true  "Causal Decision Model Payload"
 // @Success      201 {object} apiTypes.CausalDecisionModel "Created model"
+// @Failure      400 {object} gin.H "Bad Request"
+// @Failure      409 {object} gin.H "Conflict: Model with same UUID already exists"
 // @Failure      500 {object} gin.H "Internal Server Error"
 // @Router       /v0/models/ [post]
 func (h *ModelHandler) UploadModel(c *gin.Context) {
 	var uploadedModel apiTypes.CausalDecisionModel
 
-	c.ShouldBindJSON(&uploadedModel)
+	if err := c.ShouldBindJSON(&uploadedModel); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		return
+	}
 
-	transacation := h.DB.Begin()
+	// Get the uploaded model's meta info.
+	meta := uploadedModel.Meta
 
-	//if what is passed in doesnt aleayd have meta data we need to create meta data
+	// Ensure no other model with the same UUID exists.
+	var existingMeta apiTypes.Meta
+	if err := h.DB.Where("uuid = ?", meta.UUID).First(&existingMeta).Error; err == nil {
+		// If there wasn't an error (error is nil), then a meta with the same UUID exists
+		c.JSON(http.StatusConflict, gin.H{"Error": "A model with UUID " + meta.UUID + " already exists"})
+		return
+	}
 
-	err := transacation.Create(&uploadedModel.Meta).Error
+	// Begin transaction.
+	transaction := h.DB.Begin()
+	if transaction.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": transaction.Error.Error()})
+		return
+	}
 
-	if err != nil {
+	// Create meta in transaction; error out on failure.
+	if err := transaction.Create(&uploadedModel.Meta).Error; err != nil {
+		transaction.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		return
+	}
+
+	// Create the model in transaction; error out on failure.
+	if err := transaction.Create(&uploadedModel).Error; err != nil {
+		transaction.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
 
-	err = transacation.Create(&uploadedModel).Error
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-		return
-	}
-
-	err = transacation.Commit().Error
-
-	if err != nil {
+	// Commit the transaction; error out if commit fails.
+	if err := transaction.Commit().Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, uploadedModel)
-
 }
 
 // GetModels godoc
-// @Summary      Get model by its id
-// @Description  gets models using its id
+// @Summary      Get model by its uuid
+// @Description  gets models using its uuid
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        id path int true "Model ID"
+// @Param        uuid path string true "Model UUID"
 // @Success      200
-// @Failure      400
-// @Failure      404
-// @Router       /v0/models/{id} [get]
-func (h *ModelHandler) GetModelById(c *gin.Context) {
+// @Failure      404 {object} gin.H "Model not found"
+// @Router       /v0/models/{uuid} [get]
+func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 
-	var model apiTypes.CausalDecisionModel
-
-	idString := c.Param("id")
-	id, err := strconv.Atoi(idString)
-
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+	var meta apiTypes.Meta
+	uuid := c.Param("uuid")
+	// Find the meta record with the given uuid
+	if err := h.DB.Where("uuid = ?", uuid).First(&meta).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"Error": "Meta with uuid " + uuid + " not found"})
 		return
 	}
 
-	// Updated query with preload for associations
+	var model apiTypes.CausalDecisionModel
+	// Find the model that has the found meta record, preloading associated fields
+	// This should only error out at this point if the meta is associated with something other than a model,
+	// like a diagram or a diagram element
 	if err := h.DB.
 		Preload("Meta").
 		Preload("Diagrams").
@@ -179,8 +206,9 @@ func (h *ModelHandler) GetModelById(c *gin.Context) {
 		Preload("Diagrams.Dependencies").
 		Preload("Diagrams.Elements.Meta").
 		Preload("Diagrams.Dependencies.Meta").
-		First(&model, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "Model not found"})
+		Where("meta_id = ?", meta.ID).
+		First(&model).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"Error": "This meta is not associated with a model"})
 		return
 	}
 
