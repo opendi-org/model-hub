@@ -8,8 +8,7 @@ import (
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
-	"time"
-	"encoding/json"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -67,7 +66,7 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 	if status, err := database.CreateModel(&uploadedModel); err != nil {
 		// Return error based on the CreateModel function response
 		c.JSON(status, gin.H{"Error": err.Error()})
-		return 
+		return
 	}
 
 	// Return a successful response if model creation is successful
