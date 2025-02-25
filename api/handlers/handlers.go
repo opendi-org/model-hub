@@ -5,44 +5,22 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
+	"opendi/model-hub/api/database"
 	"time"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
 )
 
 // ModelHandler struct for handling model requests
 type ModelHandler struct {
-	DB *gorm.DB
 }
 
 // method for getting an instance of ModelHandler
-func NewModelHandler(dsn string) (*ModelHandler, error) {
-	var tries = 0
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	for err != nil && tries < 5 {
-		time.Sleep(5 * time.Second)
-		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-		tries++
-	}
+func NewModelHandler() (*ModelHandler, error) {
 
-	// AutoMigrate all the structs defined in apitypes.go
-	err = db.AutoMigrate(
-		&apiTypes.CausalDecisionModel{},
-		&apiTypes.Meta{},
-		&apiTypes.Diagram{},
-		&apiTypes.DiaElement{},
-		&apiTypes.CausalDependency{},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ModelHandler{DB: db}, nil
+	return &ModelHandler{}, nil
 }
 
 // GetModels godoc
@@ -55,62 +33,13 @@ func NewModelHandler(dsn string) (*ModelHandler, error) {
 // @Router       /v0/models/ [get]
 func (h *ModelHandler) GetModels(c *gin.Context) {
 	var models []apiTypes.CausalDecisionModel
-	// Updated query to preload associated fields
-	if err := h.DB.
-		Preload("Meta").
-		Preload("Diagrams").
-		Preload("Diagrams.Meta").
-		Preload("Diagrams.Elements").
-		Preload("Diagrams.Dependencies").
-		Preload("Diagrams.Elements.Meta").
-		Preload("Diagrams.Dependencies.Meta").
-		Find(&models).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-		return
+	status, models, err := database.GetAllModels()
+	if models == nil {
+		c.JSON(status, gin.H{"Error": err.Error()})
 	}
 
 	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(http.StatusOK, models)
-}
-
-// Example endpoint that creates a model in the database
-// This endpoint doesn't actually use the request body to create the model,
-// it just creates a model with a hard-coded Schema and Meta
-func (h *ModelHandler) CreateModel() {
-	docJSON := `{
-		"content": "This CDD was authored by Dr. Lorien Pratt.\nSource: https://www.lorienpratt.com/a-framework-for-how-data-informs-decisions/\n\nAdapted for OpenDI schema compliance by Isaac Kellogg.",
-		"MIMEType": "text/plain"
-	}`
-
-	docRaw := json.RawMessage(docJSON)
-
-	meta := apiTypes.Meta{
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-		UUID:          "1234-5678-9101",
-		Name:          "Test Model",
-		Summary:       "This is a test model",
-		Documentation: docRaw,
-		Version:       "1.0",
-		Draft:         false,
-		Creator:       "Test Creator",
-		CreatedDate:   "2021-07-01",
-		Updator:       "Test Updator",
-		UpdatedDate:   "2021-07-01",
-	}
-
-	model := apiTypes.CausalDecisionModel{
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Schema:    "Test Schema",
-		MetaID:    1,
-		Meta:      meta,
-		Diagrams:  nil,
-	}
-
-	if err := h.DB.Create(&model).Error; err != nil {
-		fmt.Println("Error creating model: ", err)
-	}
+	c.IndentedJSON(status, models)
 }
 
 // UploadModel godoc
@@ -128,53 +57,24 @@ func (h *ModelHandler) CreateModel() {
 func (h *ModelHandler) UploadModel(c *gin.Context) {
 	var uploadedModel apiTypes.CausalDecisionModel
 
+	// Bind the JSON payload to the uploaded model struct
 	if err := c.ShouldBindJSON(&uploadedModel); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
 
-	// Get the uploaded model's meta info.
-	meta := uploadedModel.Meta
-
-	// Ensure no other model with the same UUID exists.
-	var existingMeta apiTypes.Meta
-	if err := h.DB.Where("uuid = ?", meta.UUID).First(&existingMeta).Error; err == nil {
-		// If there wasn't an error (error is nil), then a meta with the same UUID exists
-		c.JSON(http.StatusConflict, gin.H{"Error": "A model with UUID " + meta.UUID + " already exists"})
-		return
+	// Call the encapsulated CreateModel method from the database package
+	if status, err := database.CreateModel(&uploadedModel); err != nil {
+		// Return error based on the CreateModel function response
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return 
 	}
 
-	// Begin transaction.
-	transaction := h.DB.Begin()
-	if transaction.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": transaction.Error.Error()})
-		return
-	}
-
-	// Create meta in transaction; error out on failure.
-	if err := transaction.Create(&uploadedModel.Meta).Error; err != nil {
-		transaction.Rollback()
-		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
-		return
-	}
-
-	// Create the model in transaction; error out on failure.
-	if err := transaction.Create(&uploadedModel).Error; err != nil {
-		transaction.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-		return
-	}
-
-	// Commit the transaction; error out if commit fails.
-	if err := transaction.Commit().Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-		return
-	}
-
+	// Return a successful response if model creation is successful
 	c.JSON(http.StatusCreated, uploadedModel)
 }
 
-// GetModels godoc
+// GetModelByUUID godoc
 // @Summary      Get model by its uuid
 // @Description  gets models using its uuid
 // @Tags         models
@@ -185,33 +85,17 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 // @Failure      404 {object} gin.H "Model not found"
 // @Router       /v0/models/{uuid} [get]
 func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
-
-	var meta apiTypes.Meta
 	uuid := c.Param("uuid")
-	// Find the meta record with the given uuid
-	if err := h.DB.Where("uuid = ?", uuid).First(&meta).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "Meta with uuid " + uuid + " not found"})
+
+	// Call the encapsulated GetModelByUUID function from the database package
+	status, model, err := database.GetModelByUUID(uuid)
+	if err != nil {
+		// If error, return an appropriate response based on the error
+		c.JSON(status, gin.H{"Error": err.Error()})
 		return
 	}
 
-	var model apiTypes.CausalDecisionModel
-	// Find the model that has the found meta record, preloading associated fields
-	// This should only error out at this point if the meta is associated with something other than a model,
-	// like a diagram or a diagram element
-	if err := h.DB.
-		Preload("Meta").
-		Preload("Diagrams").
-		Preload("Diagrams.Meta").
-		Preload("Diagrams.Elements").
-		Preload("Diagrams.Dependencies").
-		Preload("Diagrams.Elements.Meta").
-		Preload("Diagrams.Dependencies.Meta").
-		Where("meta_id = ?", meta.ID).
-		First(&model).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "This meta is not associated with a model"})
-		return
-	}
-
+	// Return the model if found
 	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(http.StatusOK, model)
+	c.IndentedJSON(status, model)
 }
