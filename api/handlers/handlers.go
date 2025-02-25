@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
+	"time"
+	"encoding/json"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,8 +41,6 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(status, models)
 }
-
-
 
 // UploadModel godoc
 // @Summary      Upload a new model
