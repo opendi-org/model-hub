@@ -162,7 +162,7 @@ const DownloadPage = () => {
                     {model.meta ? model.meta.summary : ""}
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={1}>
-                {model.meta ? model.meta.documentation.content : ""}
+                {model.meta && model.meta.documentation ? model.meta.documentation.content : ""}
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={2}>
                     Item Three
