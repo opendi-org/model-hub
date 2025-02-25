@@ -59,6 +59,7 @@ go.work.sum
 
 # env file
 .env
+.env.test
 
 #dependencies
 node_modules
