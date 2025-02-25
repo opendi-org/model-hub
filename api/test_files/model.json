@@ -1,0 +1,15 @@
+{
+  "id": 2,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": 5,
+    "uuid": "1234-5678-9101",
+    "name": "Test Model",
+    "summary": "This is a test model",
+    "version": "1.0",
+    "creator": "Test Creator",
+    "createdDate": "2021-07-01",
+    "updator": "Test Updator",
+    "updatedDate": "2021-07-01"
+  }
+}

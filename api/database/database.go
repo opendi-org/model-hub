@@ -1,22 +1,20 @@
 package database
 
-
 import (
 	"fmt"
+	"net/http"
 	"opendi/model-hub/api/apiTypes"
+	"os"
+	"time"
+
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"net/http"
-	"time"
-	"os"
 )
 
-
-//global db instance
+// global db instance
 var dbInstance *gorm.DB
 
-
-func createTablesIfNotCreated() (error) {
+func CreateTablesIfNotCreated() error {
 
 	// AutoMigrate all the structs defined in apitypes.go
 	err := dbInstance.AutoMigrate(
@@ -30,7 +28,23 @@ func createTablesIfNotCreated() (error) {
 
 }
 
-//initialize db instance
+func ResetTables() {
+
+	dbInstance := GetDBInstance()
+
+	// Drop all tables
+	var tables []string
+	dbInstance.Raw("SHOW TABLES").Scan(&tables) // Get all table names
+
+	for _, table := range tables {
+		dbInstance.Migrator().DropTable(table)
+	}
+
+	CreateTablesIfNotCreated()
+
+}
+
+// initialize db instance
 func InitializeDBInstance() (int, error) {
 
 	// Construct the Data Source Name (DSN) for the database connection
@@ -79,7 +93,7 @@ func InitializeDBInstance() (int, error) {
 		return 1, err
 	}
 
-	err = createTablesIfNotCreated()
+	err = CreateTablesIfNotCreated()
 	if err != nil {
 		return 1, err
 	}
@@ -88,12 +102,12 @@ func InitializeDBInstance() (int, error) {
 
 }
 
-//gets singleton db instance 
+// gets singleton db instance
 func GetDBInstance() *gorm.DB {
 	return dbInstance
 }
 
-//function for getting all models in Go struct  - remember, in Go, public methods have to be capitalized
+// function for getting all models in Go struct  - remember, in Go, public methods have to be capitalized
 func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
 	// Updated query to preload associated fields
@@ -111,9 +125,7 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 
 	return http.StatusOK, models, nil
 
-
 }
-
 
 // Example method that creates a sample model in the database
 func CreateExampleModel() {
@@ -143,13 +155,10 @@ func CreateExampleModel() {
 		Diagrams:  nil,
 	}
 
-
 	if err := dbInstance.Create(&model).Error; err != nil {
 		fmt.Println("Error creating model: ", err)
 	}
 }
-
-
 
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
 func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {

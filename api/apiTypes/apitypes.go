@@ -5,6 +5,7 @@
 package apiTypes
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 )
@@ -66,4 +67,76 @@ type CausalDependency struct {
 	Meta      Meta      `json:"meta"`
 	Source    string    `json:"source"`
 	Target    string    `json:"target"`
+}
+
+// equals methods for all structs for testing purposes
+func (cdm CausalDecisionModel) Equals(other CausalDecisionModel) bool {
+	if cdm.ID != other.ID || cdm.Schema != other.Schema || cdm.MetaID != other.MetaID {
+		return false
+	}
+
+	if !cdm.Meta.Equals(other.Meta) {
+		return false
+	}
+
+	if len(cdm.Diagrams) != len(other.Diagrams) {
+		return false
+	}
+
+	for i, d := range cdm.Diagrams {
+		if !d.Equals(other.Diagrams[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (m Meta) Equals(other Meta) bool {
+	return m.UUID == other.UUID &&
+		m.Name == other.Name &&
+		m.Summary == other.Summary &&
+		bytes.Equal(m.Documentation, other.Documentation) &&
+		m.Version == other.Version &&
+		m.Draft == other.Draft &&
+		m.Creator == other.Creator &&
+		m.CreatedDate == other.CreatedDate &&
+		m.Updator == other.Updator &&
+		m.UpdatedDate == other.UpdatedDate
+}
+
+func (d Diagram) Equals(other Diagram) bool {
+	if d.ID != other.ID || d.MetaID != other.MetaID || !d.Meta.Equals(other.Meta) {
+		return false
+	}
+
+	if len(d.Elements) != len(other.Elements) || len(d.Dependencies) != len(other.Dependencies) {
+		return false
+	}
+
+	for i, e := range d.Elements {
+		if !e.Equals(other.Elements[i]) {
+			return false
+		}
+	}
+
+	for i, dep := range d.Dependencies {
+		if !dep.Equals(other.Dependencies[i]) {
+			return false
+		}
+	}
+
+	return bytes.Equal(d.Addons, other.Addons)
+}
+
+func (e DiaElement) Equals(other DiaElement) bool {
+	return e.ID == other.ID && e.MetaID == other.MetaID && e.Meta.Equals(other.Meta) &&
+		e.CausalType == other.CausalType && e.DiagramType == other.DiagramType &&
+		bytes.Equal(e.Content, other.Content) &&
+		bytes.Equal(e.AssociatedElements, other.AssociatedElements)
+}
+
+func (dep CausalDependency) Equals(other CausalDependency) bool {
+	return dep.ID == other.ID && dep.MetaID == other.MetaID && dep.Meta.Equals(other.Meta) &&
+		dep.Source == other.Source && dep.Target == other.Target
 }
