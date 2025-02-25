@@ -6,10 +6,8 @@ import { Button, Container, Typography, Stack } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import Paper from '@mui/material/Paper';
 import Card from '@mui/material/Card';
-import CardActions from '@mui/material/CardActions';
 import CardContent from '@mui/material/CardContent';
-import opendiIcon from '../opendi-icon.png';
-import ModelCard from '../components/ModelCard';
+import ModelMinicard from '../components/ModelMinicard';
 import { useEffect } from 'react';
 import { useState } from 'react';
 import { useTheme } from '@mui/material/styles';
@@ -17,14 +15,14 @@ const Home = () => {
     const [models, setModels] = useState([])
     const theme = useTheme();
     useEffect(() => {
-        fetch('http://localhost:8080/v0/models')
+        fetch(`http://${process.env.REACT_APP_MODEL_HUB_ADDRESS}:${process.env.REACT_APP_MODEL_HUB_PORT}/v0/models`)
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
                 }
                 return response.json();
             })
-            .then(data => {console.log(data);
+            .then(data => {
                 setModels(data)})
             .catch(error => console.error('There was a problem with the fetch operation:', error));
     }, []);
@@ -52,7 +50,7 @@ const Home = () => {
                         <Grid xs={12} container spacing={2}>
                             {
                                 models.map((model) => 
-                                <ModelCard key={model.id} name={model.meta.name} id = {model.id} author={model.meta.creator} />)
+                                <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator} />)
                             }
                         </Grid>
                         <Grid xs={12}>

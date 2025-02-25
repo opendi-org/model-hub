@@ -18,9 +18,12 @@ import (
 	"opendi/model-hub/api/database"
 
 	_ "opendi/model-hub/api/docs"
+	"strings"
+	"time"
 )
 
 func main() {
+	fmt.Println("Starting Model Hub API")
 	router := gin.Default()
 	
 	router.Use(cors.New(cors.Config{
@@ -39,16 +42,19 @@ func main() {
     }
 
 
-
-
-	ret, err := database.InitializeDBInstance()
+	
+	// Wait for 3 seconds to allow the database to start up before initializing the connection to the database table
+	time.Sleep(3 * time.Second)
+  //initialize db instance
+  	ret, err := database.InitializeDBInstance()
 	if ret != 0{
 		fmt.Println("Error initializing database: ", err)
 		os.Exit(1)
 	}
-
-	//initialize handler
-	modelHandler, err := handlers.NewModelHandler()
+  //initialize handler
+	modelHandler, err := handlers.NewModelHandler(dsn)
+  
+  
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
