@@ -19,6 +19,7 @@ func CreateTablesIfNotCreated() error {
 	// AutoMigrate all the structs defined in apitypes.go
 	err := dbInstance.AutoMigrate(
 		&apiTypes.CausalDecisionModel{},
+		&apiTypes.User{},
 		&apiTypes.Meta{},
 		&apiTypes.Diagram{},
 		&apiTypes.DiaElement{},
@@ -119,6 +120,8 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 		Preload("Diagrams.Dependencies").
 		Preload("Diagrams.Elements.Meta").
 		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updater").
 		Find(&models).Error; err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
@@ -129,6 +132,22 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 
 // Example method that creates a sample model in the database
 func CreateExampleModel() {
+	creator := apiTypes.User{
+		ID:       1,
+		UUID:     "user-uuid-creator",
+		Username: "Test Creator",
+		Email:    "creator@example.com",
+		Password: "p",
+	}
+
+	updater := apiTypes.User{
+		ID:       2,
+		UUID:     "user-uuid-updater",
+		Username: "Test Updater",
+		Email:    "updater@example.com",
+		Password: "q",
+	}
+
 	meta := apiTypes.Meta{
 		ID:            1,
 		CreatedAt:     time.Now(),
@@ -139,9 +158,11 @@ func CreateExampleModel() {
 		Documentation: nil,
 		Version:       "1.0",
 		Draft:         false,
-		Creator:       "Test Creator",
+		CreatorID:     creator.ID,
+		Creator:       creator,
 		CreatedDate:   "2021-07-01",
-		Updator:       "Test Updator",
+		UpdaterID:     updater.ID,
+		Updater:       updater,
 		UpdatedDate:   "2021-07-01",
 	}
 
@@ -215,6 +236,8 @@ func GetModelByUUID(uuid string) (int, *apiTypes.CausalDecisionModel, error) {
 		Preload("Diagrams.Dependencies").
 		Preload("Diagrams.Elements.Meta").
 		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updater").
 		Where("meta_id = ?", meta.ID).
 		First(&model).Error; err != nil {
 		return http.StatusNotFound, nil, fmt.Errorf("this meta is not associated with a model")
