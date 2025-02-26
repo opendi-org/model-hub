@@ -73,6 +73,22 @@ func TestGetModelByUUID(t *testing.T) {
 }
 
 func TestCreateModel(t *testing.T) {
+	creator := apiTypes.User{
+		ID:       1,
+		UUID:     "user-uuid-creator",
+		Username: "Test Creator",
+		Email:    "creator@example.com",
+		Password: "p",
+	}
+
+	updater := apiTypes.User{
+		ID:       2,
+		UUID:     "user-uuid-updater",
+		Username: "Test Updater",
+		Email:    "updater@example.com",
+		Password: "q",
+	}
+
 	meta := apiTypes.Meta{
 		ID:            2,
 		CreatedAt:     time.Now(),
@@ -83,9 +99,11 @@ func TestCreateModel(t *testing.T) {
 		Documentation: nil,
 		Version:       "1.0",
 		Draft:         false,
-		Creator:       "Test Creator",
+		CreatorID:     creator.ID,
+		Creator:       creator,
 		CreatedDate:   "2021-07-01",
-		Updator:       "Test Updator",
+		UpdaterID:     updater.ID,
+		Updater:       updater,
 		UpdatedDate:   "2021-07-01",
 	}
 

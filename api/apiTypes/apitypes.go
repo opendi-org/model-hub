@@ -30,9 +30,11 @@ type Meta struct {
 	Documentation json.RawMessage `json:"documentation,omitempty"`
 	Version       string          `json:"version,omitempty"`
 	Draft         bool            `json:"draft,omitempty"`
-	Creator       string          `json:"creator,omitempty"`
+	CreatorID     int             `json:"-"`
+	Creator       User            `json:"creator,omitempty"`
 	CreatedDate   string          `json:"createdDate,omitempty"`
-	Updator       string          `json:"updator,omitempty"`
+	UpdaterID     int             `json:"-"`
+	Updater       User            `json:"updater,omitempty"`
 	UpdatedDate   string          `json:"updatedDate,omitempty"`
 }
 
@@ -69,7 +71,14 @@ type CausalDependency struct {
 	Target    string    `json:"target"`
 }
 
-// equals methods for all structs for testing purposes
+type User struct {
+	ID       int    `gorm:"primaryKey" json:"-"`
+	UUID     string `gorm:"unique" json:"uuid"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"-"`
+}
+
 func (cdm CausalDecisionModel) Equals(other CausalDecisionModel) bool {
 	if cdm.ID != other.ID || cdm.Schema != other.Schema || cdm.MetaID != other.MetaID {
 		return false
@@ -99,9 +108,9 @@ func (m Meta) Equals(other Meta) bool {
 		bytes.Equal(m.Documentation, other.Documentation) &&
 		m.Version == other.Version &&
 		m.Draft == other.Draft &&
-		m.Creator == other.Creator &&
+		m.Creator.Equals(other.Creator) &&
 		m.CreatedDate == other.CreatedDate &&
-		m.Updator == other.Updator &&
+		m.Updater.Equals(other.Updater) &&
 		m.UpdatedDate == other.UpdatedDate
 }
 
@@ -139,4 +148,8 @@ func (e DiaElement) Equals(other DiaElement) bool {
 func (dep CausalDependency) Equals(other CausalDependency) bool {
 	return dep.ID == other.ID && dep.MetaID == other.MetaID && dep.Meta.Equals(other.Meta) &&
 		dep.Source == other.Source && dep.Target == other.Target
+}
+
+func (u User) Equals(other User) bool {
+	return u.Username == other.Username
 }

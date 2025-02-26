@@ -7,9 +7,19 @@
     "name": "Test Model",
     "summary": "This is a test model",
     "version": "1.0",
-    "creator": "Test Creator",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "Test Creator",
+      "email": "creator@example.com",
+      "password": "p"
+    },
     "createdDate": "2021-07-01",
-    "updator": "Test Updator",
+    "updater": {
+      "uuid": "updater-uuid",
+      "username": "Test Updater",
+      "email": "updater@example.com",
+      "password": "q"
+    },
     "updatedDate": "2021-07-01"
   }
 }
