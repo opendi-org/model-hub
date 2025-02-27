@@ -125,7 +125,7 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 		Preload("Diagrams.Elements.Meta").
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
-		Preload("Meta.Updater").
+		Preload("Meta.Updaters").
 		Find(&models).Error; err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
@@ -165,8 +165,7 @@ func CreateExampleModel() {
 		CreatorID:     creator.ID,
 		Creator:       creator,
 		CreatedDate:   "2021-07-01",
-		UpdaterID:     updater.ID,
-		Updater:       updater,
+		Updaters:      []apiTypes.User{updater},
 		UpdatedDate:   "2021-07-01",
 	}
 
@@ -215,8 +214,7 @@ func CreateExampleModel() {
 		CreatorID:     childCreator.ID,
 		Creator:       childCreator,
 		CreatedDate:   "2021-07-01",
-		UpdaterID:     childUpdater.ID,
-		Updater:       childUpdater,
+		Updaters:      []apiTypes.User{childUpdater, updater},
 		UpdatedDate:   "2021-07-01",
 	}
 
@@ -295,11 +293,23 @@ func GetModelByUUID(uuid string) (int, *apiTypes.CausalDecisionModel, error) {
 		Preload("Diagrams.Elements.Meta").
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
-		Preload("Meta.Updater").
+		Preload("Meta.Updaters").
 		Where("meta_id = ?", meta.ID).
 		First(&model).Error; err != nil {
 		return http.StatusNotFound, nil, fmt.Errorf("this meta is not associated with a model")
 	}
 
 	return http.StatusOK, &model, nil
+}
+
+// GetUserByID encapsulates the GORM functionality for getting a user by their ID
+func GetUserByID(id int) (int, *apiTypes.User, error) {
+	var user apiTypes.User
+
+	// Find the user record with the given ID.
+	if err := dbInstance.Where("id = ?", id).First(&user).Error; err != nil {
+		return http.StatusNotFound, nil, fmt.Errorf("user with id %d not found", id)
+	}
+
+	return http.StatusOK, &user, nil
 }
