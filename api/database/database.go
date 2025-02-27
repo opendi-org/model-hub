@@ -1,3 +1,7 @@
+//
+// COPYRIGHT OpenDI
+//
+
 package database
 
 import (
@@ -173,12 +177,66 @@ func CreateExampleModel() {
 		Schema:    "Test Schema",
 		MetaID:    1,
 		Meta:      meta,
+		Parent:    nil,
 		Diagrams:  nil,
 	}
 
 	if err := dbInstance.Create(&model).Error; err != nil {
 		fmt.Println("Error creating model: ", err)
 	}
+
+	// Also create a child model
+	childCreator := apiTypes.User{
+		ID:       3,
+		UUID:     "user-uuid-child-creator",
+		Username: "Test Child Creator",
+		Email:    "mail.com",
+		Password: "p",
+	}
+
+	childUpdater := apiTypes.User{
+		ID:       4,
+		UUID:     "user-uuid-child-updater",
+		Username: "Test Child Updater",
+		Email:    "mail.com",
+		Password: "q",
+	}
+
+	childMeta := apiTypes.Meta{
+		ID:            2,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		UUID:          "1324-5678-9101",
+		Name:          "Test Child Model",
+		Summary:       "This is a test child model",
+		Documentation: nil,
+		Version:       "1.0",
+		Draft:         false,
+		CreatorID:     childCreator.ID,
+		Creator:       childCreator,
+		CreatedDate:   "2021-07-01",
+		UpdaterID:     childUpdater.ID,
+		Updater:       childUpdater,
+		UpdatedDate:   "2021-07-01",
+	}
+
+	childModel := apiTypes.CausalDecisionModel{
+		ID:         2,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+		Schema:     "Test Child Schema",
+		MetaID:     2,
+		Meta:       childMeta,
+		ParentUUID: model.Meta.UUID,
+		ParentID:   &model.ID,
+		Parent:     &model,
+		Diagrams:   nil,
+	}
+
+	if err := dbInstance.Create(&childModel).Error; err != nil {
+		fmt.Println("Error creating child model: ", err)
+	}
+
 }
 
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction

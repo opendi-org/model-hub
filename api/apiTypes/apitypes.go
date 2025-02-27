@@ -11,13 +11,16 @@ import (
 )
 
 type CausalDecisionModel struct {
-	ID        int       `gorm:"primaryKey" json:"-"`
-	CreatedAt time.Time `json:"-"`
-	UpdatedAt time.Time `json:"-"`
-	Schema    string    `json:"$schema"`
-	MetaID    int       `json:"-"`
-	Meta      Meta      `json:"meta"`
-	Diagrams  []Diagram `gorm:"many2many:cdm_diagrams" json:"diagrams,omitempty"`
+	ID         int                  `gorm:"primaryKey" json:"-"`
+	CreatedAt  time.Time            `json:"-"`
+	UpdatedAt  time.Time            `json:"-"`
+	Schema     string               `json:"$schema"`
+	MetaID     int                  `json:"-"`
+	Meta       Meta                 `json:"meta"`
+	ParentUUID string               `json:"parentUUID,omitempty"`
+	ParentID   *int                 `json:"-"`
+	Parent     *CausalDecisionModel `json:"-"`
+	Diagrams   []Diagram            `gorm:"many2many:cdm_diagrams" json:"diagrams,omitempty"`
 }
 
 type Meta struct {
@@ -97,6 +100,14 @@ func (cdm CausalDecisionModel) Equals(other CausalDecisionModel) bool {
 			return false
 		}
 	}
+
+	// Even if the models somehow have other parents, we don't care
+	// about that for equality. In fact, one might consider
+	// changing this code to simply check that the meta is
+	// equal and return true. After all, if two models have
+	// the same name, summary, documentation, version, draft,
+	// especially UUID, etc, then it stands to reason that
+	// they are the same model.
 
 	return true
 }
