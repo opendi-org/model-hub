@@ -74,6 +74,14 @@ func TestGetModelByUUID(t *testing.T) {
 
 func TestCreateModel(t *testing.T) {
 
+	// There should be a user with id 2. Retrieve it.
+	_, user, _ := GetUserByID(2)
+
+	// Ensure the user is not nil
+	if user == nil {
+		t.Fatalf("User with ID 2 not found.")
+	}
+
 	meta := apiTypes.Meta{
 		ID:            30,
 		CreatedAt:     time.Now(),
@@ -86,7 +94,7 @@ func TestCreateModel(t *testing.T) {
 		Draft:         false,
 		CreatorID:     1,
 		CreatedDate:   "2021-07-01",
-		UpdaterID:     2,
+		Updaters:      []apiTypes.User{*user},
 		UpdatedDate:   "2021-07-01",
 	}
 
