@@ -11,11 +11,12 @@ import ModelMinicard from '../components/ModelMinicard';
 import { useEffect } from 'react';
 import { useState } from 'react';
 import { useTheme } from '@mui/material/styles';
+import API_URL from '../config';
 const Home = () => {
     const [models, setModels] = useState([])
     const theme = useTheme();
     useEffect(() => {
-        fetch(`http://${process.env.REACT_APP_MODEL_HUB_ADDRESS}:${process.env.REACT_APP_MODEL_HUB_PORT}/v0/models`)
+        fetch(`${API_URL}/v0/models`)
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
