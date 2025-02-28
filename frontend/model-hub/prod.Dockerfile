@@ -18,10 +18,12 @@ RUN npm run build
 # Stage 2: Serve the app with a lightweight image
 FROM node:22-alpine
 
-ENV REACT_APP_MODEL_HUB_ADDRESS localhost
-ENV REACT_APP_MODEL_HUB_PORT 8080
 
 WORKDIR /webapp
+
+# Set environment variable (only needed for build time)
+ARG REACT_APP_API_URL
+ENV REACT_APP_API_URL=${REACT_APP_API_URL}
 
 # Install serve globally
 RUN npm install -g serve
