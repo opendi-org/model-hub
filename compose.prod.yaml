@@ -6,11 +6,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_MODEL_HUB_ADDRESS: localhost
-      REACT_APP_MODEL_HUB_PORT: 8080
-      WATCHPACK_POLLING: true  # For React hot reloading (if necessary)
-    volumes:
-      - ./frontend/model-hub/src:/webapp/src
+      REACT_APP_API_URL: http://api:8080
+    image:
+      iad.ocir.io/idkpm9sketnr/opendi-modelhub:4
   api:
     build:
       context: ./api/
@@ -31,7 +29,8 @@ services:
     #volumes:
     #  - ./api/:/app/
     restart: unless-stopped
-  
+    image:
+      iad.ocir.io/idkpm9sketnr/opendi-api:3
   db:
     image: mysql:latest
     environment:
