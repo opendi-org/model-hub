@@ -6,11 +6,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: http://localhost:8080
-    volumes:
-      - ./frontend/model-hub/src:/webapp/src
+      REACT_APP_API_URL: http://api:8080
     image:
-      iad.ocir.io/idkpm9sketnr/opendi-modelhub:3
+      iad.ocir.io/idkpm9sketnr/opendi-modelhub:4
   api:
     build:
       context: ./api/
@@ -38,5 +36,3 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: temp_pass
       MYSQL_DATABASE: open_di_model_hub
-    image:
-      iad.ocir.io/idkpm9sketnr/opendi-db:3

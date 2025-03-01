@@ -22,8 +22,7 @@ FROM node:22-alpine
 WORKDIR /webapp
 
 # Set environment variable (only needed for build time)
-ARG REACT_APP_API_URL
-ENV REACT_APP_API_URL=${REACT_APP_API_URL}
+ENV REACT_APP_API_URL=http://129.213.115.50:8080
 
 # Install serve globally
 RUN npm install -g serve
