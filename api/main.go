@@ -36,8 +36,12 @@ func main() {
 	//import environment variables
 	err := godotenv.Load("./config/.env")
 	if err != nil {
-		fmt.Println("Error importing environment variables: ", err)
-		os.Exit(1)
+		fmt.Println("Unable to import environment variables: ", err)
+		//os.Exit(1)
+		//I think the above line should remain commented out, so that
+		//the program can still run even if the .env file is not found
+		//This is because the .env file is not necessary for the program to run
+		//It is only necessary for the program to run in a specific environment
 	}
 
 	// Wait for 3 seconds to allow the database to start up before initializing the connection to the database table
