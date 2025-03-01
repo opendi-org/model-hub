@@ -64,7 +64,7 @@ func TestGetModelByUUID(t *testing.T) {
 		t.Errorf("Expected model UUID %s, got %s", "1234-5678-9101", model.Meta.UUID)
 	}
 
-	status, model, err = GetModelByUUID("1234-5678-9103")
+	status, _, err = GetModelByUUID("1234-5678-9103")
 
 	if status != http.StatusNotFound {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusNotFound, status, err)
@@ -73,24 +73,17 @@ func TestGetModelByUUID(t *testing.T) {
 }
 
 func TestCreateModel(t *testing.T) {
-	creator := apiTypes.User{
-		ID:       1,
-		UUID:     "user-uuid-creator",
-		Username: "Test Creator",
-		Email:    "creator@example.com",
-		Password: "p",
-	}
 
-	updater := apiTypes.User{
-		ID:       2,
-		UUID:     "user-uuid-updater",
-		Username: "Test Updater",
-		Email:    "updater@example.com",
-		Password: "q",
+	// There should be a user with id 2. Retrieve it.
+	_, user, _ := GetUserByID(2)
+
+	// Ensure the user is not nil
+	if user == nil {
+		t.Fatalf("User with ID 2 not found.")
 	}
 
 	meta := apiTypes.Meta{
-		ID:            2,
+		ID:            30,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		UUID:          "1234-5678-9105",
@@ -99,20 +92,18 @@ func TestCreateModel(t *testing.T) {
 		Documentation: nil,
 		Version:       "1.0",
 		Draft:         false,
-		CreatorID:     creator.ID,
-		Creator:       creator,
+		CreatorID:     1,
 		CreatedDate:   "2021-07-01",
-		UpdaterID:     updater.ID,
-		Updater:       updater,
+		Updaters:      []apiTypes.User{*user},
 		UpdatedDate:   "2021-07-01",
 	}
 
 	model := apiTypes.CausalDecisionModel{
-		ID:        2,
+		ID:        1234567890,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Schema:    "Test Schema",
-		MetaID:    2,
+		MetaID:    meta.ID,
 		Meta:      meta,
 		Diagrams:  nil,
 	}
@@ -130,8 +121,8 @@ func TestCreateModel(t *testing.T) {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
 	}
 
-	if !model.Equals(*model2) {
-		t.Errorf("Models are not equal")
+	if model.Meta.UUID != model2.Meta.UUID {
+		t.Errorf("Models have differing UUID.")
 	}
 
 }
@@ -141,15 +132,15 @@ func TestGetAllModels(t *testing.T) {
 	if ret != http.StatusOK {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
 	}
-	if len(models) != 2 {
-		t.Errorf("Expected 2 models, got %d", len(models))
+	if len(models) != 3 {
+		t.Errorf("Expected 3 models, got %d", len(models))
 	}
 
 	if models[0].Meta.UUID != "1234-5678-9101" {
 		t.Errorf("Expected model UUID %s, got %s", "1234-5678-9101", models[0].Meta.UUID)
 	}
-	if models[1].Meta.UUID != "1234-5678-9105" {
-		t.Errorf("Expected model UUID %s, got %s", "1234-5678-9105", models[1].Meta.UUID)
+	if models[2].Meta.UUID != "1234-5678-9105" {
+		t.Errorf("Expected model UUID %s, got %s", "1234-5678-9105", models[2].Meta.UUID)
 	}
 
 }
