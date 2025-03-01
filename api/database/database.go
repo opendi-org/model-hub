@@ -1,3 +1,7 @@
+//
+// COPYRIGHT OpenDI
+//
+
 package database
 
 import (
@@ -121,7 +125,7 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 		Preload("Diagrams.Elements.Meta").
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
-		Preload("Meta.Updater").
+		Preload("Meta.Updaters").
 		Find(&models).Error; err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
@@ -161,8 +165,7 @@ func CreateExampleModel() {
 		CreatorID:     creator.ID,
 		Creator:       creator,
 		CreatedDate:   "2021-07-01",
-		UpdaterID:     updater.ID,
-		Updater:       updater,
+		Updaters:      []apiTypes.User{updater},
 		UpdatedDate:   "2021-07-01",
 	}
 
@@ -173,20 +176,74 @@ func CreateExampleModel() {
 		Schema:    "Test Schema",
 		MetaID:    1,
 		Meta:      meta,
+		Parent:    nil,
 		Diagrams:  nil,
 	}
 
 	if err := dbInstance.Create(&model).Error; err != nil {
 		fmt.Println("Error creating model: ", err)
 	}
+
+	// Also create a child model
+	childCreator := apiTypes.User{
+		ID:       3,
+		UUID:     "user-uuid-child-creator",
+		Username: "Test Child Creator",
+		Email:    "mail.com",
+		Password: "p",
+	}
+
+	childUpdater := apiTypes.User{
+		ID:       4,
+		UUID:     "user-uuid-child-updater",
+		Username: "Test Child Updater",
+		Email:    "mail.com",
+		Password: "q",
+	}
+
+	childMeta := apiTypes.Meta{
+		ID:            2,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		UUID:          "1324-5678-9101",
+		Name:          "Test Child Model",
+		Summary:       "This is a test child model",
+		Documentation: nil,
+		Version:       "1.0",
+		Draft:         false,
+		CreatorID:     childCreator.ID,
+		Creator:       childCreator,
+		CreatedDate:   "2021-07-01",
+		Updaters:      []apiTypes.User{childUpdater, updater},
+		UpdatedDate:   "2021-07-01",
+	}
+
+	childModel := apiTypes.CausalDecisionModel{
+		ID:         2,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+		Schema:     "Test Child Schema",
+		MetaID:     2,
+		Meta:       childMeta,
+		ParentUUID: model.Meta.UUID,
+		ParentID:   &model.ID,
+		Parent:     &model,
+		Diagrams:   nil,
+	}
+
+	if err := dbInstance.Create(&childModel).Error; err != nil {
+		fmt.Println("Error creating child model: ", err)
+	}
+
 }
 
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
 func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	// Ensure no other model with the same UUID exists.
-	var existingMeta apiTypes.Meta
-	if err := dbInstance.Where("uuid = ?", uploadedModel.Meta.UUID).First(&existingMeta).Error; err == nil {
-		// If there wasn't an error (error is nil), then a meta with the same UUID exists
+	var count int64
+	dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
+	if count > 0 {
+		// If a meta with the same UUID exists, return a conflict error.
 		return http.StatusConflict, fmt.Errorf("a model with UUID %s already exists", uploadedModel.Meta.UUID)
 	}
 
@@ -194,6 +251,46 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	transaction := dbInstance.Begin()
 	if transaction.Error != nil {
 		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	}
+
+	// Try to retrieve creator id information from the meta, then find a creator with that id in the database.
+
+	var creator apiTypes.User
+	var countCreator int64
+	transaction.Model(&apiTypes.User{}).Where("uuid = ?", uploadedModel.Meta.Creator.UUID).Count(&countCreator)
+	if countCreator == 0 {
+		// Create the creator in the database if it does not exist.
+		if err := transaction.Create(&uploadedModel.Meta.Creator).Error; err != nil {
+			transaction.Rollback()
+			return http.StatusInternalServerError, fmt.Errorf("could not create creator: %s", err.Error())
+		}
+	} else {
+		// Find the creator in the database using the uuid
+		if err := transaction.Where("uuid = ?", uploadedModel.Meta.Creator.UUID).First(&creator).Error; err != nil {
+			transaction.Rollback()
+			return http.StatusInternalServerError, fmt.Errorf("could not find creator: %s", err.Error())
+		}
+		fmt.Println(creator)
+		uploadedModel.Meta.Creator = creator
+	}
+
+	// Try to retrieve updater id information from the meta, then find an updater with that id in the database.
+	for i, updater := range uploadedModel.Meta.Updaters {
+		var countUpdater int64
+		transaction.Model(&apiTypes.User{}).Where("uuid = ?", updater.UUID).Count(&countUpdater)
+		if countUpdater == 0 {
+			// Create the updater in the database if it does not exist.
+			if err := transaction.Create(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
+				transaction.Rollback()
+				return http.StatusInternalServerError, fmt.Errorf("could not create updater: %s", err.Error())
+			}
+		} else {
+			// Find the updater in the database using the uuid
+			if err := transaction.Where("uuid = ?", updater.UUID).First(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
+				transaction.Rollback()
+				return http.StatusInternalServerError, fmt.Errorf("could not find updater: %s", err.Error())
+			}
+		}
 	}
 
 	// Create meta in transaction; error out on failure.
@@ -237,11 +334,23 @@ func GetModelByUUID(uuid string) (int, *apiTypes.CausalDecisionModel, error) {
 		Preload("Diagrams.Elements.Meta").
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
-		Preload("Meta.Updater").
+		Preload("Meta.Updaters").
 		Where("meta_id = ?", meta.ID).
 		First(&model).Error; err != nil {
 		return http.StatusNotFound, nil, fmt.Errorf("this meta is not associated with a model")
 	}
 
 	return http.StatusOK, &model, nil
+}
+
+// GetUserByID encapsulates the GORM functionality for getting a user by their ID
+func GetUserByID(id int) (int, *apiTypes.User, error) {
+	var user apiTypes.User
+
+	// Find the user record with the given ID.
+	if err := dbInstance.Where("id = ?", id).First(&user).Error; err != nil {
+		return http.StatusNotFound, nil, fmt.Errorf("user with id %d not found", id)
+	}
+
+	return http.StatusOK, &user, nil
 }
