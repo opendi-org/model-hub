@@ -7,6 +7,7 @@ import * as React from 'react';
 import { useEffect } from 'react';
 import { useState } from 'react';
 import opendiIcon from '../opendi-icon.png';
+import API_URL from '../config';
 import {
     Box,
     Button,
@@ -19,8 +20,8 @@ import {
     Chip
 } from "@mui/material";
 import { useParams } from "react-router-dom";
-import { useDropzone } from "react-dropzone";
-import { useCallback } from "react";
+//import { useDropzone } from "react-dropzone";
+//import { useCallback } from "react";
 
 const DownloadPage = () => {
 
@@ -33,7 +34,7 @@ const DownloadPage = () => {
 
     const [model, setModel] = useState({})
     useEffect(() => {
-        fetch(`http://localhost:8080/v0/models/${uuid}`)
+        fetch(`${API_URL}/v0/models/${uuid}`)
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');

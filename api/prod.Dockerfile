@@ -1,5 +1,5 @@
 # Builder stage
-FROM golang:1.23
+FROM golang:1.23-alpine
 
 ENV OPEN_DI_DB_NAME open_di_model_hub
 ENV OPEN_DI_DB_PORT 3306

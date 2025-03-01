@@ -40,7 +40,6 @@ go.mod
 /cover.out
 
 # Ignoring config.js
-config.js
 api/docs/docs.go
 api/docs/swagger.json
 api/docs/swagger.yaml
@@ -63,3 +62,6 @@ go.work.sum
 
 #dependencies
 node_modules
+
+#ssh key to VM
+ssh-key-2025-02-28.key
