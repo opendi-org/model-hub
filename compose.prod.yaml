@@ -1,0 +1,38 @@
+services:
+  web:
+    build:
+      context: ./frontend/model-hub/
+      dockerfile: prod.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://api:8080
+    image:
+      iad.ocir.io/idkpm9sketnr/opendi-modelhub:4
+  api:
+    build:
+      context: ./api/
+      dockerfile: prod.Dockerfile
+    depends_on:
+      - db
+    environment:
+      OPEN_DI_DB_NAME: open_di_model_hub
+      OPEN_DI_DB_PORT: 3306
+      OPEN_DI_DB_HOSTNAME: db
+      OPEN_DI_DB_PASSWORD: temp_pass
+      OPEN_DI_DB_USERNAME: root
+      OPENDI_MODEL_HUB_ADDRESS: api
+      OPENDI_MODEL_HUB_PORT: 8080
+    #For debugging purposes, may be able to not expose this port later (unsure)
+    ports:
+      - "8080:8080"
+    #volumes:
+    #  - ./api/:/app/
+    restart: unless-stopped
+    image:
+      iad.ocir.io/idkpm9sketnr/opendi-api:3
+  db:
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: temp_pass
+      MYSQL_DATABASE: open_di_model_hub
