@@ -139,6 +139,17 @@ func GetAllCommits() (int, []apiTypes.Commit, error) {
 	var commits []apiTypes.Commit
 	// Updated query to preload associated fields
 	if err := dbInstance.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Preload("CausalDecisionModel").
+		Preload("User").
 		Find(&commits).Error; err != nil {
 		return http.StatusInternalServerError, nil, err
 	}

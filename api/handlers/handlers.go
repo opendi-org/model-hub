@@ -5,7 +5,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
@@ -110,7 +109,6 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 // @Param        model  body  apiTypes.CausalDecisionModel  true  "Causal Decision Model Payload"
 // @Success      201 {object} apiTypes.CausalDecisionModel "Updated model"
 // @Failure      400 {object} gin.H "Bad Request"
-// @Failure      409 {object} gin.H "Conflict: Model with same UUID already exists"
 // @Failure      500 {object} gin.H "Internal Server Error"
 // @Router       /v0/models/ [put]
 func (h *ModelHandler) PutModel(c *gin.Context) {
@@ -130,9 +128,7 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 		return
 	}
 
-	oldjson, err := json.Marshal(oldmodel)
-
-	diff, err := jsondiff.Compare(c, oldjson)
+	diff, err := jsondiff.Compare(uploadedModel, oldmodel)
 
 	if err != nil {
 		// Return error based on the UpdateModel function response
