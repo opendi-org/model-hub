@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -353,4 +354,61 @@ func GetUserByID(id int) (int, *apiTypes.User, error) {
 	}
 
 	return http.StatusOK, &user, nil
+}
+
+func GetUserByEmail(email string) (int, *apiTypes.User, error) {
+	var user apiTypes.User
+
+	// Find the user record with the given ID.
+	if err := dbInstance.Where("email = ?", email).First(&user).Error; err != nil {
+		return http.StatusNotFound, nil, fmt.Errorf("user with email %s not found", email)
+	}
+
+	return http.StatusOK, &user, nil
+}
+
+func CreateUser(email string, password string) (*apiTypes.User, error) {
+	var newuser apiTypes.User
+	newuser.Username = email
+	newuser.Email = email
+	newuser.Password = password
+	newuser.UUID = uuid.NewString()
+	// Ensure no other user with this email exists
+	var count int64
+	dbInstance.Model(&apiTypes.User{}).Where("email = ?", email).Count(&count)
+	if count > 0 {
+		// If a meta with the same UUID exists, return a conflict error.
+		return nil, fmt.Errorf("a user with email %s already exists", email)
+	}
+
+	// Begin transaction.
+	transaction := dbInstance.Begin()
+	if transaction.Error != nil {
+		return nil, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	}
+
+	if err := transaction.Create(&newuser).Error; err != nil {
+		transaction.Rollback()
+		return nil, fmt.Errorf("could not create updater: %s", err.Error())
+	}
+
+	transaction.Commit()
+
+	return &newuser, nil
+}
+
+func UserLogin(email string, password string) (int, *apiTypes.User, error) {
+
+	status, user, _ := GetUserByEmail(email)
+
+	if status != 200 {
+		//For now, let's just create a new user
+		newuser, err := CreateUser(email, password)
+		if err != nil {
+			return http.StatusConflict, nil, fmt.Errorf("user does not exist and could not create new user")
+		}
+		return http.StatusOK, newuser, nil
+	}
+
+	return http.StatusOK, user, nil
 }

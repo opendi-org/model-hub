@@ -94,6 +94,34 @@ export default function Navbar() {
         </Menu>
     );
 
+    function LoginButton() {
+        if (!sessionStorage.getItem('username')) {
+            return <Button color="inherit" component={NavLink} to="/login">Login</Button>
+        }
+        else {
+            return null
+        }
+    }
+
+    function SigninButton() {
+        if (!sessionStorage.getItem('username')) {
+            return <Button
+                            color="inherit"
+                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
+                        >
+                            Sign Up
+                        </Button>
+        }
+        else {
+            return <Button
+                            color="inherit"
+                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
+                        >
+                            Welcome {sessionStorage.getItem('username')}
+                        </Button>
+        }
+    }
+
     return (
         <Box sx={{ flexGrow: 1 }}>
             <AppBar position="static" sx={{ backgroundColor: 'white', color: 'black' }}>
@@ -133,13 +161,8 @@ export default function Navbar() {
                         <Button color="inherit" component={NavLink} to="/UploadPage">Upload</Button>
                         <Button color="inherit">Popular</Button>
                         <Button color="inherit">About</Button>
-                        <Button color="inherit">Login</Button>
-                        <Button
-                            color="inherit"
-                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
-                        >
-                            Sign Up
-                        </Button>
+                        <LoginButton/>
+                        <SigninButton/>
                     </Box>
                 </Toolbar>
             </AppBar>
