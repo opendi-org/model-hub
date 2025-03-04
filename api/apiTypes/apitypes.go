@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"time"
+
+	"github.com/wI2L/jsondiff"
 )
 
 type CausalDecisionModel struct {
@@ -79,6 +81,15 @@ type User struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Password string `json:"-"`
+}
+
+type Commit struct {
+	ID             int            `gorm:"primaryKey" json:"-"`
+	ParentCommitID string         `json:"parentCommitID"`
+	Diff           jsondiff.Patch `json:"diff"`
+	UserUUID       string         `json:"useruuid"`
+	CDMUUID        string         `json:"cdmuuid"`
+	CreatedAt      time.Time      `json:"CreatedAt"`
 }
 
 func (cdm CausalDecisionModel) Equals(other CausalDecisionModel) bool {
