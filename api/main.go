@@ -103,6 +103,14 @@ func main() {
 		models.GET("", modelHandler.GetModels)            // Get all models
 		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
 		models.POST("", modelHandler.UploadModel)         // Upload a model
+		models.PUT("/:uuid", modelHandler.PutModel)       // Update a model
+	}
+
+	//router group for all endpoints related to models
+	commits := router.Group("/v0/commits")
+	{
+
+		commits.GET("", modelHandler.UploadModel) // Update a model
 	}
 
 	//router group for uploading models

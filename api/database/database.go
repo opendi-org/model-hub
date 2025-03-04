@@ -134,6 +134,19 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 
 }
 
+// function for getting all commits in Go struct  - remember, in Go, public methods have to be capitalized
+func GetAllCommits() (int, []apiTypes.Commit, error) {
+	var commits []apiTypes.Commit
+	// Updated query to preload associated fields
+	if err := dbInstance.
+		Find(&commits).Error; err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	return http.StatusOK, commits, nil
+
+}
+
 // Example method that creates a sample model in the database
 func CreateExampleModel() {
 	creator := apiTypes.User{
@@ -353,4 +366,102 @@ func GetUserByID(id int) (int, *apiTypes.User, error) {
 	}
 
 	return http.StatusOK, &user, nil
+}
+
+// UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction
+func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
+	// Ensure a  model with the same UUID exists.
+	var count int64
+	dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
+	if count == 0 {
+		return http.StatusConflict, fmt.Errorf("a model with UUID %s already exists", uploadedModel.Meta.UUID)
+	}
+
+	// Begin transaction.
+	transaction := dbInstance.Begin()
+	if transaction.Error != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	}
+
+	// Try to retrieve creator id information from the meta, then find a creator with that id in the database.
+
+	var creator apiTypes.User
+	var countCreator int64
+	transaction.Model(&apiTypes.User{}).Where("uuid = ?", uploadedModel.Meta.Creator.UUID).Count(&countCreator)
+	if countCreator == 0 {
+		// Create the creator in the database if it does not exist.
+		if err := transaction.Create(&uploadedModel.Meta.Creator).Error; err != nil {
+			transaction.Rollback()
+			return http.StatusInternalServerError, fmt.Errorf("could not create creator: %s", err.Error())
+		}
+	} else {
+		// Find the creator in the database using the uuid
+		if err := transaction.Where("uuid = ?", uploadedModel.Meta.Creator.UUID).First(&creator).Error; err != nil {
+			transaction.Rollback()
+			return http.StatusInternalServerError, fmt.Errorf("could not find creator: %s", err.Error())
+		}
+		fmt.Println(creator)
+		uploadedModel.Meta.Creator = creator
+	}
+
+	// Try to retrieve updater id information from the meta, then find an updater with that id in the database.
+	for i, updater := range uploadedModel.Meta.Updaters {
+		var countUpdater int64
+		transaction.Model(&apiTypes.User{}).Where("uuid = ?", updater.UUID).Count(&countUpdater)
+		if countUpdater == 0 {
+			// Create the updater in the database if it does not exist.
+			if err := transaction.Create(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
+				transaction.Rollback()
+				return http.StatusInternalServerError, fmt.Errorf("could not create updater: %s", err.Error())
+			}
+		} else {
+			// Find the updater in the database using the uuid
+			if err := transaction.Where("uuid = ?", updater.UUID).First(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
+				transaction.Rollback()
+				return http.StatusInternalServerError, fmt.Errorf("could not find updater: %s", err.Error())
+			}
+		}
+	}
+
+	// updates meta in transaction; error out on failure.
+	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not update model meta: %s", err.Error())
+	}
+
+	// updates the model
+	if err := transaction.Save(&uploadedModel).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
+	}
+
+	// Commit the transaction; error out if commit fails.
+	if err := transaction.Commit().Error; err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
+	}
+
+	return http.StatusCreated, nil
+}
+
+// CreateCommit encapsulates the GORM functionality for creating a commit in a transaction
+func CreateCommit(uploadedCommit *apiTypes.Commit) (int, error) {
+
+	// Begin transaction.
+	transaction := dbInstance.Begin()
+	if transaction.Error != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	}
+
+	// Create the model in transaction; error out on failure.
+	if err := transaction.Create(&uploadedCommit).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not create commit: %s", err.Error())
+	}
+
+	// Commit the transaction; error out if commit fails.
+	if err := transaction.Commit().Error; err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
+	}
+
+	return http.StatusCreated, nil
 }
