@@ -68,23 +68,36 @@ func SetUpRouter() *gin.Engine {
 }
 
 func TestGetModels(t *testing.T) {
+	database.ResetTables()
 	req, _ := http.NewRequest("GET", "/v0/models", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "[]", w.Body.String())
+
 }
 
 func TestGetModelByUUID(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModel()
 	req, _ := http.NewRequest("GET", "/v0/models/123", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	req, _ = http.NewRequest("GET", "/v0/models/1234-5678-9101", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
 }
 
 func TestUploadModel(t *testing.T) {
+	database.ResetTables()
+
 	example, err := os.ReadFile("../test_files/model.json")
 	if err != nil {
 		t.Errorf("Error reading test data: %s", err)

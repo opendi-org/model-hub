@@ -17,7 +17,7 @@ func TestMain(m *testing.M) {
 
 	// Run tests
 	code := m.Run()
-	//by default, go runs tests sequentilaly
+	//by default, go runs tests sequentilaly IN THE SAME PACKAGE
 
 	// Teardown code here (cleanup)
 	teardown()
@@ -35,7 +35,7 @@ func setup() {
 		os.Exit(1)
 	}
 	ret := 0
-	//we also test the initialize DB instance here
+
 	ret, err = InitializeDBInstance()
 	if ret != 0 {
 		fmt.Println("Error initializing database: ", err)
@@ -141,6 +141,84 @@ func TestGetAllModels(t *testing.T) {
 	}
 	if models[2].Meta.UUID != "1234-5678-9105" {
 		t.Errorf("Expected model UUID %s, got %s", "1234-5678-9105", models[2].Meta.UUID)
+	}
+
+}
+
+func TestIinitializingDbInstance(t *testing.T) {
+	// Test that the environment variables are not set up
+	// This test should fail if the environment variables are set up
+	// This is because the environment variables are not necessary for the program to run
+	// They are only necessary for the program to run in a specific environment
+
+	username, _ := os.LookupEnv("OPEN_DI_DB_USERNAME")
+
+	password, _ := os.LookupEnv("OPEN_DI_DB_PASSWORD")
+
+	hostname, _ := os.LookupEnv("OPEN_DI_DB_HOSTNAME")
+
+	port, _ := os.LookupEnv("OPEN_DI_DB_PORT")
+
+	dbname, _ := os.LookupEnv("OPEN_DI_DB_NAME")
+
+	os.Setenv("OPEN_DI_DB_USERNAME", "")
+	_, err := InitializeDBInstance()
+	if err == nil {
+		t.Errorf("Expected error initializing database, got nil")
+	}
+	os.Setenv("OPEN_DI_DB_USERNAME", username)
+	os.Setenv("OPEN_DI_DB_PASSWORD", "")
+
+	_, err = InitializeDBInstance()
+	if err == nil {
+		t.Errorf("Expected error initializing database, got nil")
+	}
+
+	os.Setenv("OPEN_DI_DB_PASSWORD", password)
+	os.Setenv("OPEN_DI_DB_HOSTNAME", "")
+
+	_, err = InitializeDBInstance()
+	if err == nil {
+		t.Errorf("Expected error initializing database, got nil")
+	}
+
+	os.Setenv("OPEN_DI_DB_HOSTNAME", hostname)
+	os.Setenv("OPEN_DI_DB_PORT", "")
+
+	_, err = InitializeDBInstance()
+	if err == nil {
+		t.Errorf("Expected error initializing database, got nil")
+	}
+
+	os.Setenv("OPEN_DI_DB_PORT", port)
+	os.Setenv("OPEN_DI_DB_NAME", "")
+
+	_, err = InitializeDBInstance()
+	if err == nil {
+		t.Errorf("Expected error initializing database, got nil")
+	}
+
+	os.Setenv("OPEN_DI_DB_NAME", dbname)
+
+	//tests whether this reset database instance if currently not nil
+	//_ = godotenv.Load("../config/.env.test") //note that godotenv doesn't set environment variables already set
+	_, err = InitializeDBInstance()
+	if err != nil {
+		t.Errorf("Expected successful database initialization, got %s", err)
+	}
+
+	//tests giving database bad DSN
+	os.Setenv("OPEN_DI_DB_USERNAME", "hahahaha")
+	_, err = InitializeDBInstance()
+	if err == nil {
+		t.Errorf("Expected error initializing database, got nil")
+	}
+
+	//resets singleton variable
+	os.Setenv("OPEN_DI_DB_USERNAME", username)
+	_, err = InitializeDBInstance()
+	if err != nil {
+		t.Errorf("Expected successful database initialization, got %s", err)
 	}
 
 }
