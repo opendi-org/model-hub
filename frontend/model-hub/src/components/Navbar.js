@@ -116,8 +116,27 @@ export default function Navbar() {
             return <Button
                             color="inherit"
                             sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
+                            component={NavLink} to="/user"
                         >
                             Welcome {sessionStorage.getItem('username')}
+                        </Button>
+        }
+    }
+    function SignoutButton() {
+        if (!sessionStorage.getItem('username')) {
+            return null
+        }
+        else {
+            return <Button
+                            color="inherit"
+                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
+                            onClick={() => {
+                                sessionStorage.removeItem('username');
+                                sessionStorage.removeItem('email');
+                                window.location.reload();
+                              }}
+                        >
+                            Logout
                         </Button>
         }
     }
@@ -162,6 +181,7 @@ export default function Navbar() {
                         <Button color="inherit">Popular</Button>
                         <Button color="inherit">About</Button>
                         <LoginButton/>
+                        <SignoutButton/>
                         <SigninButton/>
                     </Box>
                 </Toolbar>
