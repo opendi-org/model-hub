@@ -18,7 +18,11 @@ import {
     Stack,
     Breadcrumbs,
     Chip,
-    Divider
+    Checkbox,
+    FormControlLabel,
+    FormGroup,
+    Card,
+    CardContent
 } from "@mui/material";
 import { useParams } from "react-router-dom";
 //import { useDropzone } from "react-dropzone";
@@ -144,7 +148,7 @@ const DownloadPage = () => {
                     Children
                 </Typography>
 
-                <Box sx={{ display: 'flex', gap: '1em'  }}>
+                <Box sx={{ display: 'flex', gap: '1em' }}>
                     <Link underline="hover" color="gray" href="#">
                         Child1
                     </Link>
@@ -223,7 +227,15 @@ const DownloadPage = () => {
                     {model.meta && model.meta.documentation ? model.meta.documentation.content : ""}
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={2}>
-                    Item Three
+                    <FormGroup>
+                        <FormControlLabel control={<Checkbox defaultChecked />} label="View Substantial Changes" sx={{ mb: "1em" }} />
+
+                        <Card>
+                            <CardContent>
+                                Eric was here, annyeonghaseyo.
+                            </CardContent>
+                        </Card>
+                    </FormGroup>
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={3}>
                     {CollapsedParentLineage()}
