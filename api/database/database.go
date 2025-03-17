@@ -371,12 +371,6 @@ func GetUserByID(id int) (int, *apiTypes.User, error) {
 
 // UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction
 func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
-	// Ensure a  model with the same UUID exists.
-	var count int64
-	dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
-	if count == 0 {
-		return http.StatusConflict, fmt.Errorf("a model with UUID %s already exists", uploadedModel.Meta.UUID)
-	}
 
 	// Begin transaction.
 	transaction := dbInstance.Begin()
@@ -424,6 +418,9 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 		}
 	}
 
+	fmt.Println("Printing model meta")
+	fmt.Println(&uploadedModel.Meta)
+	fmt.Println(uploadedModel.Meta)
 	// updates meta in transaction; error out on failure.
 	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
 		transaction.Rollback()
