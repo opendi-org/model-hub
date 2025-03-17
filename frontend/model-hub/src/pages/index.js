@@ -34,8 +34,9 @@ const Home = () => {
                     <Typography variant="h4" gutterBottom>
                         Get started with OpenDI
                     </Typography>
-                    <Typography variant="subtitle1" gutterBottom>
-                        Ut enim ad minim veniam, quis nostrud exercitation ullamco
+                    <Typography variant="subtitle1" gutterBottom sx={{textAlign:"center"}}>
+                    The purpose of the OpenDI initiative is to foster a vibrant and healthy ecosystem for decision intelligence (DI), which supports innovative DI research, <br />
+                    a healthy vendor market, and — ultimately — better decisions in many domains worldwide.
                     </Typography>
                     <Button variant="contained" color="primary" href="https://opendi.org" target="_blank">
                         Start Here
@@ -45,7 +46,7 @@ const Home = () => {
                     <Stack spacing={4}>
                         <Grid xs={12}>
                             <Typography variant="h6">
-                                Category X
+                                Models
                             </Typography>
                         </Grid>
                         <Grid xs={12} container spacing={2}>
@@ -53,61 +54,6 @@ const Home = () => {
                                 models.map((model) => 
                                 <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator.Username} />)
                             }
-                        </Grid>
-                        <Grid xs={12}>
-                            <Typography variant="h6">
-                                Category Y
-                            </Typography>
-                        </Grid>
-                        <Grid xs={12} container spacing={2}>
-                            <Grid xs={4}>
-                                <Card sx={{ minWidth: 275 }}>
-                                    <CardContent>
-                                        <Typography gutterBottom sx={{ color: 'text.secondary', fontSize: 14 }}>
-                                            Lorem Ipsum
-                                        </Typography>
-                                        <Typography variant="body2">
-                                            Lorem Ipsum
-                                            <br />
-                                            Lorem Ipsum
-                                            <br />
-                                            Lorem Ipsum
-                                        </Typography>
-                                    </CardContent>
-                                </Card>
-                            </Grid>
-                            <Grid xs={4}>
-                                <Card sx={{ minWidth: 275 }}>
-                                    <CardContent>
-                                        <Typography gutterBottom sx={{ color: 'text.secondary', fontSize: 14 }}>
-                                            Lorem Ipsum
-                                        </Typography>
-                                        <Typography variant="body2">
-                                            Lorem Ipsum
-                                            <br />
-                                            Lorem Ipsum
-                                            <br />
-                                            Lorem Ipsum
-                                        </Typography>
-                                    </CardContent>
-                                </Card>
-                            </Grid>
-                            <Grid xs={4}>
-                                <Card sx={{ minWidth: 275 }}>
-                                    <CardContent>
-                                        <Typography gutterBottom sx={{ color: 'text.secondary', fontSize: 14 }}>
-                                            Lorem Ipsum
-                                        </Typography>
-                                        <Typography variant="body2">
-                                            Lorem Ipsum
-                                            <br />
-                                            Lorem Ipsum
-                                            <br />
-                                            Lorem Ipsum
-                                        </Typography>
-                                    </CardContent>
-                                </Card>
-                            </Grid>
                         </Grid>
                     </Stack>
                 </Stack>

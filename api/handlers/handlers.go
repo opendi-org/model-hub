@@ -5,6 +5,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
@@ -16,10 +17,18 @@ import (
 type ModelHandler struct {
 }
 
+// AuthHandler struct for handling user login/auth requests
+type AuthHandler struct {
+}
+
 // method for getting an instance of ModelHandler
 func NewModelHandler() (*ModelHandler, error) {
 
 	return &ModelHandler{}, nil
+}
+
+func NewAuthHandler() (*AuthHandler, error) {
+	return &AuthHandler{}, nil
 }
 
 // GetModels godoc
@@ -97,4 +106,24 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	// Return the model if found
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(status, model)
+}
+
+func (h *AuthHandler) UserLogin(c *gin.Context) {
+	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
+	email := c.Query("email")
+	pass := c.Query("password")
+	fmt.Println("EMAIL: " + email)
+
+	status, user, err := database.UserLogin(email, pass)
+
+	if err != nil {
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+	user.Password = "secret"
+	fmt.Println(user)
+
+	// Return the user
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(status, user)
 }
