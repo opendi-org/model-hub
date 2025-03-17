@@ -60,6 +60,10 @@ go.work.sum
 .env
 .env.test
 
+#tmp files
+api/tmp/*
+api/tmp/main
+
 #dependencies
 node_modules
 
