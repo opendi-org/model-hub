@@ -110,7 +110,8 @@ func main() {
 	commits := router.Group("/v0/commits")
 	{
 
-		commits.GET("", modelHandler.GetCommits) // Get all commits
+		commits.GET("", modelHandler.GetCommits)    // Get all commits
+		commits.POST("", modelHandler.UploadCommit) // Create a commit (for testing)
 	}
 
 	//router group for uploading models

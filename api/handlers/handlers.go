@@ -139,7 +139,7 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 	var commit apiTypes.Commit
 
 	commit.CDMUUID = uploadedModel.Meta.UUID
-	commit.Diff = diff
+	commit.Diff = diff.String()
 	commit.UserUUID = uploadedModel.Meta.Creator.UUID
 
 	if status, err := database.CreateCommit(&commit); err != nil {
@@ -175,4 +175,36 @@ func (h *ModelHandler) GetCommits(c *gin.Context) {
 
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(status, models)
+}
+
+// UploadCommit godoc
+// @Summary      Upload a new commit
+// @Description  Uploads a commit
+// @Tags         commits
+// @Accept       json
+// @Produce      json
+// @Param        model  body  apiTypes.Commit  true  "Commit Payload"
+// @Success      201 {object} apiTypes.Commit "Created Commit"
+// @Failure      400 {object} gin.H "Bad Request"
+// @Failure      409 {object} gin.H "Conflict: Commit with same UUID already exists"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /v0/commits/ [post]
+func (h *ModelHandler) UploadCommit(c *gin.Context) {
+	var uploadedCommit apiTypes.Commit
+
+	// Bind the JSON payload to the uploaded commit struct
+	if err := c.ShouldBindJSON(&uploadedCommit); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		return
+	}
+
+	// Call the encapsulated CreateCommit method from the database package
+	if status, err := database.CreateCommit(&uploadedCommit); err != nil {
+		// Return error based on the CreateCommit function response
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+
+	// Return a successful response if commit creation is successful
+	c.JSON(http.StatusCreated, uploadedCommit)
 }

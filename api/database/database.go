@@ -28,6 +28,7 @@ func CreateTablesIfNotCreated() error {
 		&apiTypes.Diagram{},
 		&apiTypes.DiaElement{},
 		&apiTypes.CausalDependency{},
+		&apiTypes.Commit{},
 	)
 	return err
 
@@ -139,17 +140,6 @@ func GetAllCommits() (int, []apiTypes.Commit, error) {
 	var commits []apiTypes.Commit
 	// Updated query to preload associated fields
 	if err := dbInstance.
-		Preload("Meta").
-		Preload("Diagrams").
-		Preload("Diagrams.Meta").
-		Preload("Diagrams.Elements").
-		Preload("Diagrams.Dependencies").
-		Preload("Diagrams.Elements.Meta").
-		Preload("Diagrams.Dependencies.Meta").
-		Preload("Meta.Creator").
-		Preload("Meta.Updaters").
-		Preload("CausalDecisionModel").
-		Preload("User").
 		Find(&commits).Error; err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
@@ -463,7 +453,7 @@ func CreateCommit(uploadedCommit *apiTypes.Commit) (int, error) {
 		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
 	}
 
-	// Create the model in transaction; error out on failure.
+	// Create the commit in transaction; error out on failure.
 	if err := transaction.Create(&uploadedCommit).Error; err != nil {
 		transaction.Rollback()
 		return http.StatusInternalServerError, fmt.Errorf("could not create commit: %s", err.Error())
