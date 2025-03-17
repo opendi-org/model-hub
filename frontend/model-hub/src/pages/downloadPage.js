@@ -17,7 +17,8 @@ import {
     Link,
     Stack,
     Breadcrumbs,
-    Chip
+    Chip,
+    Divider
 } from "@mui/material";
 import { useParams } from "react-router-dom";
 //import { useDropzone } from "react-dropzone";
@@ -110,6 +111,53 @@ const DownloadPage = () => {
         setValue(newValue);
     };
 
+    function CollapsedParentLineage() {
+        return (
+            <div role="presentation">
+                <Typography variant="h6" gutterBottom>
+                    Parent Lineage
+                </Typography>
+
+                <Breadcrumbs maxItems={4} separator="›" aria-label="breadcrumb" sx={{ mb: "2em" }}>
+                    <Link underline="hover" color="inherit" href="#">
+                        Home
+                    </Link>
+                    <Link underline="hover" color="inherit" href="#">
+                        Catalog
+                    </Link>
+                    <Link underline="hover" color="inherit" href="#">
+                        Accessories
+                    </Link>
+                    <Link underline="hover" color="inherit" href="#">
+                        New Collection
+                    </Link>
+                    <Typography sx={{ color: 'text.primary' }}>Belts</Typography>
+                </Breadcrumbs>
+            </div>
+        );
+    }
+
+    function ModelChildren() {
+        return (
+            <div role="presentation">
+                <Typography variant="h6" gutterBottom>
+                    Children
+                </Typography>
+
+                <Box sx={{ display: 'flex', gap: '1em'  }}>
+                    <Link underline="hover" color="gray" href="#">
+                        Child1
+                    </Link>
+                    <Link underline="hover" color="gray" href="#">
+                        Child2
+                    </Link>
+                    <Link underline="hover" color="gray" href="#">
+                        Child3
+                    </Link>
+                </Box>
+            </div>
+        );
+    }
 
     return (
         <Box sx={{ display: "flex", flexDirection: "column", p: 3 }}>
@@ -148,6 +196,14 @@ const DownloadPage = () => {
                     >
                         Download
                     </Button>
+                    <Button
+                        variant="outlined"
+                        sx={{ width: "30%", mt: '1em' }}
+                        to=""
+                    // onClick={getCDM}
+                    >
+                        Update
+                    </Button>
                 </Box>
             </Box>
 
@@ -156,17 +212,22 @@ const DownloadPage = () => {
                     <Tabs value={value} onChange={handleChange} aria-label="basic tabs example">
                         <Tab label="Overview" />
                         <Tab label="Documentation" />
-                        <Tab label="Item Three" />
+                        <Tab label="Commit Diff" />
+                        <Tab label="Fork Info" />
                     </Tabs>
                 </Box>
                 <CustomTabPanel value={value} index={0}>
                     {model.meta ? model.meta.summary : ""}
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={1}>
-                {model.meta && model.meta.documentation ? model.meta.documentation.content : ""}
+                    {model.meta && model.meta.documentation ? model.meta.documentation.content : ""}
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={2}>
                     Item Three
+                </CustomTabPanel>
+                <CustomTabPanel value={value} index={3}>
+                    {CollapsedParentLineage()}
+                    {ModelChildren()}
                 </CustomTabPanel>
             </Box>
         </Box>
