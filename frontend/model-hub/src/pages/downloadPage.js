@@ -194,26 +194,44 @@ const DownloadPage = () => {
     };
 
     function CollapsedParentLineage() {
+        const [lineage, setLineage] = React.useState(null);
+
+        React.useEffect(() => {
+            async function fetchLineage() {
+                try {
+                    const res = await fetch(`${API_URL}/lineage/${uuid}`);
+                    if (!res.ok) {
+                        throw new Error('Failed to fetch lineage');
+                    }
+                    const data = await res.json();
+                    setLineage(data);
+                } catch (error) {
+                    console.error('Error fetching lineage:', error);
+                }
+            }
+            fetchLineage();
+        }, [uuid]);
+
+        if (!lineage) {
+            return;
+        }
+
         return (
             <div role="presentation">
                 <Typography variant="h6" gutterBottom>
                     Parent Lineage
                 </Typography>
-
                 <Breadcrumbs maxItems={4} separator="›" aria-label="breadcrumb" sx={{ mb: "2em" }}>
-                    <Link underline="hover" color="inherit" href="#">
-                        Home
-                    </Link>
-                    <Link underline="hover" color="inherit" href="#">
-                        Catalog
-                    </Link>
-                    <Link underline="hover" color="inherit" href="#">
-                        Accessories
-                    </Link>
-                    <Link underline="hover" color="inherit" href="#">
-                        New Collection
-                    </Link>
-                    <Typography sx={{ color: 'text.primary' }}>Belts</Typography>
+                    {lineage.map((parent, index) => (
+                        <Link
+                            key={parent.id || `lineage-${index}`}
+                            underline="hover"
+                            color="inherit"
+                            href={`/model/${parent.meta?.uuid}`}
+                        >
+                            {parent.meta ? parent.meta.name : parent.name}
+                        </Link>
+                    ))}
                 </Breadcrumbs>
             </div>
         );

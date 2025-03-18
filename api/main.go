@@ -58,6 +58,8 @@ func main() {
 
 	authHandler, err := handlers.NewAuthHandler()
 
+	lineageHandler, err := handlers.NewLineageHandler()
+
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
@@ -128,6 +130,8 @@ func main() {
 		os.Exit(1)
 	}
 	modelHubPort = val
+
+	router.GET("/lineage/:uuid", lineageHandler.GetModelLineage)
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

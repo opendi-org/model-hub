@@ -21,6 +21,9 @@ type ModelHandler struct {
 type AuthHandler struct {
 }
 
+type LineageHandler struct {
+}
+
 // method for getting an instance of ModelHandler
 func NewModelHandler() (*ModelHandler, error) {
 
@@ -29,6 +32,10 @@ func NewModelHandler() (*ModelHandler, error) {
 
 func NewAuthHandler() (*AuthHandler, error) {
 	return &AuthHandler{}, nil
+}
+
+func NewLineageHandler() (*LineageHandler, error) {
+	return &LineageHandler{}, nil
 }
 
 // GetModels godoc
@@ -126,4 +133,15 @@ func (h *AuthHandler) UserLogin(c *gin.Context) {
 	// Return the user
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(status, user)
+}
+
+func (h *LineageHandler) GetModelLineage(c *gin.Context) {
+	uuid := c.Param("uuid")
+	status, lineage, err := database.GetModelLineage(uuid)
+	if err != nil {
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(status, lineage)
 }
