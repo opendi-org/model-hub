@@ -260,7 +260,7 @@ const DownloadPage = () => {
 
                 <Box sx={{ display: "flex", flexDirection: "column", p: 3, flex: 1 }}>
                     <Typography variant="h4" sx={{ pb: 1 }}>   {model.meta ? model.meta.name : ""} </Typography>
-                    <Typography variant="subtitle1" sx={{ pb: 2 }}> By: {model.meta && model.meta.creator ? model.meta.creator.Username : ""} </Typography>
+                    <Typography variant="subtitle1" sx={{ pb: 2 }}> By: {model && model.meta && model.meta.creator ? model.meta.creator.username : ""} </Typography>
 
                     <Stack direction="row" spacing={1} sx={{ pb: 8 }}>
                         <Chip label="Tag 1" />

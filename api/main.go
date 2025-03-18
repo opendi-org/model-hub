@@ -12,7 +12,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
-	//	"github.com/joho/godotenv"
+	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -44,7 +44,6 @@ func main() {
 		//This is because the .env file is not necessary for the program to run
 		//It is only necessary for the program to run in a specific environment
 	}
-
 
 	// Wait for 3 seconds to allow the database to start up before initializing the connection to the database table
 	time.Sleep(3 * time.Second)
