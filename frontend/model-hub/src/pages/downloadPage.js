@@ -22,13 +22,30 @@ import {
     FormControlLabel,
     FormGroup,
     Card,
-    CardContent
+    CardContent,
+    TextField
 } from "@mui/material";
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogContentText from '@mui/material/DialogContentText';
+import DialogTitle from '@mui/material/DialogTitle';
 import { useParams } from "react-router-dom";
-//import { useDropzone } from "react-dropzone";
-//import { useCallback } from "react";
+import { useDropzone } from "react-dropzone";
+import { useCallback } from "react";
 
 const DownloadPage = () => {
+    const [uploadStatus, setUploadStatus] = useState(null);
+    const [errorMessage, setErrorMessage] = useState("");
+    const [open, setOpen] = React.useState(false);
+
+    const handleClickOpen = () => {
+        setOpen(true);
+    };
+
+    const handleClose = () => {
+        setOpen(false);
+    };
 
     const cdm = {
         creator: 'No CDM loaded'
@@ -74,6 +91,67 @@ const DownloadPage = () => {
         } catch (error) {
             console.error(error.message);
         }
+    }
+
+    const onDrop = useCallback(async (acceptedFiles) => {
+        console.log(acceptedFiles);
+
+        const file = acceptedFiles[0];
+
+        try {
+            // const fileText = await file.text();
+            const response = await fetch(`${API_URL}/v0/models`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: file
+            });
+
+            if (!response.ok) {
+                throw new Error(`Upload failed: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log("Updated success:", result);
+
+            setUploadStatus("success");
+            setErrorMessage("");
+
+        } catch (error) {
+            console.error("Error uploading file:", error);
+            setUploadStatus("error");
+            setErrorMessage(error.message || "Upload failed.");
+        }
+    }, []);
+
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+
+    function displayUploadMenu() {
+        return (
+            <Box
+                {...getRootProps()}
+                sx={{
+                    border: "2px dashed gray",
+                    borderRadius: 2,
+                    p: 4,
+                    height: '5em',
+                    alignContent: 'center',
+                    textAlign: "center",
+                    cursor: "pointer",
+                    backgroundColor: isDragActive ? "lightblue" : "transparent",
+                    transition: "background-color 0.2s ease-in-out",
+                    "&:hover": {
+                        backgroundColor: "lightgray",
+                    },
+                }}
+            >
+                <input {...getInputProps()} />
+                <Typography variant="body1">
+                    {isDragActive ? "Drop the files here..." : "Drag 'n' drop some files here, or click to select files"}
+                </Typography>
+            </Box>
+        );
     }
 
     const breadcrumbs = [
@@ -194,8 +272,6 @@ const DownloadPage = () => {
                     <Button
                         variant="outlined"
                         sx={{ width: "30%" }}
-                        component={NavLink}
-                        to=""
                         onClick={getCDM}
                     >
                         Download
@@ -203,11 +279,35 @@ const DownloadPage = () => {
                     <Button
                         variant="outlined"
                         sx={{ width: "30%", mt: '1em' }}
-                        to=""
-                    // onClick={getCDM}
+                        onClick={handleClickOpen}
                     >
                         Update
                     </Button>
+                    <Dialog
+                        open={open}
+                        onClose={handleClose}
+                        slotProps={{
+                            paper: {
+                                component: 'form',
+                                onSubmit: (event) => {
+                                    event.preventDefault();
+                                    const formData = new FormData(event.currentTarget);
+                                    const formJson = Object.fromEntries(formData.entries());
+                                    const email = formJson.email;
+                                    console.log(email);
+                                    handleClose();
+                                },
+                            },
+                        }}
+                    >
+                        <DialogTitle>Update Model</DialogTitle>
+                        <DialogContent>
+                            {displayUploadMenu()}
+                        </DialogContent>
+                        <DialogActions>
+                            <Button onClick={handleClose}>Cancel</Button>
+                        </DialogActions>
+                    </Dialog>
                 </Box>
             </Box>
 
