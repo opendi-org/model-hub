@@ -427,13 +427,6 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 		transaction.Rollback()
 		return http.StatusInternalServerError, fmt.Errorf("could not find existing meta: %s", err.Error())
 	}
-	fmt.Println("Printing existing meta")
-	fmt.Println(&existingMeta)
-	fmt.Println(existingMeta)
-
-	fmt.Println("Printing model meta")
-	fmt.Println(&uploadedModel.Meta)
-	fmt.Println(uploadedModel.Meta)
 
 	// Set the ID so GORM knows this is an update, not an insert
 	uploadedModel.Meta.ID = existingMeta.ID
@@ -455,13 +448,6 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 			uploadedModel.Meta.Updaters = append(uploadedModel.Meta.Updaters, existingUpdater)
 		}
 	}
-	fmt.Println("Printing existing meta")
-	fmt.Println(&existingMeta)
-	fmt.Println(existingMeta)
-
-	fmt.Println("Printing model meta")
-	fmt.Println(&uploadedModel.Meta)
-	fmt.Println(uploadedModel.Meta)
 
 	// Now the save will update the existing record instead of trying to insert a new one
 	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
