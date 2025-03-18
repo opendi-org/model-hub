@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 
 	//	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
@@ -45,7 +46,6 @@ func main() {
 		//It is only necessary for the program to run in a specific environment
 	}
 
-
 	// Wait for 3 seconds to allow the database to start up before initializing the connection to the database table
 	time.Sleep(3 * time.Second)
 	//initialize db instance
@@ -66,7 +66,7 @@ func main() {
 	}
 
 	// Debug, creates a model and meta in the database
-	database.CreateExampleModel()
+	database.CreateExampleModels()
 
 	//router group for all endpoints related to models
 	models := router.Group("/v0/models")

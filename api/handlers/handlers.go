@@ -63,6 +63,8 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 // @Failure      500 {object} gin.H "Internal Server Error"
 // @Router       /v0/models/ [post]
 func (h *ModelHandler) UploadModel(c *gin.Context) {
+	database.ResetTables()
+	database.CreateExampleModels()
 	var uploadedModel apiTypes.CausalDecisionModel
 
 	// Bind the JSON payload to the uploaded model struct
@@ -72,7 +74,7 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 	}
 
 	// Call the encapsulated CreateModel method from the database package
-	if status, err := database.CreateModel(&uploadedModel); err != nil {
+	if status, err := database.CreateModelGivenEmail(&uploadedModel); err != nil {
 		// Return error based on the CreateModel function response
 		c.JSON(status, gin.H{"Error": err.Error()})
 		return

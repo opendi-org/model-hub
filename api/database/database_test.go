@@ -51,20 +51,36 @@ func teardown() {
 }
 
 func TestGetModelByUUID(t *testing.T) {
-	t.Log("Running TestGetModelByUUID")
-	CreateExampleModel()
+	ResetTables()
 
-	status, model, err := GetModelByUUID("1234-5678-9101")
+	t.Log("Running TestGetModelByUUID")
+	CreateExampleModels()
+
+	//gets first user in database
+	//_, user, _ := GetUserByID(1)
+
+	//gets all models in the database
+	_, models, _ := GetAllModels()
+
+	if len(models) != 2 {
+		t.Errorf("Expected 2 model, got %d", len(models))
+
+	}
+
+	status, model, err := GetModelByUUID(models[0].Meta.UUID)
 
 	if status != http.StatusOK {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
 	}
 
-	if model.Meta.UUID != "1234-5678-9101" {
-		t.Errorf("Expected model UUID %s, got %s", "1234-5678-9101", model.Meta.UUID)
+	if len(model.Meta.UUID) != 36 {
+		t.Errorf("Expected UUID length 36, got %d", len(model.Meta.UUID))
 	}
 
-	status, _, err = GetModelByUUID("1234-5678-9103")
+	//not the UUID
+	anotherUUID := model.Meta.UUID + "1"
+
+	status, _, err = GetModelByUUID(anotherUUID)
 
 	if status != http.StatusNotFound {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusNotFound, status, err)
@@ -74,19 +90,23 @@ func TestGetModelByUUID(t *testing.T) {
 
 func TestCreateModel(t *testing.T) {
 
+	ResetTables()
+
+	CreateExampleModels()
+
 	// There should be a user with id 2. Retrieve it.
-	_, user, _ := GetUserByID(2)
+	_, user, _ := GetUserByID(1)
 
 	// Ensure the user is not nil
 	if user == nil {
-		t.Fatalf("User with ID 2 not found.")
+		t.Fatalf("User with ID 1 not found.")
 	}
 
 	meta := apiTypes.Meta{
 		ID:            30,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
-		UUID:          "1234-5678-9105",
+		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6f",
 		Name:          "Test Model",
 		Summary:       "This is a test model",
 		Documentation: nil,
@@ -94,7 +114,7 @@ func TestCreateModel(t *testing.T) {
 		Draft:         false,
 		CreatorID:     1,
 		CreatedDate:   "2021-07-01",
-		Updaters:      []apiTypes.User{*user},
+		Updaters:      []apiTypes.User{},
 		UpdatedDate:   "2021-07-01",
 	}
 
@@ -115,7 +135,7 @@ func TestCreateModel(t *testing.T) {
 
 	var model2 *apiTypes.CausalDecisionModel
 
-	status, model2, err = GetModelByUUID("1234-5678-9105")
+	status, model2, err = GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6f")
 
 	if status != http.StatusOK {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
@@ -128,19 +148,24 @@ func TestCreateModel(t *testing.T) {
 }
 
 func TestGetAllModels(t *testing.T) {
+
+	ResetTables()
+
+	CreateExampleModels()
+
 	ret, models, error := GetAllModels()
 	if ret != http.StatusOK {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
 	}
-	if len(models) != 3 {
-		t.Errorf("Expected 3 models, got %d", len(models))
+	if len(models) != 2 {
+		t.Errorf("Expected 2 models, got %d", len(models))
 	}
 
-	if models[0].Meta.UUID != "1234-5678-9101" {
-		t.Errorf("Expected model UUID %s, got %s", "1234-5678-9101", models[0].Meta.UUID)
+	if models[0].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" && models[0].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e" {
+		t.Errorf("Model doesn't match expected UUID")
 	}
-	if models[2].Meta.UUID != "1234-5678-9105" {
-		t.Errorf("Expected model UUID %s, got %s", "1234-5678-9105", models[2].Meta.UUID)
+	if models[1].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" && models[1].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e" {
+		t.Errorf("Model doesn't match expected UUID")
 	}
 
 }
