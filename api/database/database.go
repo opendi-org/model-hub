@@ -437,3 +437,23 @@ func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
 
 	return http.StatusOK, lineage, nil
 }
+
+func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
+	var children []apiTypes.CausalDecisionModel
+	if err := dbInstance.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Where("parent_uuid = ?", uuid).
+		Find(&children).Error; err != nil {
+		return http.StatusNotFound, nil, err
+	}
+
+	return http.StatusOK, children, nil
+}

@@ -238,22 +238,44 @@ const DownloadPage = () => {
     }
 
     function ModelChildren() {
+        const [children, setChildren] = React.useState(null);
+
+        React.useEffect(() => {
+            async function fetchChildren() {
+                try {
+                    const res = await fetch(`${API_URL}/children/${uuid}`);
+                    if (!res.ok) {
+                        throw new Error('Failed to fetch children');
+                    }
+                    const data = await res.json();
+                    setChildren(data);
+                } catch (error) {
+                    console.error('Error fetching children:', error);
+                }
+            }
+            fetchChildren();
+        }, [uuid]);
+
+        if (!children || children.length == 0) {
+            return;
+        }
+
         return (
             <div role="presentation">
                 <Typography variant="h6" gutterBottom>
                     Children
                 </Typography>
-
                 <Box sx={{ display: 'flex', gap: '1em' }}>
-                    <Link underline="hover" color="gray" href="#">
-                        Child1
-                    </Link>
-                    <Link underline="hover" color="gray" href="#">
-                        Child2
-                    </Link>
-                    <Link underline="hover" color="gray" href="#">
-                        Child3
-                    </Link>
+                    {children.map((child, index) => (
+                        <Link
+                            key={child.id || `children-${index}`}
+                            underline="hover"
+                            color="gray"
+                            href={`/model/${child.meta?.uuid}`}
+                        >
+                            {child.meta ? child.meta.name : child.name}
+                        </Link>
+                    ))}
                 </Box>
             </div>
         );

@@ -133,6 +133,8 @@ func main() {
 
 	router.GET("/lineage/:uuid", lineageHandler.GetModelLineage)
 
+	router.GET("/children/:uuid", lineageHandler.GetModelChildren)
+
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	router.POST("/login", authHandler.UserLogin)

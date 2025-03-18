@@ -145,3 +145,14 @@ func (h *LineageHandler) GetModelLineage(c *gin.Context) {
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(status, lineage)
 }
+
+func (h *LineageHandler) GetModelChildren(c *gin.Context) {
+	uuid := c.Param("uuid")
+	status, children, err := database.GetModelChildren(uuid)
+	if err != nil {
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(status, children)
+}
