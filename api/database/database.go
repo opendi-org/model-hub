@@ -417,11 +417,53 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 			}
 		}
 	}
+	// Before updating the Meta record, first fetch the existing Meta to get its ID
+	var existingMeta apiTypes.Meta
+	if err := transaction.
+		Preload("Updaters").
+		Preload("Creator").
+		Where("uuid = ?", uploadedModel.Meta.UUID).
+		First(&existingMeta).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not find existing meta: %s", err.Error())
+	}
+	fmt.Println("Printing existing meta")
+	fmt.Println(&existingMeta)
+	fmt.Println(existingMeta)
 
 	fmt.Println("Printing model meta")
 	fmt.Println(&uploadedModel.Meta)
 	fmt.Println(uploadedModel.Meta)
-	// updates meta in transaction; error out on failure.
+
+	// Set the ID so GORM knows this is an update, not an insert
+	uploadedModel.Meta.ID = existingMeta.ID
+	// Check to see if created at is zero, if so, set it to the time in the existing record
+	if uploadedModel.Meta.CreatedAt.IsZero() {
+		uploadedModel.Meta.CreatedAt = existingMeta.CreatedAt
+	}
+	// Merge in the updaters from the existing record
+	// Iterate through the existing updaters and add them to the new updaters if they are not already there
+	for _, existingUpdater := range existingMeta.Updaters {
+		updaterExists := false
+		for _, newUpdater := range uploadedModel.Meta.Updaters {
+			if existingUpdater.UUID == newUpdater.UUID {
+				updaterExists = true
+				break
+			}
+		}
+		if !updaterExists {
+			uploadedModel.Meta.Updaters = append(uploadedModel.Meta.Updaters, existingUpdater)
+		}
+	}
+	fmt.Println("Printing existing meta")
+	fmt.Println(&existingMeta)
+	fmt.Println(existingMeta)
+
+	fmt.Println("Printing model meta")
+	fmt.Println(&uploadedModel.Meta)
+	fmt.Println(uploadedModel.Meta)
+
+	// Now the save will update the existing record instead of trying to insert a new one
 	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
 		transaction.Rollback()
 		return http.StatusInternalServerError, fmt.Errorf("could not update model meta: %s", err.Error())
