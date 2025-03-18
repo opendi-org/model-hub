@@ -3,9 +3,9 @@
   "$schema": "Test Schema",
   "meta": {
     "id": 5,
-    "uuid": "1234-5678-9101",
+    "uuid": "",
     "name": "Test Model",
-    "summary": "This is a test model",
+    "summary": "This is a test model. Note that when creating this model, it relies on creator with email already existing",
     "version": "1.0",
     "creator": {
       "uuid": "creator-uuid",

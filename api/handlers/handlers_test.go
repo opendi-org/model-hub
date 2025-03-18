@@ -80,14 +80,14 @@ func TestGetModels(t *testing.T) {
 
 func TestGetModelByUUID(t *testing.T) {
 	database.ResetTables()
-	database.CreateExampleModel()
+	database.CreateExampleModels()
 	req, _ := http.NewRequest("GET", "/v0/models/123", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
-	req, _ = http.NewRequest("GET", "/v0/models/1234-5678-9101", nil)
+	req, _ = http.NewRequest("GET", "/v0/models/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

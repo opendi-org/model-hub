@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 
 	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
@@ -67,7 +68,7 @@ func main() {
 	}
 
 	// Debug, creates a model and meta in the database
-	database.CreateExampleModel()
+	database.CreateExampleModels()
 
 	//router group for all endpoints related to models
 	models := router.Group("/v0/models")
