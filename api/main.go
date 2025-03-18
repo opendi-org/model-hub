@@ -12,7 +12,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
-	//	"github.com/joho/godotenv"
+	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -45,7 +45,6 @@ func main() {
 		//It is only necessary for the program to run in a specific environment
 	}
 
-
 	// Wait for 3 seconds to allow the database to start up before initializing the connection to the database table
 	time.Sleep(3 * time.Second)
 	//initialize db instance
@@ -58,6 +57,8 @@ func main() {
 	modelHandler, err := handlers.NewModelHandler()
 
 	authHandler, err := handlers.NewAuthHandler()
+
+	lineageHandler, err := handlers.NewLineageHandler()
 
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
@@ -129,6 +130,10 @@ func main() {
 		os.Exit(1)
 	}
 	modelHubPort = val
+
+	router.GET("/lineage/:uuid", lineageHandler.GetModelLineage)
+
+	router.GET("/children/:uuid", lineageHandler.GetModelChildren)
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

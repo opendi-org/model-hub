@@ -406,3 +406,54 @@ func UserLogin(email string, password string) (int, *apiTypes.User, error) {
 
 	return http.StatusOK, user, nil
 }
+
+func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
+	status, modelPtr, err := GetModelByUUID(uuid)
+
+	if err != nil {
+		return status, nil, err
+	}
+
+	model := *modelPtr
+
+	var lineage []apiTypes.CausalDecisionModel
+
+	for model.ParentUUID != "" {
+		_, parentPtr, err := GetModelByUUID(model.ParentUUID)
+
+		if err != nil {
+			break
+		}
+
+		parent := *parentPtr
+		lineage = append(lineage, parent)
+		model = parent
+	}
+
+	// Reverse the lineage so that the earliest ancestor is first.
+	for i, j := 0, len(lineage)-1; i < j; i, j = i+1, j-1 {
+		lineage[i], lineage[j] = lineage[j], lineage[i]
+	}
+
+	return http.StatusOK, lineage, nil
+}
+
+func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
+	var children []apiTypes.CausalDecisionModel
+	if err := dbInstance.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Where("parent_uuid = ?", uuid).
+		Find(&children).Error; err != nil {
+		return http.StatusNotFound, nil, err
+	}
+
+	return http.StatusOK, children, nil
+}

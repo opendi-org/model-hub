@@ -52,7 +52,7 @@ const Home = () => {
                         <Grid xs={12} container spacing={2}>
                             {
                                 models.map((model) => 
-                                <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator.Username} />)
+                                <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator.username} />)
                             }
                         </Grid>
                     </Stack>
