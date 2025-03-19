@@ -36,12 +36,30 @@ const UploadPage = () => {
 
         try {
             // const fileText = await file.text();
+
+            const fileText = await file.text(); // Read file contents as text
+
+            let fileData;
+            try {
+                fileData = JSON.parse(fileText); // Parse the text as JSON
+            } catch (parseError) {
+                throw new Error("Invalid JSON file format.");
+            }
+
+            // Add metadata
+            fileData.id = null
+            fileData.meta = fileData.meta || {}; // Ensure `meta` exists
+            fileData.meta.creator = fileData.meta.creator || {}; 
+            fileData.meta.creator.email = sessionStorage.getItem('email');
+    
+
+
             const response = await fetch(`${API_URL}/v0/models`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: file
+                body: JSON.stringify(fileData) //Even though file is a File object, the Fetch API automatically converts it into a binary stream when used as the body. Now, we upload the parsed json object instead
             });
 
             if (!response.ok) {

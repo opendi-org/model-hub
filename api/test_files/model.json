@@ -2,7 +2,7 @@
   "id": 2,
   "$schema": "Test Schema",
   "meta": {
-    "id": 5,
+    "id": null,
     "uuid": "",
     "name": "Test Model",
     "summary": "This is a test model. Note that when creating this model, it relies on creator with email already existing",
