@@ -9,13 +9,13 @@ You will also need an auth token to access these repositories. Go to User -> Use
 
 ### Step 2: Push Containers to Registry
 Make sure your containers are all up to date by running "docker compose --build". Then, login to OCI Registry in docker with
-"docker login <region-key>.ocir.io", where your region key is likely iad for US-East.
+"docker login (region-key).ocir.io", where your region key is likely iad for US-East.
 
-When prompted, enter your username as <tenancy-namespace>/<username>, where tenancy namespace is found under Profile -> Tenancy, listed as "Object Storage Namespace".
+When prompted, enter your username as (tenancy-namespace)/(username), where tenancy namespace is found under Profile -> Tenancy, listed as "Object Storage Namespace".
 It should look something like idkpm9sketnr. For your password, use the auth token we created in step 1.
 
-You need to tag the images you created in step 1 with "docker tag <image-name> <region-key>.ocir.io/<tenancy-namespace>/<repo-name>:<tag>". Once you have tagged both 
-the api and the frontend, run "docker push <region-key>.ocir.io/<tenancy-namespace>/<repo-name>:<tag>". Check the Container Registry on Oracle Cloud 
+You need to tag the images you created in step 1 with "docker tag (image-name) (region-key).ocir.io/(tenancy-namespace)/(repo-name):(tag)". Once you have tagged both 
+the api and the frontend, run "docker push (region-key).ocir.io/(tenancy-namespace)/(repo-name):(tag)". Check the Container Registry on Oracle Cloud 
 to make sure they are showing up. I found that on my first push I would get a conflict error, so simply pushing again with the same command fixed that issue.
 
 ### Step 3: Create Compute Instance
