@@ -167,6 +167,40 @@ func TestGetAllModels(t *testing.T) {
 	if models[1].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" && models[1].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e" {
 		t.Errorf("Model doesn't match expected UUID")
 	}
+}
+
+func TestGetModelLineage(t *testing.T) {
+	ResetTables()
+	CreateExampleModels()
+
+	ret, models, error := GetModelLineage("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e")
+	if ret != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
+	}
+	if len(models) != 1 {
+		t.Errorf("Expected 1 parent model, got %d", len(models))
+	}
+
+	if models[0].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
+		t.Errorf("Model doesn't match expected UUID")
+	}
+}
+
+func TestGetModelChildren(t *testing.T) {
+	ResetTables()
+	CreateExampleModels()
+
+	ret, models, error := GetModelChildren("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	if ret != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
+	}
+	if len(models) != 1 {
+		t.Errorf("Expected 1 child model, got %d", len(models))
+	}
+
+	if models[0].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e" {
+		t.Errorf("Model doesn't match expected UUID")
+	}
 
 }
 

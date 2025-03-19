@@ -50,6 +50,11 @@ func SetUpRouter() *gin.Engine {
 	r := gin.Default()
 	//initialize handler
 	modelHandler, err := NewModelHandler()
+
+	authHandler, _ := NewAuthHandler()
+
+	lineageHandler, _ := NewLineageHandler()
+
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
@@ -63,6 +68,12 @@ func SetUpRouter() *gin.Engine {
 		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
 		models.POST("", modelHandler.UploadModel)         // Upload a model
 	}
+
+	router.GET("/lineage/:uuid", lineageHandler.GetModelLineage)
+
+	router.GET("/children/:uuid", lineageHandler.GetModelChildren)
+
+	router.POST("/login", authHandler.UserLogin)
 
 	return r
 }
@@ -110,4 +121,29 @@ func TestUploadModel(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestGetModelLineage(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
+
+	req, _ := http.NewRequest("GET", "/lineage/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGetModelChildren(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
+
+	req, _ := http.NewRequest("GET", "/children/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
 }
