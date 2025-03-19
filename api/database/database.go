@@ -464,6 +464,10 @@ func UserLogin(email string, password string) (int, *apiTypes.User, error) {
 			return http.StatusConflict, nil, fmt.Errorf("user does not exist and could not create new user")
 		}
 		return http.StatusOK, newuser, nil
+	} else {
+		if user.Password != password {
+			return http.StatusUnauthorized, nil, fmt.Errorf("password is incorrect")
+		}
 	}
 
 	return http.StatusOK, user, nil
