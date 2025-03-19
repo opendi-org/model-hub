@@ -69,11 +69,11 @@ func SetUpRouter() *gin.Engine {
 		models.POST("", modelHandler.UploadModel)         // Upload a model
 	}
 
-	router.GET("/lineage/:uuid", lineageHandler.GetModelLineage)
+	r.GET("/lineage/:uuid", lineageHandler.GetModelLineage)
 
-	router.GET("/children/:uuid", lineageHandler.GetModelChildren)
+	r.GET("/children/:uuid", lineageHandler.GetModelChildren)
 
-	router.POST("/login", authHandler.UserLogin)
+	r.POST("/login", authHandler.UserLogin)
 
 	return r
 }
