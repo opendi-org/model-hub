@@ -1,5 +1,5 @@
 {
-  "$schema": "model2schema",
+  "$schema": "model4schema",
   "diagrams": [
     {
       "addons": [
@@ -118,7 +118,7 @@
         "uuid": "creator1"
       }
     ],
-    "uuid": "meta4",
+    "uuid": "meta9",
     "version": "string"
   }
 }
