@@ -163,3 +163,7 @@ func (dep CausalDependency) Equals(other CausalDependency) bool {
 func (u User) Equals(other User) bool {
 	return u.Username == other.Username
 }
+
+func (c Commit) Equals(other Commit) bool {
+	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID
+}
