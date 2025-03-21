@@ -251,6 +251,194 @@ func CreateExampleModel() {
 
 }
 
+// matchUUIDsToID recursively iterates through a CDM (or really any CDM component)
+// and its nested structures and finds matching UUIDs in the database and updates
+// the IDs of the components to match the ID found in the database
+// It is designed to work with the structs defined in apitypes.go,
+// which as of now are CausalDecisionModel, Meta, Diagram, DiaElement, CausalDependency, User,
+// and Commit.
+func matchUUIDsToID(tx *gorm.DB, component any) error {
+	// Check if this is a Meta struct and create its users if they don't exist
+	// While it may not make sense to have a meta get updated when performing a create, it is
+	// necessary to do this for putting a model, since in that use case we are not creating a new meta,
+	// but rather updating an existing one.
+	// Furthermore, we should already be checking to make sure a meta with the same UUID does not exist in the database
+	// before creating a new model, and so this should not be a problem. Meanwhile if we are creating a new
+	// model and we are referencing, say for example, preexisting diagrams, we should be
+	// getting the existing diagram and it's meta, not creating a new meta. So while it may see odd
+	// to have code here that doesn't throw an error if the meta is found, it is necessary to not throw
+	// and in fact makes sense to do so.
+	if meta, ok := component.(*apiTypes.Meta); ok && meta.UUID != "" {
+		var existingMeta apiTypes.Meta
+		if err := tx.Where("uuid = ?", meta.UUID).First(&existingMeta).Error; err == nil {
+			meta.ID = existingMeta.ID
+		}
+
+		// TODO: Change this so we no longer create a new user if the UUID is not found
+		// Right now this is just a workaround to create a new user, but in the future when
+		// we have a way to properly create users, we should not do this, and instead if there
+		// is no user with the UUID, we should error out and not create a new user.
+
+		// Resolve Creator UUID
+		if meta.Creator.UUID != "" {
+			var existingUser apiTypes.User
+			if err := tx.Where("uuid = ?", meta.Creator.UUID).First(&existingUser).Error; err == nil {
+				meta.Creator = existingUser
+				meta.CreatorID = existingUser.ID
+			} else if meta.Creator.ID == 0 {
+				// Create user if not exists
+				if err := tx.Create(&meta.Creator).Error; err != nil {
+					return fmt.Errorf("could not create creator: %s", err.Error())
+				}
+				meta.CreatorID = meta.Creator.ID
+			}
+		}
+
+		// Resolve Updaters UUIDs
+		for i, updater := range meta.Updaters {
+			if updater.UUID != "" {
+				var existingUser apiTypes.User
+				if err := tx.Where("uuid = ?", updater.UUID).First(&existingUser).Error; err == nil {
+					meta.Updaters[i] = existingUser
+				} else if updater.ID == 0 {
+					// Create updater if not exists
+					if err := tx.Create(&meta.Updaters[i]).Error; err != nil {
+						return fmt.Errorf("could not create updater: %s", err.Error())
+					}
+				}
+			}
+		}
+		return nil
+	}
+
+	// Check if this is a User struct and match its UUID to ID
+	if user, ok := component.(*apiTypes.User); ok && user.UUID != "" {
+		var existingUser apiTypes.User
+		if err := tx.Where("uuid = ?", user.UUID).First(&existingUser).Error; err == nil {
+			// Match the existing user ID to the current user
+			user.ID = existingUser.ID
+		}
+		return nil
+	}
+
+	// Check if this is a CausalDecisionModel struct and recursively match its components' UUIDs to IDs
+	if cdm, ok := component.(*apiTypes.CausalDecisionModel); ok {
+		// Match Meta
+		if err := matchUUIDsToID(tx, &cdm.Meta); err != nil {
+			return err
+		}
+
+		// Try to find the existing CausalDecisionModel in the database
+		var existingModel apiTypes.CausalDecisionModel
+
+		// Check if the meta ID is set, if not, we should not try to find it in the database
+		// since it is not a pre-existing model, but rather a new one
+		if err := tx.Where("meta_id = ?", cdm.Meta.ID).First(&existingModel).Error; err == nil {
+			cdm.ID = existingModel.ID
+		}
+
+		// Match Diagrams
+		for i := range cdm.Diagrams {
+			if err := matchUUIDsToID(tx, &cdm.Diagrams[i]); err != nil {
+				return err
+			}
+		}
+
+		// Match Parent if exists
+		if cdm.ParentUUID != "" {
+			var parentMeta apiTypes.Meta
+			if err := tx.Where("uuid = ?", cdm.ParentUUID).First(&parentMeta).Error; err == nil {
+				var parentModel apiTypes.CausalDecisionModel
+				if err := tx.Where("meta_id = ?", parentMeta.ID).First(&parentModel).Error; err == nil {
+					cdm.ParentID = &parentModel.ID
+				}
+			}
+		}
+
+		return nil
+	}
+
+	// Check if this is a Diagram struct and recursively match its components' UUIDs to IDs
+	if diagram, ok := component.(*apiTypes.Diagram); ok {
+		// Match Meta
+		if err := matchUUIDsToID(tx, &diagram.Meta); err != nil {
+			return err
+		}
+
+		// Try to find the existing Diagram in the database
+		var existingDiagram apiTypes.Diagram
+
+		// Check if the meta ID is set, if not, we should not try to find it in the database
+		// since it is not a pre-existing diagram, but rather a new one
+		if err := tx.Where("meta_id = ?", diagram.Meta.ID).First(&existingDiagram).Error; err == nil {
+			diagram.ID = existingDiagram.ID
+		}
+
+		// Match Elements
+		for i := range diagram.Elements {
+			if err := matchUUIDsToID(tx, &diagram.Elements[i]); err != nil {
+				return err
+			}
+		}
+
+		// Match Dependencies
+		for i := range diagram.Dependencies {
+			if err := matchUUIDsToID(tx, &diagram.Dependencies[i]); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	// Check if this is a DiaElement struct and match its Meta UUID to ID
+	// then see if we can find the existing DiaElement in the database
+	if element, ok := component.(*apiTypes.DiaElement); ok {
+		// First match the meta UUID
+		if err := matchUUIDsToID(tx, &element.Meta); err != nil {
+			return err
+		}
+		// Try to find the existing DiaElement in the database
+		var existingElement apiTypes.DiaElement
+
+		// Check if the meta ID is set, if not, we should not try to find it in the database
+		// since it is not a pre-existing element, but rather a new one
+		if err := tx.Where("meta_id = ?", element.Meta.ID).First(&existingElement).Error; err == nil {
+			element.ID = existingElement.ID
+		}
+		return nil
+	}
+
+	// Check if this is a CausalDependency struct and match its Meta UUID to ID
+	// then see if we can find the existing CausalDependency in the database
+	if dependency, ok := component.(*apiTypes.CausalDependency); ok {
+		// First match the meta UUID
+		if err := matchUUIDsToID(tx, &dependency.Meta); err != nil {
+			return err
+		}
+		// Try to find the existing CausalDependency in the database
+		var existingDependency apiTypes.CausalDependency
+
+		// Check if the meta ID is set, if not, we should not try to find it in the database
+		// since it is not a pre-existing dependency, but rather a new one
+		if err := tx.Where("meta_id = ?", dependency.Meta.ID).First(&existingDependency).Error; err == nil {
+			dependency.ID = existingDependency.ID
+		}
+		return nil
+	}
+
+	// Check if this is a Commit struct and match its (supposedly unique) pair [ParentCommitID, CDMUUID] to ID
+	if commit, ok := component.(*apiTypes.Commit); ok {
+		// Try to find the existing Commit in the database
+		var existingCommit apiTypes.Commit
+		if err := tx.Where("parent_commit_id = ? AND cdm_uuid = ?", commit.ParentCommitID, commit.CDMUUID).First(&existingCommit).Error; err == nil {
+			commit.ID = existingCommit.ID
+		}
+	}
+
+	return nil
+}
+
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
 func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	// Ensure no other model with the same UUID exists.
@@ -267,44 +455,12 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
 	}
 
-	// Try to retrieve creator id information from the meta, then find a creator with that id in the database.
-
-	var creator apiTypes.User
-	var countCreator int64
-	transaction.Model(&apiTypes.User{}).Where("uuid = ?", uploadedModel.Meta.Creator.UUID).Count(&countCreator)
-	if countCreator == 0 {
-		// Create the creator in the database if it does not exist.
-		if err := transaction.Create(&uploadedModel.Meta.Creator).Error; err != nil {
-			transaction.Rollback()
-			return http.StatusInternalServerError, fmt.Errorf("could not create creator: %s", err.Error())
-		}
-	} else {
-		// Find the creator in the database using the uuid
-		if err := transaction.Where("uuid = ?", uploadedModel.Meta.Creator.UUID).First(&creator).Error; err != nil {
-			transaction.Rollback()
-			return http.StatusInternalServerError, fmt.Errorf("could not find creator: %s", err.Error())
-		}
-		fmt.Println(creator)
-		uploadedModel.Meta.Creator = creator
-	}
-
-	// Try to retrieve updater id information from the meta, then find an updater with that id in the database.
-	for i, updater := range uploadedModel.Meta.Updaters {
-		var countUpdater int64
-		transaction.Model(&apiTypes.User{}).Where("uuid = ?", updater.UUID).Count(&countUpdater)
-		if countUpdater == 0 {
-			// Create the updater in the database if it does not exist.
-			if err := transaction.Create(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
-				transaction.Rollback()
-				return http.StatusInternalServerError, fmt.Errorf("could not create updater: %s", err.Error())
-			}
-		} else {
-			// Find the updater in the database using the uuid
-			if err := transaction.Where("uuid = ?", updater.UUID).First(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
-				transaction.Rollback()
-				return http.StatusInternalServerError, fmt.Errorf("could not find updater: %s", err.Error())
-			}
-		}
+	// Resolve all UUIDs in the model to existing database IDs where possible
+	// This will ensure that we are not duplicating pre-existing components
+	// but rather reusing them.
+	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, err
 	}
 
 	// Create meta in transaction; error out on failure.
