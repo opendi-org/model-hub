@@ -272,6 +272,12 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		var existingMeta apiTypes.Meta
 		if err := tx.Where("uuid = ?", meta.UUID).First(&existingMeta).Error; err == nil {
 			meta.ID = existingMeta.ID
+			// Also if the created at time is zero, go ahead and set it to the existing created at time
+			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
+			// which the database/GORM does not like
+			if meta.CreatedAt.IsZero() {
+				meta.CreatedAt = existingMeta.CreatedAt
+			}
 		}
 
 		// TODO: Change this so we no longer create a new user if the UUID is not found
@@ -279,7 +285,7 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		// we have a way to properly create users, we should not do this, and instead if there
 		// is no user with the UUID, we should error out and not create a new user.
 
-		// Resolve Creator UUID
+		// Match Creator UUID to ID
 		if meta.Creator.UUID != "" {
 			var existingUser apiTypes.User
 			if err := tx.Where("uuid = ?", meta.Creator.UUID).First(&existingUser).Error; err == nil {
@@ -294,7 +300,7 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 			}
 		}
 
-		// Resolve Updaters UUIDs
+		// Match Updaters UUIDs to IDs
 		for i, updater := range meta.Updaters {
 			if updater.UUID != "" {
 				var existingUser apiTypes.User
@@ -335,6 +341,13 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		// since it is not a pre-existing model, but rather a new one
 		if err := tx.Where("meta_id = ?", cdm.Meta.ID).First(&existingModel).Error; err == nil {
 			cdm.ID = existingModel.ID
+
+			// Also if the created at time is zero, go ahead and set it to the existing created at time
+			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
+			// which the database/GORM does not like
+			if cdm.CreatedAt.IsZero() {
+				cdm.CreatedAt = existingModel.CreatedAt
+			}
 		}
 
 		// Match Diagrams
@@ -372,6 +385,13 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		// since it is not a pre-existing diagram, but rather a new one
 		if err := tx.Where("meta_id = ?", diagram.Meta.ID).First(&existingDiagram).Error; err == nil {
 			diagram.ID = existingDiagram.ID
+
+			// Also if the created at time is zero, go ahead and set it to the existing created at time
+			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
+			// which the database/GORM does not like
+			if diagram.CreatedAt.IsZero() {
+				diagram.CreatedAt = existingDiagram.CreatedAt
+			}
 		}
 
 		// Match Elements
@@ -405,6 +425,13 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		// since it is not a pre-existing element, but rather a new one
 		if err := tx.Where("meta_id = ?", element.Meta.ID).First(&existingElement).Error; err == nil {
 			element.ID = existingElement.ID
+
+			// Also if the created at time is zero, go ahead and set it to the existing created at time
+			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
+			// which the database/GORM does not like
+			if element.CreatedAt.IsZero() {
+				element.CreatedAt = existingElement.CreatedAt
+			}
 		}
 		return nil
 	}
@@ -423,6 +450,13 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		// since it is not a pre-existing dependency, but rather a new one
 		if err := tx.Where("meta_id = ?", dependency.Meta.ID).First(&existingDependency).Error; err == nil {
 			dependency.ID = existingDependency.ID
+
+			// Also if the created at time is zero, go ahead and set it to the existing created at time
+			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
+			// which the database/GORM does not like
+			if dependency.CreatedAt.IsZero() {
+				dependency.CreatedAt = existingDependency.CreatedAt
+			}
 		}
 		return nil
 	}
@@ -433,6 +467,13 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		var existingCommit apiTypes.Commit
 		if err := tx.Where("parent_commit_id = ? AND cdm_uuid = ?", commit.ParentCommitID, commit.CDMUUID).First(&existingCommit).Error; err == nil {
 			commit.ID = existingCommit.ID
+
+			// Also if the created at time is zero, go ahead and set it to the existing created at time
+			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
+			// which the database/GORM does not like
+			if commit.CreatedAt.IsZero() {
+				commit.CreatedAt = existingCommit.CreatedAt
+			}
 		}
 	}
 
@@ -455,7 +496,7 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
 	}
 
-	// Resolve all UUIDs in the model to existing database IDs where possible
+	// Match all UUIDs in the model to existing database IDs where possible
 	// This will ensure that we are not duplicating pre-existing components
 	// but rather reusing them.
 	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
@@ -534,78 +575,14 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
 	}
 
-	// Try to retrieve creator id information from the meta, then find a creator with that id in the database.
-
-	var creator apiTypes.User
-	var countCreator int64
-	transaction.Model(&apiTypes.User{}).Where("uuid = ?", uploadedModel.Meta.Creator.UUID).Count(&countCreator)
-	if countCreator == 0 {
-		// Create the creator in the database if it does not exist.
-		if err := transaction.Create(&uploadedModel.Meta.Creator).Error; err != nil {
-			transaction.Rollback()
-			return http.StatusInternalServerError, fmt.Errorf("could not create creator: %s", err.Error())
-		}
-	} else {
-		// Find the creator in the database using the uuid
-		if err := transaction.Where("uuid = ?", uploadedModel.Meta.Creator.UUID).First(&creator).Error; err != nil {
-			transaction.Rollback()
-			return http.StatusInternalServerError, fmt.Errorf("could not find creator: %s", err.Error())
-		}
-		fmt.Println(creator)
-		uploadedModel.Meta.Creator = creator
-	}
-
-	// Try to retrieve updater id information from the meta, then find an updater with that id in the database.
-	for i, updater := range uploadedModel.Meta.Updaters {
-		var countUpdater int64
-		transaction.Model(&apiTypes.User{}).Where("uuid = ?", updater.UUID).Count(&countUpdater)
-		if countUpdater == 0 {
-			// Create the updater in the database if it does not exist.
-			if err := transaction.Create(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
-				transaction.Rollback()
-				return http.StatusInternalServerError, fmt.Errorf("could not create updater: %s", err.Error())
-			}
-		} else {
-			// Find the updater in the database using the uuid
-			if err := transaction.Where("uuid = ?", updater.UUID).First(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
-				transaction.Rollback()
-				return http.StatusInternalServerError, fmt.Errorf("could not find updater: %s", err.Error())
-			}
-		}
-	}
-	// Before updating the Meta record, first fetch the existing Meta to get its ID
-	var existingMeta apiTypes.Meta
-	if err := transaction.
-		Preload("Updaters").
-		Preload("Creator").
-		Where("uuid = ?", uploadedModel.Meta.UUID).
-		First(&existingMeta).Error; err != nil {
+	// Match all UUIDs in the model to existing database IDs where possible
+	// This will ensure that the save will update the existing record instead of trying to insert a new one.
+	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
 		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not find existing meta: %s", err.Error())
+		return http.StatusInternalServerError, err
 	}
 
-	// Set the ID so GORM knows this is an update, not an insert
-	uploadedModel.Meta.ID = existingMeta.ID
-	// Check to see if created at is zero, if so, set it to the time in the existing record
-	if uploadedModel.Meta.CreatedAt.IsZero() {
-		uploadedModel.Meta.CreatedAt = existingMeta.CreatedAt
-	}
-	// Merge in the updaters from the existing record
-	// Iterate through the existing updaters and add them to the new updaters if they are not already there
-	for _, existingUpdater := range existingMeta.Updaters {
-		updaterExists := false
-		for _, newUpdater := range uploadedModel.Meta.Updaters {
-			if existingUpdater.UUID == newUpdater.UUID {
-				updaterExists = true
-				break
-			}
-		}
-		if !updaterExists {
-			uploadedModel.Meta.Updaters = append(uploadedModel.Meta.Updaters, existingUpdater)
-		}
-	}
-
-	// Now the save will update the existing record instead of trying to insert a new one
+	// Save the model in transaction; error out on failure.
 	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
 		transaction.Rollback()
 		return http.StatusInternalServerError, fmt.Errorf("could not update model meta: %s", err.Error())

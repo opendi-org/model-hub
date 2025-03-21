@@ -142,14 +142,16 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 	commit.Diff = diff.String()
 	commit.UserUUID = uploadedModel.Meta.Creator.UUID
 
-	if status, err := database.CreateCommit(&commit); err != nil {
-		// Return error based on the CreateCommit function response
+	// Update the model before creating the commit so that on a bad
+	// put, we don't have to roll back the commit.
+	if status, err := database.UpdateModel(&uploadedModel); err != nil {
+		// Return error based on the UpdateModel function response
 		c.JSON(status, gin.H{"Error": err.Error()})
 		return
 	}
 
-	if status, err := database.UpdateModel(&uploadedModel); err != nil {
-		// Return error based on the UpdateModel function response
+	if status, err := database.CreateCommit(&commit); err != nil {
+		// Return error based on the CreateCommit function response
 		c.JSON(status, gin.H{"Error": err.Error()})
 		return
 	}
