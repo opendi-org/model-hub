@@ -128,7 +128,23 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 		return
 	}
 
-	diff, err := jsondiff.Compare(uploadedModel, oldmodel)
+	// Update the model before creating the commit so that on a bad
+	// put, we don't have to roll back the commit.
+	if status, err := database.UpdateModel(&uploadedModel); err != nil {
+		// Return error based on the UpdateModel function response
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+
+	status, changedModel, err := database.GetModelByUUID(uploadedModel.Meta.UUID)
+
+	if err != nil {
+		// Return error based on the UpdateModel function response
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+
+	diff, err := jsondiff.Compare(changedModel, oldmodel)
 
 	if err != nil {
 		// Return error based on the UpdateModel function response
@@ -141,14 +157,6 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 	commit.CDMUUID = uploadedModel.Meta.UUID
 	commit.Diff = diff.String()
 	commit.UserUUID = uploadedModel.Meta.Creator.UUID
-
-	// Update the model before creating the commit so that on a bad
-	// put, we don't have to roll back the commit.
-	if status, err := database.UpdateModel(&uploadedModel); err != nil {
-		// Return error based on the UpdateModel function response
-		c.JSON(status, gin.H{"Error": err.Error()})
-		return
-	}
 
 	if status, err := database.CreateCommit(&commit); err != nil {
 		// Return error based on the CreateCommit function response

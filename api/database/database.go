@@ -568,33 +568,79 @@ func GetUserByID(id int) (int, *apiTypes.User, error) {
 
 // UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction
 func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
-
 	// Begin transaction.
 	transaction := dbInstance.Begin()
 	if transaction.Error != nil {
 		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
 	}
 
-	// Match all UUIDs in the model to existing database IDs where possible
-	// This will ensure that the save will update the existing record instead of trying to insert a new one.
+	// Match all UUIDs in the uploaded model to existing database IDs
 	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
 		transaction.Rollback()
 		return http.StatusInternalServerError, err
 	}
 
-	// Save the model in transaction; error out on failure.
-	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
+	// First, get the existing model with all associations to properly handle removals
+	var existingModel apiTypes.CausalDecisionModel
+	if err := transaction.
+		Preload("Meta").
+		Preload("Meta.Updaters").
+		Preload("Diagrams").
+		Where("meta_id = ?", uploadedModel.Meta.ID).
+		First(&existingModel).Error; err != nil {
 		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not update model meta: %s", err.Error())
+		return http.StatusNotFound, fmt.Errorf("model with UUID %s not found", uploadedModel.Meta.UUID)
 	}
 
-	// updates the model
+	// Clear model diagrams association
+	if err := transaction.Model(&existingModel).Association("Diagrams").Clear(); err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not clear model diagrams: %s", err.Error())
+	}
+
+	// Clear meta updaters association
+	if err := transaction.Model(&existingModel.Meta).Association("Updaters").Clear(); err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not clear meta updaters: %s", err.Error())
+	}
+
+	// Before updating the model, we need to make sure the model isn't going to mess with any of
+	// the existing associations inside it's components (for example putting to models shouldn'
+	// modify parts of a diagram or parts of a user, but rather just modify what diagrams or
+	// users are associated with the model itself)
+	// UUIDs have already been matched to IDs, so we can just use the IDs to find the existing associations
+
+	// Iterate through all the diagrams with nonzero IDs and reset them to the way they exist in the database
+	// to ensure no discrepancies between them as they exist in the database and them as they exist in the model
+	for i := range uploadedModel.Diagrams {
+		if uploadedModel.Diagrams[i].ID != 0 {
+			var existingDiagram apiTypes.Diagram
+			// Do nothing on error, and treat it as a new diagram (don't set it to the existing diagram)
+			if err := transaction.Where("id = ?", uploadedModel.Diagrams[i].ID).First(&existingDiagram).Error; err == nil {
+				uploadedModel.Diagrams[i] = existingDiagram
+			}
+		}
+	}
+
+	// Iterate through all the updaters with nonzero IDs and reset them to the way they exist in the database
+	// to ensure no discrepancies between them as they exist in the database and them as they exist in the model
+	for i := range uploadedModel.Meta.Updaters {
+		if uploadedModel.Meta.Updaters[i].ID != 0 {
+			var existingUpdater apiTypes.User
+			// Do nothing on error, and treat it as a new updater (don't set it to the existing updater)
+			if err := transaction.Where("id = ?", uploadedModel.Meta.Updaters[i].ID).First(&existingUpdater).Error; err == nil {
+				uploadedModel.Meta.Updaters[i] = existingUpdater
+			}
+		}
+	}
+
+	// Update the model
 	if err := transaction.Save(&uploadedModel).Error; err != nil {
 		transaction.Rollback()
 		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
 	}
 
-	// Commit the transaction; error out if commit fails.
+	// Commit the transaction
 	if err := transaction.Commit().Error; err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
 	}
