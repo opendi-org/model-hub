@@ -18,6 +18,10 @@ import (
 type ModelHandler struct {
 }
 
+// CommitHandler struct for handling commit requests
+type CommitHandler struct {
+}
+
 // AuthHandler struct for handling user login/auth requests
 type AuthHandler struct {
 }
@@ -29,6 +33,12 @@ type LineageHandler struct {
 func NewModelHandler() (*ModelHandler, error) {
 
 	return &ModelHandler{}, nil
+}
+
+// method for getting an instance of CommitHandler
+func NewCommitHandler() (*CommitHandler, error) {
+
+	return &CommitHandler{}, nil
 }
 
 func NewAuthHandler() (*AuthHandler, error) {
@@ -157,6 +167,7 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 	status, changedModel, err := database.GetModelByUUID(uploadedModel.Meta.UUID)
 
 	if err != nil {
+		//TODO fix this so that if we get an error here, we roll back the update
 		// Return error based on the UpdateModel function response
 		c.JSON(status, gin.H{"Error": err.Error()})
 		return
@@ -194,7 +205,7 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 // @Success      200
 // @Failure      500
 // @Router       /v0/commits/ [get]
-func (h *ModelHandler) GetCommits(c *gin.Context) {
+func (h *CommitHandler) GetCommits(c *gin.Context) {
 	var models []apiTypes.Commit
 	status, models, err := database.GetAllCommits()
 	if models == nil {
@@ -205,6 +216,23 @@ func (h *ModelHandler) GetCommits(c *gin.Context) {
 	c.IndentedJSON(status, models)
 }
 
+func (h *CommitHandler) GetCommitByUUID(c *gin.Context) {
+	uuid := c.Param("uuid")
+
+	// Call the encapsulated GetModelByUUID function from the database package
+	status, commit, err := database.GetCommitForModelMetaUUID(uuid)
+	if err != nil {
+		// If error, return an appropriate response based on the error
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+
+	// Return the model if found
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(status, commit)
+}
+
+/* //ERIC - we only needed this for testing.
 // UploadCommit godoc
 // @Summary      Upload a new commit
 // @Description  Uploads a commit
@@ -217,7 +245,7 @@ func (h *ModelHandler) GetCommits(c *gin.Context) {
 // @Failure      409 {object} gin.H "Conflict: Commit with same UUID already exists"
 // @Failure      500 {object} gin.H "Internal Server Error"
 // @Router       /v0/commits/ [post]
-func (h *ModelHandler) UploadCommit(c *gin.Context) {
+func (h *CommitHandler) UploadCommit(c *gin.Context) {
 	var uploadedCommit apiTypes.Commit
 
 	// Bind the JSON payload to the uploaded commit struct
@@ -236,6 +264,7 @@ func (h *ModelHandler) UploadCommit(c *gin.Context) {
 	// Return a successful response if commit creation is successful
 	c.JSON(http.StatusCreated, uploadedCommit)
 }
+*/
 
 func (h *AuthHandler) UserLogin(c *gin.Context) {
 	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.

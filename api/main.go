@@ -60,6 +60,8 @@ func main() {
 
 	lineageHandler, err := handlers.NewLineageHandler()
 
+	commitHandler, err := handlers.NewCommitHandler()
+
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
@@ -115,8 +117,9 @@ func main() {
 	commits := router.Group("/v0/commits")
 	{
 
-		commits.GET("", modelHandler.GetCommits)    // Get all commits
-		commits.POST("", modelHandler.UploadCommit) // Create a commit (for testing)
+		commits.GET("", commitHandler.GetCommits) // Get all commits
+		commits.GET("/:uuid", commitHandler.GetCommitByUUID)
+		//commits.POST("", commitHandler.UploadCommit) // Create a commit (for testing)
 	}
 
 	//router group for uploading models

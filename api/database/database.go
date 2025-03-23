@@ -143,6 +143,21 @@ func GetAllCommits() (int, []apiTypes.Commit, error) {
 
 }
 
+func GetCommitForModelMetaUUID(uuid string) (int, *apiTypes.Commit, error) {
+	var commit apiTypes.Commit
+
+	// Fetch the latest commit based on CreatedAt field
+	if err := dbInstance.
+		Where("CDMUUID = ?", uuid).
+		Order("CreatedAt DESC").
+		Limit(1).
+		First(&commit).Error; err != nil {
+		return http.StatusNotFound, nil, err
+	}
+
+	return http.StatusOK, &commit, nil
+}
+
 // helper function for creating a user given a user object. Doesn't check for if it's possible to create
 func createUserGivenObject(user apiTypes.User) (*apiTypes.User, error) {
 	// Begin transaction.
