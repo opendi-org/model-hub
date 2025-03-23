@@ -81,6 +81,15 @@ type User struct {
 	Password string `json:"-"`
 }
 
+type Commit struct {
+	ID             int       `gorm:"primaryKey" json:"-"`
+	ParentCommitID string    `json:"parentCommitID"`
+	Diff           string    `json:"diff"`
+	UserUUID       string    `json:"useruuid"`
+	CDMUUID        string    `json:"cdmuuid"`
+	CreatedAt      time.Time `json:"CreatedAt"`
+}
+
 func (cdm CausalDecisionModel) Equals(other CausalDecisionModel) bool {
 	if cdm.ID != other.ID || cdm.Schema != other.Schema || cdm.MetaID != other.MetaID {
 		return false
@@ -153,4 +162,8 @@ func (dep CausalDependency) Equals(other CausalDependency) bool {
 
 func (u User) Equals(other User) bool {
 	return u.Username == other.Username
+}
+
+func (c Commit) Equals(other Commit) bool {
+	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID
 }

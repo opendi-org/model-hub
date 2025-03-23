@@ -1,0 +1,124 @@
+{
+  "$schema": "model3schema",
+  "diagrams": [
+    {
+      "addons": [
+        0
+      ],
+      "dependencies": [
+        {
+          "meta": {
+            "createdDate": "string",
+            "creator": {
+              "email": "string",
+              "username": "string",
+              "uuid": "creator1"
+            },
+            "documentation": [
+              0
+            ],
+            "draft": true,
+            "name": "string",
+            "summary": "string",
+            "updatedDate": "string",
+            "updaters": [
+              {
+                "email": "string",
+                "username": "string",
+                "uuid": "creator1"
+              }
+            ],
+            "uuid": "meta5",
+            "version": "string"
+          },
+          "source": "string",
+          "target": "string"
+        }
+      ],
+      "elements": [
+        {
+          "associatedEvalElements": [
+            0
+          ],
+          "causalType": "string",
+          "content": [
+            0
+          ],
+          "diaType": "string",
+          "meta": {
+            "createdDate": "string",
+            "creator": {
+              "email": "string",
+              "username": "string",
+              "uuid": "creator1"
+            },
+            "documentation": [
+              0
+            ],
+            "draft": true,
+            "name": "string",
+            "summary": "string",
+            "updatedDate": "string",
+            "updaters": [
+              {
+                "email": "string",
+                "username": "string",
+                "uuid": "creator1"
+              }
+            ],
+            "uuid": "meta6",
+            "version": "string"
+          }
+        }
+      ],
+      "meta": {
+        "createdDate": "string",
+        "creator": {
+          "email": "string",
+          "username": "string",
+          "uuid": "creator1"
+        },
+        "documentation": [
+          0
+        ],
+        "draft": true,
+        "name": "string",
+        "summary": "string",
+        "updatedDate": "string",
+        "updaters": [
+          {
+            "email": "string",
+            "username": "string",
+            "uuid": "creator1"
+          }
+        ],
+        "uuid": "meta7",
+        "version": "string"
+      }
+    }
+  ],
+  "meta": {
+    "createdDate": "string",
+    "creator": {
+      "email": "string",
+      "username": "string",
+      "uuid": "creator1"
+    },
+    "documentation": [
+      0
+    ],
+    "draft": true,
+    "name": "string",
+    "summary": "string",
+    "updatedDate": "string",
+    "updaters": [
+      {
+        "email": "string",
+        "username": "string",
+        "uuid": "creator1"
+      }
+    ],
+    "uuid": "meta8",
+    "version": "string"
+  }
+}
