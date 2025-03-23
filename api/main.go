@@ -109,6 +109,7 @@ func main() {
 		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
 		models.POST("", modelHandler.UploadModel)         // Upload a model
 		models.PUT("", modelHandler.PutModel)             // Update a model
+		models.GET("/search/:type/:name", modelHandler.ModelSearch)
 	}
 
 	//router group for all endpoints related to models

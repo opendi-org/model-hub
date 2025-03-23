@@ -237,6 +237,14 @@ func (h *ModelHandler) UploadCommit(c *gin.Context) {
 	c.JSON(http.StatusCreated, uploadedCommit)
 }
 
+// UserLogin godoc
+// @Summary Login a user
+// @Description Logs a user if they exist, or creates a new user
+// @Accept json
+// @Produce json
+// @Param email password
+// @Success 200
+// @Failure 401 {object} gin.H "Unauthorized"
 func (h *AuthHandler) UserLogin(c *gin.Context) {
 	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
 	email := c.Query("email")
@@ -277,4 +285,32 @@ func (h *LineageHandler) GetModelChildren(c *gin.Context) {
 	}
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(status, children)
+}
+
+func (h *ModelHandler) ModelSearch(c *gin.Context) {
+	fmt.Println("Searching")
+	searchType := c.Param("type")
+	name := c.Param("name")
+	if searchType == "model" {
+		fmt.Println("Searching by Model")
+		status, models, err := database.SearchModelsByName(name)
+		if err != nil {
+			c.JSON(status, gin.H{"Error": err.Error()})
+			return
+		}
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.IndentedJSON(status, models)
+	} else if searchType == "user" {
+		fmt.Println("Searching by User")
+		status, models, err := database.SearchModelsByUser(name)
+		if err != nil {
+			c.JSON(status, gin.H{"Error": err.Error()})
+			return
+		}
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.IndentedJSON(status, models)
+	} else {
+		c.JSON(404, gin.H{"Error": "This type of search does not exist"})
+		return
+	}
 }

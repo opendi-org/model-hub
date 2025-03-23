@@ -884,3 +884,50 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 
 	return http.StatusOK, children, nil
 }
+
+func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error) {
+	var models []apiTypes.CausalDecisionModel
+	// Use MySQL Full-Text Search to find models with names similar to the input string
+	query := `
+        SELECT * FROM causal_decision_models
+        JOIN meta ON causal_decision_models.meta_id = meta.id
+        WHERE MATCH(meta.name) AGAINST(? IN NATURAL LANGUAGE MODE)
+    `
+	if err := dbInstance.Raw(query, name).
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Scan(&models).Error; err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	return http.StatusOK, models, nil
+
+}
+
+func SearchModelsByUser(name string) (int, []apiTypes.CausalDecisionModel, error) {
+	var models []apiTypes.CausalDecisionModel
+	// Use the LIKE operator to find models with names similar to the input string
+	if err := dbInstance.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Where("meta.creator.username LIKE ?", "%"+name+"%").
+		Find(&models).Error; err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	return http.StatusOK, models, nil
+}
