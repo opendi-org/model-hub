@@ -50,6 +50,11 @@ func SetUpRouter() *gin.Engine {
 	r := gin.Default()
 	//initialize handler
 	modelHandler, err := NewModelHandler()
+
+	authHandler, _ := NewAuthHandler()
+
+	lineageHandler, _ := NewLineageHandler()
+
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
@@ -64,27 +69,46 @@ func SetUpRouter() *gin.Engine {
 		models.POST("", modelHandler.UploadModel)         // Upload a model
 	}
 
+	r.GET("/lineage/:uuid", lineageHandler.GetModelLineage)
+
+	r.GET("/children/:uuid", lineageHandler.GetModelChildren)
+
+	r.POST("/login", authHandler.UserLogin)
+
 	return r
 }
 
 func TestGetModels(t *testing.T) {
+	database.ResetTables()
 	req, _ := http.NewRequest("GET", "/v0/models", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "[]", w.Body.String())
+
 }
 
 func TestGetModelByUUID(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
 	req, _ := http.NewRequest("GET", "/v0/models/123", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	req, _ = http.NewRequest("GET", "/v0/models/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
 }
 
 func TestUploadModel(t *testing.T) {
+	database.ResetTables()
+
 	example, err := os.ReadFile("../test_files/model.json")
 	if err != nil {
 		t.Errorf("Error reading test data: %s", err)
@@ -97,4 +121,29 @@ func TestUploadModel(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestGetModelLineage(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
+
+	req, _ := http.NewRequest("GET", "/lineage/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGetModelChildren(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
+
+	req, _ := http.NewRequest("GET", "/children/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
 }

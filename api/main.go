@@ -12,6 +12,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -55,6 +56,10 @@ func main() {
 	//initialize handler
 	modelHandler, err := handlers.NewModelHandler()
 
+	authHandler, err := handlers.NewAuthHandler()
+
+	lineageHandler, err := handlers.NewLineageHandler()
+
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
@@ -62,7 +67,7 @@ func main() {
 	}
 
 	// Debug, creates a model and meta in the database
-	database.CreateExampleModel()
+	database.CreateExampleModels()
 
 	//router group for all endpoints related to models
 	models := router.Group("/v0/models")
@@ -135,7 +140,13 @@ func main() {
 	}
 	modelHubPort = val
 
+	router.GET("/lineage/:uuid", lineageHandler.GetModelLineage)
+
+	router.GET("/children/:uuid", lineageHandler.GetModelChildren)
+
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	router.POST("/login", authHandler.UserLogin)
 
 	router.Run(modelHubAddress + ":" + modelHubPort)
 }

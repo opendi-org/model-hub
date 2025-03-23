@@ -10,9 +10,11 @@ import {
 import Home from "./pages";
 import UploadPage from "./pages/uploadPage";
 import ModelPage from './pages/downloadPage';
+import LoginPage from './pages/login'
 import Navbar from './components/Navbar';
 import {theme} from './Theme'
 import {ThemeProvider} from '@mui/material/styles';
+import UserPage from "./pages/user";
 
 function App() {
   return (
@@ -24,6 +26,8 @@ function App() {
         <Route path="/uploadpage" element={<UploadPage />} />
         <Route path="/model/:uuid" element={<ModelPage />} />
         <Route path="/model" element={<ModelPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/user" element={<UserPage />} />
     </Routes>
 </Router>
 </ThemeProvider>

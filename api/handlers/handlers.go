@@ -5,6 +5,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
@@ -17,10 +18,25 @@ import (
 type ModelHandler struct {
 }
 
+// AuthHandler struct for handling user login/auth requests
+type AuthHandler struct {
+}
+
+type LineageHandler struct {
+}
+
 // method for getting an instance of ModelHandler
 func NewModelHandler() (*ModelHandler, error) {
 
 	return &ModelHandler{}, nil
+}
+
+func NewAuthHandler() (*AuthHandler, error) {
+	return &AuthHandler{}, nil
+}
+
+func NewLineageHandler() (*LineageHandler, error) {
+	return &LineageHandler{}, nil
 }
 
 // GetModels godoc
@@ -55,6 +71,8 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 // @Failure      500 {object} gin.H "Internal Server Error"
 // @Router       /v0/models/ [post]
 func (h *ModelHandler) UploadModel(c *gin.Context) {
+	database.ResetTables()
+	database.CreateExampleModels()
 	var uploadedModel apiTypes.CausalDecisionModel
 
 	// Bind the JSON payload to the uploaded model struct
@@ -64,7 +82,7 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 	}
 
 	// Call the encapsulated CreateModel method from the database package
-	if status, err := database.CreateModel(&uploadedModel); err != nil {
+	if status, err := database.CreateModelGivenEmail(&uploadedModel); err != nil {
 		// Return error based on the CreateModel function response
 		c.JSON(status, gin.H{"Error": err.Error()})
 		return
@@ -99,6 +117,7 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(status, model)
 }
+
 
 // putModel godoc
 // @Summary      Update model
@@ -217,4 +236,45 @@ func (h *ModelHandler) UploadCommit(c *gin.Context) {
 
 	// Return a successful response if commit creation is successful
 	c.JSON(http.StatusCreated, uploadedCommit)
+  
+func (h *AuthHandler) UserLogin(c *gin.Context) {
+	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
+	email := c.Query("email")
+	pass := c.Query("password")
+	fmt.Println("EMAIL: " + email)
+
+	status, user, err := database.UserLogin(email, pass)
+
+	if err != nil {
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+	user.Password = "secret"
+	fmt.Println(user)
+
+	// Return the user
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(status, user)
+}
+
+func (h *LineageHandler) GetModelLineage(c *gin.Context) {
+	uuid := c.Param("uuid")
+	status, lineage, err := database.GetModelLineage(uuid)
+	if err != nil {
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(status, lineage)
+}
+
+func (h *LineageHandler) GetModelChildren(c *gin.Context) {
+	uuid := c.Param("uuid")
+	status, children, err := database.GetModelChildren(uuid)
+	if err != nil {
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(status, children)
 }

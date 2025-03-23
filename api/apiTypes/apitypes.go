@@ -75,9 +75,9 @@ type CausalDependency struct {
 
 type User struct {
 	ID       int    `gorm:"primaryKey" json:"-"`
-	UUID     string `gorm:"unique" json:"uuid"`
+	UUID     string `json:"uuid"`
 	Username string `json:"username"`
-	Email    string `json:"email"`
+	Email    string `gorm:"unique" json:"email"`
 	Password string `json:"-"`
 }
 

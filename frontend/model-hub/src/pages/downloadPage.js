@@ -17,13 +17,35 @@ import {
     Link,
     Stack,
     Breadcrumbs,
-    Chip
+    Chip,
+    Checkbox,
+    FormControlLabel,
+    FormGroup,
+    Card,
+    CardContent,
+    TextField
 } from "@mui/material";
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogContentText from '@mui/material/DialogContentText';
+import DialogTitle from '@mui/material/DialogTitle';
 import { useParams } from "react-router-dom";
-//import { useDropzone } from "react-dropzone";
-//import { useCallback } from "react";
+import { useDropzone } from "react-dropzone";
+import { useCallback } from "react";
 
 const DownloadPage = () => {
+    const [uploadStatus, setUploadStatus] = useState(null);
+    const [errorMessage, setErrorMessage] = useState("");
+    const [open, setOpen] = React.useState(false);
+
+    const handleClickOpen = () => {
+        setOpen(true);
+    };
+
+    const handleClose = () => {
+        setOpen(false);
+    };
 
     const cdm = {
         creator: 'No CDM loaded'
@@ -71,6 +93,67 @@ const DownloadPage = () => {
         }
     }
 
+    const onDrop = useCallback(async (acceptedFiles) => {
+        console.log(acceptedFiles);
+
+        const file = acceptedFiles[0];
+
+        try {
+            // const fileText = await file.text();
+            const response = await fetch(`${API_URL}/v0/models`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: file
+            });
+
+            if (!response.ok) {
+                throw new Error(`Upload failed: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log("Updated success:", result);
+
+            setUploadStatus("success");
+            setErrorMessage("");
+
+        } catch (error) {
+            console.error("Error uploading file:", error);
+            setUploadStatus("error");
+            setErrorMessage(error.message || "Upload failed.");
+        }
+    }, []);
+
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+
+    function displayUploadMenu() {
+        return (
+            <Box
+                {...getRootProps()}
+                sx={{
+                    border: "2px dashed gray",
+                    borderRadius: 2,
+                    p: 4,
+                    height: '5em',
+                    alignContent: 'center',
+                    textAlign: "center",
+                    cursor: "pointer",
+                    backgroundColor: isDragActive ? "lightblue" : "transparent",
+                    transition: "background-color 0.2s ease-in-out",
+                    "&:hover": {
+                        backgroundColor: "lightgray",
+                    },
+                }}
+            >
+                <input {...getInputProps()} />
+                <Typography variant="body1">
+                    {isDragActive ? "Drop the files here..." : "Drag 'n' drop some files here, or click to select files"}
+                </Typography>
+            </Box>
+        );
+    }
+
     const breadcrumbs = [
         <Link underline="hover" key="1" color="inherit" href="/">
             MUI
@@ -110,6 +193,93 @@ const DownloadPage = () => {
         setValue(newValue);
     };
 
+    function CollapsedParentLineage() {
+        const [lineage, setLineage] = React.useState(null);
+
+        React.useEffect(() => {
+            async function fetchLineage() {
+                try {
+                    const res = await fetch(`${API_URL}/lineage/${uuid}`);
+                    if (!res.ok) {
+                        throw new Error('Failed to fetch lineage');
+                    }
+                    const data = await res.json();
+                    setLineage(data);
+                } catch (error) {
+                    console.error('Error fetching lineage:', error);
+                }
+            }
+            fetchLineage();
+        }, [uuid]);
+
+        if (!lineage) {
+            return;
+        }
+
+        return (
+            <div role="presentation">
+                <Typography variant="h6" gutterBottom>
+                    Parent Lineage
+                </Typography>
+                <Breadcrumbs maxItems={4} separator="›" aria-label="breadcrumb" sx={{ mb: "2em" }}>
+                    {lineage.map((parent, index) => (
+                        <Link
+                            key={parent.id || `lineage-${index}`}
+                            underline="hover"
+                            color="inherit"
+                            href={`/model/${parent.meta?.uuid}`}
+                        >
+                            {parent.meta ? parent.meta.name : parent.name}
+                        </Link>
+                    ))}
+                </Breadcrumbs>
+            </div>
+        );
+    }
+
+    function ModelChildren() {
+        const [children, setChildren] = React.useState(null);
+
+        React.useEffect(() => {
+            async function fetchChildren() {
+                try {
+                    const res = await fetch(`${API_URL}/children/${uuid}`);
+                    if (!res.ok) {
+                        throw new Error('Failed to fetch children');
+                    }
+                    const data = await res.json();
+                    setChildren(data);
+                } catch (error) {
+                    console.error('Error fetching children:', error);
+                }
+            }
+            fetchChildren();
+        }, [uuid]);
+
+        if (!children || children.length == 0) {
+            return;
+        }
+
+        return (
+            <div role="presentation">
+                <Typography variant="h6" gutterBottom>
+                    Children
+                </Typography>
+                <Box sx={{ display: 'flex', gap: '1em' }}>
+                    {children.map((child, index) => (
+                        <Link
+                            key={child.id || `children-${index}`}
+                            underline="hover"
+                            color="gray"
+                            href={`/model/${child.meta?.uuid}`}
+                        >
+                            {child.meta ? child.meta.name : child.name}
+                        </Link>
+                    ))}
+                </Box>
+            </div>
+        );
+    }
 
     return (
         <Box sx={{ display: "flex", flexDirection: "column", p: 3 }}>
@@ -130,7 +300,7 @@ const DownloadPage = () => {
 
                 <Box sx={{ display: "flex", flexDirection: "column", p: 3, flex: 1 }}>
                     <Typography variant="h4" sx={{ pb: 1 }}>   {model.meta ? model.meta.name : ""} </Typography>
-                    <Typography variant="subtitle1" sx={{ pb: 2 }}> By: {model.meta && model.meta.creator ? model.meta.creator.Username : ""} </Typography>
+                    <Typography variant="subtitle1" sx={{ pb: 2 }}> By: {model && model.meta && model.meta.creator ? model.meta.creator.username : ""} </Typography>
 
                     <Stack direction="row" spacing={1} sx={{ pb: 8 }}>
                         <Chip label="Tag 1" />
@@ -142,12 +312,42 @@ const DownloadPage = () => {
                     <Button
                         variant="outlined"
                         sx={{ width: "30%" }}
-                        component={NavLink}
-                        to=""
                         onClick={getCDM}
                     >
                         Download
                     </Button>
+                    <Button
+                        variant="outlined"
+                        sx={{ width: "30%", mt: '1em' }}
+                        onClick={handleClickOpen}
+                    >
+                        Update
+                    </Button>
+                    <Dialog
+                        open={open}
+                        onClose={handleClose}
+                        slotProps={{
+                            paper: {
+                                component: 'form',
+                                onSubmit: (event) => {
+                                    event.preventDefault();
+                                    const formData = new FormData(event.currentTarget);
+                                    const formJson = Object.fromEntries(formData.entries());
+                                    const email = formJson.email;
+                                    console.log(email);
+                                    handleClose();
+                                },
+                            },
+                        }}
+                    >
+                        <DialogTitle>Update Model</DialogTitle>
+                        <DialogContent>
+                            {displayUploadMenu()}
+                        </DialogContent>
+                        <DialogActions>
+                            <Button onClick={handleClose}>Cancel</Button>
+                        </DialogActions>
+                    </Dialog>
                 </Box>
             </Box>
 
@@ -156,17 +356,30 @@ const DownloadPage = () => {
                     <Tabs value={value} onChange={handleChange} aria-label="basic tabs example">
                         <Tab label="Overview" />
                         <Tab label="Documentation" />
-                        <Tab label="Item Three" />
+                        <Tab label="Commit Diff" />
+                        <Tab label="Fork Info" />
                     </Tabs>
                 </Box>
                 <CustomTabPanel value={value} index={0}>
                     {model.meta ? model.meta.summary : ""}
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={1}>
-                {model.meta && model.meta.documentation ? model.meta.documentation.content : ""}
+                    {model.meta && model.meta.documentation ? model.meta.documentation.content : ""}
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={2}>
-                    Item Three
+                    <FormGroup>
+                        <FormControlLabel control={<Checkbox defaultChecked />} label="View Substantial Changes" sx={{ mb: "1em" }} />
+
+                        <Card>
+                            <CardContent>
+                                Eric was here, annyeonghaseyo.
+                            </CardContent>
+                        </Card>
+                    </FormGroup>
+                </CustomTabPanel>
+                <CustomTabPanel value={value} index={3}>
+                    {CollapsedParentLineage()}
+                    {ModelChildren()}
                 </CustomTabPanel>
             </Box>
         </Box>

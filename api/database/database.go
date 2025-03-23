@@ -5,6 +5,7 @@
 package database
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
@@ -58,41 +59,35 @@ func InitializeDBInstance() (int, error) {
 	// Check to make sure the environment variables for the database connection are set before using them
 	username, ok := os.LookupEnv("OPEN_DI_DB_USERNAME")
 	if !ok || username == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_USERNAME is not set or empty")
-		os.Exit(1)
+		return 1, fmt.Errorf("environment variable OPEN_DI_DB_USERNAME is not set or empty")
 	}
 	password, ok := os.LookupEnv("OPEN_DI_DB_PASSWORD")
 	if !ok || password == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_PASSWORD is not set or empty")
-		os.Exit(1)
+		return 1, fmt.Errorf("environment variable OPEN_DI_DB_PASSWORD is not set or empty")
 	}
 	hostname, ok := os.LookupEnv("OPEN_DI_DB_HOSTNAME")
 	if !ok || hostname == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_HOSTNAME is not set or empty")
-		os.Exit(1)
+		return 1, fmt.Errorf("environment variable OPEN_DI_DB_HOSTNAME is not set or empty")
 	}
 	port, ok := os.LookupEnv("OPEN_DI_DB_PORT")
 	if !ok || port == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_PORT is not set or empty")
-		os.Exit(1)
+		return 1, fmt.Errorf("environment variable OPEN_DI_DB_PORT is not set or empty")
 	}
 	dbname, ok := os.LookupEnv("OPEN_DI_DB_NAME")
 	if !ok || dbname == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPEN_DI_DB_NAME is not set or empty")
-		os.Exit(1)
+		return 1, fmt.Errorf("environment variable OPEN_DI_DB_NAME is not set or empty")
 	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", username, password, hostname, port, dbname)
 
 	var err error
 	if dbInstance != nil {
-		return 0, nil
+		sqlDB, _ := dbInstance.DB()
+		sqlDB.Close()
+		dbInstance = nil
+
 	}
+
 	dbInstance, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		dbInstance = nil
@@ -135,6 +130,7 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 
 }
 
+
 // function for getting all commits in Go struct  - remember, in Go, public methods have to be capitalized
 func GetAllCommits() (int, []apiTypes.Commit, error) {
 	var commits []apiTypes.Commit
@@ -148,8 +144,28 @@ func GetAllCommits() (int, []apiTypes.Commit, error) {
 
 }
 
-// Example method that creates a sample model in the database
-func CreateExampleModel() {
+
+// helper function for creating a user given a user object. Doesn't check for if it's possible to create
+func createUserGivenObject(user apiTypes.User) (*apiTypes.User, error) {
+	// Begin transaction.
+	transaction := dbInstance.Begin()
+	if transaction.Error != nil {
+		return nil, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	}
+
+	if err := transaction.Create(&user).Error; err != nil {
+		transaction.Rollback()
+		return nil, fmt.Errorf("could not create updater: %s", err.Error())
+	}
+
+	transaction.Commit()
+	return &user, nil
+}
+
+// Example method that creates sample models in the database
+// creates 2 models, parent and child.
+// also creates creators for those models
+func CreateExampleModels() {
 	creator := apiTypes.User{
 		ID:       1,
 		UUID:     "user-uuid-creator",
@@ -158,19 +174,22 @@ func CreateExampleModel() {
 		Password: "p",
 	}
 
-	updater := apiTypes.User{
-		ID:       2,
-		UUID:     "user-uuid-updater",
-		Username: "Test Updater",
-		Email:    "updater@example.com",
-		Password: "q",
-	}
+	createUserGivenObject(creator)
+	/*
+		updater := apiTypes.User{
+			ID:       2,
+			UUID:     "user-uuid-updater",
+			Username: "Test Updater",
+			Email:    "updater@example.com",
+			Password: "q",
+		}
+	*/
 
 	meta := apiTypes.Meta{
 		ID:            1,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
-		UUID:          "1234-5678-9101",
+		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
 		Name:          "Test Model",
 		Summary:       "This is a test model",
 		Documentation: nil,
@@ -179,7 +198,7 @@ func CreateExampleModel() {
 		CreatorID:     creator.ID,
 		Creator:       creator,
 		CreatedDate:   "2021-07-01",
-		Updaters:      []apiTypes.User{updater},
+		Updaters:      []apiTypes.User{},
 		UpdatedDate:   "2021-07-01",
 	}
 
@@ -207,19 +226,23 @@ func CreateExampleModel() {
 		Password: "p",
 	}
 
-	childUpdater := apiTypes.User{
-		ID:       4,
-		UUID:     "user-uuid-child-updater",
-		Username: "Test Child Updater",
-		Email:    "mail.com",
-		Password: "q",
-	}
+	createUserGivenObject(childCreator)
+
+	/*
+		childUpdater := apiTypes.User{
+			ID:       4,
+			UUID:     "user-uuid-child-updater",
+			Username: "Test Child Updater",
+			Email:    "mail.com",
+			Password: "q",
+		}
+	*/
 
 	childMeta := apiTypes.Meta{
 		ID:            2,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
-		UUID:          "1324-5678-9101",
+		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e",
 		Name:          "Test Child Model",
 		Summary:       "This is a test child model",
 		Documentation: nil,
@@ -228,7 +251,7 @@ func CreateExampleModel() {
 		CreatorID:     childCreator.ID,
 		Creator:       childCreator,
 		CreatedDate:   "2021-07-01",
-		Updaters:      []apiTypes.User{childUpdater, updater},
+		Updaters:      []apiTypes.User{},
 		UpdatedDate:   "2021-07-01",
 	}
 
@@ -250,6 +273,7 @@ func CreateExampleModel() {
 	}
 
 }
+
 
 // matchUUIDsToID recursively iterates through a CDM (or really any CDM component)
 // and its nested structures and finds matching UUIDs in the database and updates
@@ -480,6 +504,33 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 	return nil
 }
 
+
+// returns UUID string generated randomly
+func generateUUID() (string, error) {
+	// Create a byte slice to hold the UUID (16 bytes)
+	uuidBytes := make([]byte, 16)
+
+
+	// Fill the slice with random bytes
+	_, err := rand.Read(uuidBytes)
+	if err != nil {
+		return "", err
+	}
+	// Format the UUID according to the regex pattern:
+	// 8-4-4-4-12 lowercase hexadecimal characters
+	uuidStr := fmt.Sprintf(
+		"%08x-%04x-%04x-%04x-%012x",
+		uuidBytes[0:4],   // First 4 bytes (8 hex digits)
+		uuidBytes[4:6],   // Next 2 bytes (4 hex digits)
+		uuidBytes[6:8],   // Next 2 bytes (4 hex digits)
+		uuidBytes[8:10],  // Next 2 bytes (4 hex digits)
+		uuidBytes[10:16], // Last 6 bytes (12 hex digits)
+	)
+
+	return uuidStr, nil
+}
+
+
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
 func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	// Ensure no other model with the same UUID exists.
@@ -489,12 +540,11 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 		// If a meta with the same UUID exists, return a conflict error.
 		return http.StatusConflict, fmt.Errorf("a model with UUID %s already exists", uploadedModel.Meta.UUID)
 	}
-
 	// Begin transaction.
 	transaction := dbInstance.Begin()
 	if transaction.Error != nil {
 		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
-	}
+   
 
 	// Match all UUIDs in the model to existing database IDs where possible
 	// This will ensure that we are not duplicating pre-existing components
@@ -502,6 +552,7 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
 		transaction.Rollback()
 		return http.StatusInternalServerError, err
+
 	}
 
 	// Create meta in transaction; error out on failure.
@@ -522,6 +573,63 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	}
 
 	return http.StatusCreated, nil
+}
+
+
+// Creates model in database given emails of creator
+// this method expects a model with the Creator object filled in with a non-null Email.
+// the updaters functionality is not done yet.
+func CreateModelGivenEmail(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
+
+	var count int64
+	//keep generating UUIDs until a unique one is found
+	for {
+		// Generate a UUID for the model.
+		uuid, err := generateUUID()
+		if err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("could not generate UUID: %s", err.Error())
+		}
+		uploadedModel.Meta.UUID = uuid
+
+		// Ensure no other model with the same UUID exists.
+		dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
+		if count == 0 {
+			break
+		}
+
+	}
+
+	/*
+		// Try to retrieve updater id information from the meta, then find an updater with that id in the database.
+		for i, updater := range uploadedModel.Meta.Updaters {
+			var countUpdater int64
+			transaction.Model(&apiTypes.User{}).Where("uuid = ?", updater.UUID).Count(&countUpdater)
+			if countUpdater == 0 {
+				// Create the updater in the database if it does not exist.
+				if err := transaction.Create(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
+					transaction.Rollback()
+					return http.StatusInternalServerError, fmt.Errorf("could not create updater: %s", err.Error())
+				}
+			} else {
+				// Find the updater in the database using the uuid
+				if err := transaction.Where("uuid = ?", updater.UUID).First(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
+					transaction.Rollback()
+					return http.StatusInternalServerError, fmt.Errorf("could not find updater: %s", err.Error())
+				}
+			}
+		}
+	*/
+
+	// this method expects a model with the Creator object filled in with a non-null Email.
+	email := uploadedModel.Meta.Creator.Email
+	//string is not copied
+	status, user, _ := GetUserByEmail(email)
+	if status != http.StatusOK {
+		return http.StatusConflict, fmt.Errorf("could not find creator: %s", email)
+	}
+	uploadedModel.Meta.Creator = *user
+	uploadedModel.Meta.CreatorID = user.ID
+	return CreateModel(uploadedModel)
 }
 
 // GetModelByUUID encapsulates the GORM functionality for getting a model by its UUID
@@ -565,6 +673,7 @@ func GetUserByID(id int) (int, *apiTypes.User, error) {
 
 	return http.StatusOK, &user, nil
 }
+
 
 // UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction
 func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
@@ -669,4 +778,116 @@ func CreateCommit(uploadedCommit *apiTypes.Commit) (int, error) {
 	}
 
 	return http.StatusCreated, nil
+
+func GetUserByEmail(email string) (int, *apiTypes.User, error) {
+	var user apiTypes.User
+
+	// Find the user record with the given ID.
+	if err := dbInstance.Where("email = ?", email).First(&user).Error; err != nil {
+		return http.StatusNotFound, nil, fmt.Errorf("user with email %s not found", email)
+	}
+
+	return http.StatusOK, &user, nil
+}
+
+func CreateUser(email string, password string) (*apiTypes.User, error) {
+	var newuser apiTypes.User
+	newuser.Username = email
+	newuser.Email = email
+	newuser.Password = password
+	//i don't see why user has to have a UUID
+	newuser.UUID = "uuid"
+	// Ensure no other user with this email exists
+	var count int64
+	dbInstance.Model(&apiTypes.User{}).Where("email = ?", email).Count(&count)
+	if count > 0 {
+		// If a meta with the same email exists, return a conflict error.
+		return nil, fmt.Errorf("a user with email %s already exists", email)
+	}
+
+	// Begin transaction.
+	transaction := dbInstance.Begin()
+	if transaction.Error != nil {
+		return nil, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	}
+
+	if err := transaction.Create(&newuser).Error; err != nil {
+		transaction.Rollback()
+		return nil, fmt.Errorf("could not create updater: %s", err.Error())
+	}
+
+	transaction.Commit()
+
+	return &newuser, nil
+}
+
+func UserLogin(email string, password string) (int, *apiTypes.User, error) {
+
+	status, user, _ := GetUserByEmail(email)
+
+	if status != 200 {
+		//For now, let's just create a new user
+		newuser, err := CreateUser(email, password)
+		if err != nil {
+			return http.StatusConflict, nil, fmt.Errorf("user does not exist and could not create new user")
+		}
+		return http.StatusOK, newuser, nil
+	} else {
+		if user.Password != password {
+			return http.StatusUnauthorized, nil, fmt.Errorf("password is incorrect")
+		}
+	}
+
+	return http.StatusOK, user, nil
+}
+
+func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
+	status, modelPtr, err := GetModelByUUID(uuid)
+
+	if err != nil {
+		return status, nil, err
+	}
+
+	model := *modelPtr
+
+	var lineage []apiTypes.CausalDecisionModel
+
+	for model.ParentUUID != "" {
+		_, parentPtr, err := GetModelByUUID(model.ParentUUID)
+
+		if err != nil {
+			break
+		}
+
+		parent := *parentPtr
+		lineage = append(lineage, parent)
+		model = parent
+	}
+
+	// Reverse the lineage so that the earliest ancestor is first.
+	for i, j := 0, len(lineage)-1; i < j; i, j = i+1, j-1 {
+		lineage[i], lineage[j] = lineage[j], lineage[i]
+	}
+
+	return http.StatusOK, lineage, nil
+}
+
+func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
+	var children []apiTypes.CausalDecisionModel
+	if err := dbInstance.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Where("parent_uuid = ?", uuid).
+		Find(&children).Error; err != nil {
+		return http.StatusNotFound, nil, err
+	}
+
+	return http.StatusOK, children, nil
 }

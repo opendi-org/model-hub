@@ -19,6 +19,10 @@ export const theme = createTheme({
         },
         secondary: {
             main: '#9dafb5',
+        },
+        dark: {
+            main:'#171c31',
+            contrastText: '#FFFFFF'
         }
     },
     typography: {
