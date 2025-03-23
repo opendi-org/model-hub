@@ -130,7 +130,6 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 
 }
 
-
 // function for getting all commits in Go struct  - remember, in Go, public methods have to be capitalized
 func GetAllCommits() (int, []apiTypes.Commit, error) {
 	var commits []apiTypes.Commit
@@ -143,7 +142,6 @@ func GetAllCommits() (int, []apiTypes.Commit, error) {
 	return http.StatusOK, commits, nil
 
 }
-
 
 // helper function for creating a user given a user object. Doesn't check for if it's possible to create
 func createUserGivenObject(user apiTypes.User) (*apiTypes.User, error) {
@@ -273,7 +271,6 @@ func CreateExampleModels() {
 	}
 
 }
-
 
 // matchUUIDsToID recursively iterates through a CDM (or really any CDM component)
 // and its nested structures and finds matching UUIDs in the database and updates
@@ -504,12 +501,10 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 	return nil
 }
 
-
 // returns UUID string generated randomly
 func generateUUID() (string, error) {
 	// Create a byte slice to hold the UUID (16 bytes)
 	uuidBytes := make([]byte, 16)
-
 
 	// Fill the slice with random bytes
 	_, err := rand.Read(uuidBytes)
@@ -530,7 +525,6 @@ func generateUUID() (string, error) {
 	return uuidStr, nil
 }
 
-
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
 func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	// Ensure no other model with the same UUID exists.
@@ -540,11 +534,12 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 		// If a meta with the same UUID exists, return a conflict error.
 		return http.StatusConflict, fmt.Errorf("a model with UUID %s already exists", uploadedModel.Meta.UUID)
 	}
+
 	// Begin transaction.
 	transaction := dbInstance.Begin()
 	if transaction.Error != nil {
 		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
-   
+	}
 
 	// Match all UUIDs in the model to existing database IDs where possible
 	// This will ensure that we are not duplicating pre-existing components
@@ -552,7 +547,6 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
 		transaction.Rollback()
 		return http.StatusInternalServerError, err
-
 	}
 
 	// Create meta in transaction; error out on failure.
@@ -574,7 +568,6 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 
 	return http.StatusCreated, nil
 }
-
 
 // Creates model in database given emails of creator
 // this method expects a model with the Creator object filled in with a non-null Email.
@@ -673,7 +666,6 @@ func GetUserByID(id int) (int, *apiTypes.User, error) {
 
 	return http.StatusOK, &user, nil
 }
-
 
 // UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction
 func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
@@ -778,6 +770,7 @@ func CreateCommit(uploadedCommit *apiTypes.Commit) (int, error) {
 	}
 
 	return http.StatusCreated, nil
+}
 
 func GetUserByEmail(email string) (int, *apiTypes.User, error) {
 	var user apiTypes.User

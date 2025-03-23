@@ -118,7 +118,6 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	c.IndentedJSON(status, model)
 }
 
-
 // putModel godoc
 // @Summary      Update model
 // @Description  Updates a causal decision model along with its metadata in a single transaction.
@@ -236,7 +235,8 @@ func (h *ModelHandler) UploadCommit(c *gin.Context) {
 
 	// Return a successful response if commit creation is successful
 	c.JSON(http.StatusCreated, uploadedCommit)
-  
+}
+
 func (h *AuthHandler) UserLogin(c *gin.Context) {
 	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
 	email := c.Query("email")
