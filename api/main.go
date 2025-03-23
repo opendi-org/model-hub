@@ -58,8 +58,6 @@ func main() {
 
 	authHandler, err := handlers.NewAuthHandler()
 
-	lineageHandler, err := handlers.NewLineageHandler()
-
 	commitHandler, err := handlers.NewCommitHandler()
 
 	// Handle any errors that occur during initialization of the API endpoint handling logic
@@ -111,6 +109,9 @@ func main() {
 		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
 		models.POST("", modelHandler.UploadModel)         // Upload a model
 		models.PUT("", modelHandler.PutModel)             // Update a model
+
+		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
+		models.GET("/children/:uuid", modelHandler.GetModelChildren)
 	}
 
 	//router group for all endpoints related to models
@@ -142,10 +143,6 @@ func main() {
 		os.Exit(1)
 	}
 	modelHubPort = val
-
-	router.GET("/lineage/:uuid", lineageHandler.GetModelLineage)
-
-	router.GET("/children/:uuid", lineageHandler.GetModelChildren)
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

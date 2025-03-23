@@ -26,9 +26,6 @@ type CommitHandler struct {
 type AuthHandler struct {
 }
 
-type LineageHandler struct {
-}
-
 // method for getting an instance of ModelHandler
 func NewModelHandler() (*ModelHandler, error) {
 
@@ -43,10 +40,6 @@ func NewCommitHandler() (*CommitHandler, error) {
 
 func NewAuthHandler() (*AuthHandler, error) {
 	return &AuthHandler{}, nil
-}
-
-func NewLineageHandler() (*LineageHandler, error) {
-	return &LineageHandler{}, nil
 }
 
 // GetModels godoc
@@ -286,7 +279,7 @@ func (h *AuthHandler) UserLogin(c *gin.Context) {
 	c.IndentedJSON(status, user)
 }
 
-func (h *LineageHandler) GetModelLineage(c *gin.Context) {
+func (h *ModelHandler) GetModelLineage(c *gin.Context) {
 	uuid := c.Param("uuid")
 	status, lineage, err := database.GetModelLineage(uuid)
 	if err != nil {
@@ -297,7 +290,7 @@ func (h *LineageHandler) GetModelLineage(c *gin.Context) {
 	c.IndentedJSON(status, lineage)
 }
 
-func (h *LineageHandler) GetModelChildren(c *gin.Context) {
+func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 	uuid := c.Param("uuid")
 	status, children, err := database.GetModelChildren(uuid)
 	if err != nil {
