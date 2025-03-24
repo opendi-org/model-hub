@@ -237,6 +237,17 @@ func (h *ModelHandler) UploadCommit(c *gin.Context) {
 	c.JSON(http.StatusCreated, uploadedCommit)
 }
 
+// putModel godoc
+// @Summary      Login a user
+// @Description  Either login or create a user
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        user  body  apiTypes.User  true  "User login"
+// @Success      201 {object} apiTypes.User "logged in user"
+// @Failure      400 {object} gin.H "Bad Request"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /login [put]
 func (h *AuthHandler) UserLogin(c *gin.Context) {
 	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
 	email := c.Query("email")

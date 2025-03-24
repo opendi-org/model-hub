@@ -887,13 +887,11 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 
 func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
-	// Use MySQL Full-Text Search to find models with names similar to the input string
-	query := `
-        SELECT * FROM causal_decision_models
-        JOIN meta ON causal_decision_models.meta_id = meta.id
-        WHERE MATCH(meta.name) AGAINST(? IN NATURAL LANGUAGE MODE)
-    `
+	
+	// Use GORM's query builder to work with Full-Text Search
 	if err := dbInstance.
+		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
+		Where("MATCH(meta.name) AGAINST(? IN NATURAL LANGUAGE MODE)", name).
 		Preload("Meta").
 		Preload("Diagrams").
 		Preload("Diagrams.Meta").
@@ -903,21 +901,20 @@ func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
 		Preload("Meta.Updaters").
-		Preload("Meta.Name").
-		Preload("Meta.Summary").
-		Raw(query, name).
-		Scan(&models).Error; err != nil {
+		Find(&models).Error; err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
 
 	return http.StatusOK, models, nil
-
 }
 
-func SearchModelsByUser(name string) (int, []apiTypes.CausalDecisionModel, error) {
+func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
-	// Use the LIKE operator to find models with names similar to the input string
+	
 	if err := dbInstance.
+		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
+		Joins("JOIN users ON meta.creator_id = users.id").
+		Where("users.username LIKE ?", "%"+username+"%").
 		Preload("Meta").
 		Preload("Diagrams").
 		Preload("Diagrams.Meta").
@@ -926,11 +923,7 @@ func SearchModelsByUser(name string) (int, []apiTypes.CausalDecisionModel, error
 		Preload("Diagrams.Elements.Meta").
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
-		Preload("Meta.Creator.Username").
 		Preload("Meta.Updaters").
-		Preload("User").
-		Preload("User.Username").
-		Where("meta.creator.username LIKE ?", "%"+name+"%").
 		Find(&models).Error; err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
