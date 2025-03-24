@@ -736,6 +736,12 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	}
 
 	// Update the model
+	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
+	}
+
+	// Update the model
 	if err := transaction.Save(&uploadedModel).Error; err != nil {
 		transaction.Rollback()
 		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
