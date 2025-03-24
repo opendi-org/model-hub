@@ -685,6 +685,16 @@ func GetLatestCommitForModelUUID(uuid string) (int, *apiTypes.Commit, error) {
 	return http.StatusAccepted, &commit, nil
 }
 
+// gets commit by primary key id
+func GetCommitByID(id int) (int, *apiTypes.Commit, error) {
+	var commit apiTypes.Commit
+	err := dbInstance.Where("id = ?", id).First(&commit).Error
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusAccepted, &commit, nil
+}
+
 // UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction
 func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	// Begin transaction.

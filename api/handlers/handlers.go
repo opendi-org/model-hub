@@ -11,8 +11,9 @@ import (
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
 	jsonDiffHelpers "opendi/model-hub/api/jsondiffhelpers"
-	"strconv"
+	"strconv" //for applying patches generated with jsondiff
 
+	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/gin-gonic/gin"
 	jsondiff "github.com/wI2L/jsondiff"
 )
@@ -311,10 +312,38 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		invertedPatch, err := jsonDiffHelpers.InvertPatch(patch)
 		//apply the inverted patch to the current JSON bytes we have
 
-		currModelBytes, err = invertedPatch.Apply(currModelBytes, false)
+		//get byte array form of patach
+		invertedPatchBytes := []byte(invertedPatch.String())
+		jsonpatchPatch, err := jsonpatch.DecodePatch(invertedPatchBytes)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+			return
+		}
 
+		//apply the patch
+		modified, err := jsonpatchPatch.Apply(currModelBytes)
+
+		//reset variables for next iteration of applying patches
+		currModelBytes = modified
 		currVersion--
+		parentIdStr := currCommit.ParentCommitID
+		if parentIdStr == "" {
+			c.JSON(http.StatusInternalServerError, "No parent ID") //if we encounter a null parent id, return error.
+			return
+		}
+
+		parentId, _ := strconv.ParseInt(parentIdStr, 10, 64)
+
+		_, currCommit, err = database.GetCommitByID(int(parentId))
+
 	}
+
+	var finalModel interface{}
+	if err := json.Unmarshal(currModelBytes, &finalModel); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, finalModel)
 
 }
 
