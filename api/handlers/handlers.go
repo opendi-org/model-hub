@@ -5,10 +5,13 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
+	jsonDiffHelpers "opendi/model-hub/api/jsondiffhelpers"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	jsondiff "github.com/wI2L/jsondiff"
@@ -166,7 +169,32 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 		return
 	}
 
-	diff, err := jsondiff.Compare(changedModel, oldmodel)
+	//TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
+
+	//Let's say that the raw JSON of the original JSON file doesn't contain default values.
+	//If we take the raw JSOn, translate it into a Go struct (which definition has default values), change some values (and convert the new struct back to JSON),
+	// and then perform a JSON diff between the original JSON and the new JSON,
+	//then the diff will think that the default values are part of the JSOn files.
+
+	//this means that if we actually try to apply the diff on the raw JSON, we will get an error because the default values are not in the raw JSON file.
+
+	//so this shows how changing Go structs and then applying the JSON on their raw JSON forms can be a problem. (The standard way is to apply changes to the raw JSON forms instead)
+	//However, this is not a problem for our purposes, because we only will aplpy the diff when we convert Go structs to raw JSON - not getting raw JSON from somewhere else.
+
+	changedModelBytes, err := json.Marshal(changedModel)
+	if err != nil {
+		// Return error based on the UpdateModel function response
+		c.JSON(500, gin.H{"Error": err.Error()})
+		return
+	}
+	oldmodelBytes, err := json.Marshal(oldmodel)
+	if err != nil {
+		// Return error based on the UpdateModel function response
+		c.JSON(500, gin.H{"Error": err.Error()})
+		return
+	}
+
+	diff, err := jsondiff.CompareJSON(changedModelBytes, oldmodelBytes, jsondiff.Invertible())
 
 	if err != nil {
 		// Return error based on the UpdateModel function response
@@ -179,6 +207,21 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 	commit.CDMUUID = uploadedModel.Meta.UUID
 	commit.Diff = diff.String()
 	commit.UserUUID = uploadedModel.Meta.Creator.UUID
+
+	status, parent, err := database.GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
+
+	//if there's no latest commit, this must be the first.
+	if status == http.StatusNotFound {
+		commit.ParentCommitID = ""
+		commit.Version = 1
+	} else if status == http.StatusInternalServerError {
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+
+	} else {
+		commit.ParentCommitID = fmt.Sprintf("%d", parent.ID)
+		commit.Version = parent.Version + 1
+	}
 
 	if status, err := database.CreateCommit(&commit); err != nil {
 		// Return error based on the CreateCommit function response
@@ -209,20 +252,70 @@ func (h *CommitHandler) GetCommits(c *gin.Context) {
 	c.IndentedJSON(status, models)
 }
 
-func (h *CommitHandler) GetCommitByUUID(c *gin.Context) {
+func (h *CommitHandler) GetLatestCommitByModelUUID(c *gin.Context) {
 	uuid := c.Param("uuid")
 
 	// Call the encapsulated GetModelByUUID function from the database package
-	status, commit, err := database.GetCommitForModelMetaUUID(uuid)
+	status, commit, err := database.GetLatestCommitForModelUUID(uuid)
 	if err != nil {
 		// If error, return an appropriate response based on the error
 		c.JSON(status, gin.H{"Error": err.Error()})
 		return
 	}
 
-	// Return the model if found
+	// Return the commit if found
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(status, commit)
+}
+
+// doesn't do anything to the database, but just returns the version of the model associated with the commit version
+func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
+	strVersion := c.Param("version")
+	uuid := c.Param("uuid")
+	version, err := strconv.Atoi(strVersion)
+	_, latestVersionOfModel, err := database.GetModelByUUID(uuid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		return
+	}
+	_, commit, err := database.GetLatestCommitForModelUUID(uuid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		return
+	}
+	if version == commit.Version {
+		c.JSON(http.StatusOK, latestVersionOfModel)
+		return
+	}
+
+	currVersion := commit.Version
+	currCommit := commit
+
+	currModelBytes, err := json.Marshal(latestVersionOfModel)
+	if err != nil {
+		// Return error based on the UpdateModel function response
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		return
+	}
+
+	for currVersion > version {
+		diff := []byte(currCommit.Diff)
+		var patch jsondiff.Patch
+		//convert from byte array to patch object
+		err = json.Unmarshal(diff, &patch)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+			return
+		}
+		//invert the patch and apply it to the model
+		invertedPatch, err := jsonDiffHelpers.InvertPatch(patch)
+		//apply the inverted patch to the current JSON bytes we have
+
+		currModelBytes, err = invertedPatch.Apply(currModelBytes, false)
+
+		currVersion--
+	}
+
 }
 
 /* //ERIC - we only needed this for testing.

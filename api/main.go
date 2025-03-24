@@ -119,7 +119,7 @@ func main() {
 	{
 
 		commits.GET("", commitHandler.GetCommits) // Get all commits
-		commits.GET("/:uuid", commitHandler.GetCommitByUUID)
+		commits.GET("/:uuid", commitHandler.GetLatestCommitByModelUUID)
 		//commits.POST("", commitHandler.UploadCommit) // Create a commit (for testing)
 	}
 

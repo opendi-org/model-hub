@@ -88,6 +88,7 @@ type Commit struct {
 	UserUUID       string    `json:"useruuid"`
 	CDMUUID        string    `json:"cdmuuid"`
 	CreatedAt      time.Time `json:"CreatedAt"`
+	Version        int       `json:"version"`
 }
 
 func (cdm CausalDecisionModel) Equals(other CausalDecisionModel) bool {
@@ -164,6 +165,7 @@ func (u User) Equals(other User) bool {
 	return u.Username == other.Username
 }
 
+// for testing purposes
 func (c Commit) Equals(other Commit) bool {
-	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID
+	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID && c.Diff == other.Diff && c.UserUUID == other.UserUUID
 }

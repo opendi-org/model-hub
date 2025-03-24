@@ -199,7 +199,7 @@ const DownloadPage = () => {
         React.useEffect(() => {
             async function fetchLineage() {
                 try {
-                    const res = await fetch(`${API_URL}/lineage/${uuid}`);
+                    const res = await fetch(`${API_URL}/v0/models/lineage/${uuid}`);
                     if (!res.ok) {
                         throw new Error('Failed to fetch lineage');
                     }
@@ -243,7 +243,7 @@ const DownloadPage = () => {
         React.useEffect(() => {
             async function fetchChildren() {
                 try {
-                    const res = await fetch(`${API_URL}/children/${uuid}`);
+                    const res = await fetch(`${API_URL}/v0/models/children/${uuid}`);
                     if (!res.ok) {
                         throw new Error('Failed to fetch children');
                     }
@@ -368,13 +368,26 @@ const DownloadPage = () => {
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={2}>
                     <FormGroup>
-                        <FormControlLabel control={<Checkbox defaultChecked />} label="View Substantial Changes" sx={{ mb: "1em" }} />
+                        <FormControlLabel 
+                            control={<Checkbox defaultChecked />} 
+                            label="View Substantial Changes" 
+                            sx={{ mb: "1em" }} 
+                        />
 
-                        <Card>
-                            <CardContent>
-                                Eric was here, annyeonghaseyo.
-                            </CardContent>
-                        </Card>
+                        {/* Flex container for cards */}
+                        <Box sx={{ display: "flex", gap: 2 }}>
+                            <Card sx={{ flex: 1 }}>
+                                <CardContent>
+                                    Eric was here, annyeonghaseyo.
+                                </CardContent>
+                            </Card>
+
+                            <Card sx={{ flex: 1 }}>
+                                <CardContent>
+                                    Another card here!
+                                </CardContent>
+                            </Card>
+                        </Box>
                     </FormGroup>
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={3}>
