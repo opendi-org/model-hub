@@ -237,14 +237,6 @@ func (h *ModelHandler) UploadCommit(c *gin.Context) {
 	c.JSON(http.StatusCreated, uploadedCommit)
 }
 
-// UserLogin godoc
-// @Summary Login a user
-// @Description Logs a user if they exist, or creates a new user
-// @Accept json
-// @Produce json
-// @Param email password
-// @Success 200
-// @Failure 401 {object} gin.H "Unauthorized"
 func (h *AuthHandler) UserLogin(c *gin.Context) {
 	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
 	email := c.Query("email")

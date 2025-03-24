@@ -175,7 +175,7 @@ export default function Navbar() {
                     <Box sx={{ flexGrow: 1 }} />
 
                     <Box sx={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <Button color="inherit">Search</Button>
+                        <Button color="inherit" component={NavLink} to ="/search">Search</Button>
                         <Button color="inherit" component={NavLink} to="/model">Download</Button>
                         <Button color="inherit" component={NavLink} to="/UploadPage">Upload</Button>
                         <Button color="inherit">Popular</Button>

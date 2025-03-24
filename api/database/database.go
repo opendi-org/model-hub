@@ -893,7 +893,7 @@ func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error
         JOIN meta ON causal_decision_models.meta_id = meta.id
         WHERE MATCH(meta.name) AGAINST(? IN NATURAL LANGUAGE MODE)
     `
-	if err := dbInstance.Raw(query, name).
+	if err := dbInstance.
 		Preload("Meta").
 		Preload("Diagrams").
 		Preload("Diagrams.Meta").
@@ -903,6 +903,9 @@ func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
 		Preload("Meta.Updaters").
+		Preload("Meta.Name").
+		Preload("Meta.Summary").
+		Raw(query, name).
 		Scan(&models).Error; err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
@@ -923,7 +926,10 @@ func SearchModelsByUser(name string) (int, []apiTypes.CausalDecisionModel, error
 		Preload("Diagrams.Elements.Meta").
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
+		Preload("Meta.Creator.Username").
 		Preload("Meta.Updaters").
+		Preload("User").
+		Preload("User.Username").
 		Where("meta.creator.username LIKE ?", "%"+name+"%").
 		Find(&models).Error; err != nil {
 		return http.StatusInternalServerError, nil, err
