@@ -6,6 +6,7 @@ import { NavLink } from "react-router-dom";
 import * as React from 'react';
 import { useEffect } from 'react';
 import { useState } from 'react';
+import JsonPatchViewer from "../components/JsonPatchViewer";
 import opendiIcon from '../opendi-icon.png';
 import API_URL from '../config';
 import { useMemo } from 'react';
@@ -126,6 +127,7 @@ const DownloadPage = () => {
                     throw new Error('Network response was not ok for getting model version');
                 }
                 const data = await response.json();
+                console.log(commit['diff'])
                 setLastVersionOfModel(data);
             } catch (error) {
                 console.error('There was a problem with the fetch operation:', error);
@@ -451,6 +453,8 @@ const DownloadPage = () => {
 
                             <Card sx={{ flex: 1 }}>
                                 <CardContent>
+                                <JsonPatchViewer lastVersionOfModel={lastVersionOfModel} commit={commit} />
+ 
                                 <pre>{JSON.stringify(lastVersionOfModel, null, 2)}</pre>
                                 </CardContent>
                             </Card>
