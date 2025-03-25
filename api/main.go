@@ -65,7 +65,6 @@ func main() {
 		fmt.Println("Error initializing model handler: ", err)
 		os.Exit(1)
 	}
-
 	// Debug, creates a model and meta in the database
 	database.CreateExampleModels()
 

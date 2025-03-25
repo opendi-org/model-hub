@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { useState } from 'react';
 import opendiIcon from '../opendi-icon.png';
 import API_URL from '../config';
+import { useMemo } from 'react';
 import {
     Box,
     Button,
@@ -51,10 +52,24 @@ const DownloadPage = () => {
         creator: 'No CDM loaded'
     };
 
+    //hook that extract route parameters from URL
     const { uuid } = useParams();
     // console.log( uuid );
 
+        //useState returns an array of two elements that contain a state variable and a method to change the variable (and in doing so, re-render)
     const [model, setModel] = useState({})
+
+    /*
+    Runs after the component renders.
+
+    Fetches model data from an API.
+
+    Updates model using setModel(data).
+
+    If uuid changes, useEffect runs again (because uuid is in the dependency array).
+
+    */
+
     useEffect(() => {
         fetch(`${API_URL}/v0/models/${uuid}`)
             .then(response => {
@@ -69,6 +84,58 @@ const DownloadPage = () => {
             })
             .catch(error => console.error('There was a problem with the fetch operation:', error));
     }, [uuid]);
+
+    const [commit, setCommit] = useState({})
+    useEffect(() => {
+        fetch(`${API_URL}/v0/commits/${uuid}`)
+            .then(response => {
+                if (response.status === 404) {
+                    return { version: 0 }; // Exit early if not found
+                }
+    
+                if (!response.ok) {
+                    throw new Error('Network response was not ok for getting latest commit');
+                }
+                return response.json();
+            })
+            .then(data => {
+                    setCommit(data); // Set commit data if the response was valid
+            })
+            .catch(error => console.error('There was a problem with the fetch operation:', error));
+    }, [uuid]);
+
+
+    // Get previous version of model
+    //note that for development purposes, in react strict mode, useEffect invokes twice. 
+    const [lastVersionOfModel, setLastVersionOfModel] = useState(null);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            if (Object.keys(model).length === 0 || Object.keys(commit).length === 0) {
+                return;
+            }
+
+            if (commit['version'] === 0) {
+                setLastVersionOfModel("No previous version");
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/v0/models/modelVersion/${uuid}/${commit.version - 1}`);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok for getting model version');
+                }
+                const data = await response.json();
+                setLastVersionOfModel(data);
+            } catch (error) {
+                console.error('There was a problem with the fetch operation:', error);
+            }
+        };
+
+        fetchData();
+    }, [model, commit]); // Re-run when model or commit changes
+
+
 
     async function getCDM() {
         // console.log("Creator: " + cdm.creator);
@@ -378,13 +445,13 @@ const DownloadPage = () => {
                         <Box sx={{ display: "flex", gap: 2 }}>
                             <Card sx={{ flex: 1 }}>
                                 <CardContent>
-                                    Eric was here, annyeonghaseyo.
+                                    <pre>{JSON.stringify(model, null, 2)}</pre>
                                 </CardContent>
                             </Card>
 
                             <Card sx={{ flex: 1 }}>
                                 <CardContent>
-                                    Another card here!
+                                <pre>{JSON.stringify(lastVersionOfModel, null, 2)}</pre>
                                 </CardContent>
                             </Card>
                         </Box>

@@ -96,6 +96,7 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 	}
 
 	// Return a successful response if model creation is successful
+	c.Header("Access-Control-Allow-Origin", "*")
 	c.JSON(http.StatusCreated, uploadedModel)
 }
 
@@ -195,7 +196,7 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 		return
 	}
 
-	diff, err := jsondiff.CompareJSON(changedModelBytes, oldmodelBytes, jsondiff.Invertible())
+	diff, err := jsondiff.CompareJSON(oldmodelBytes, changedModelBytes, jsondiff.Invertible())
 
 	if err != nil {
 		// Return error based on the UpdateModel function response
@@ -206,7 +207,15 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 	var commit apiTypes.Commit
 
 	commit.CDMUUID = uploadedModel.Meta.UUID
-	commit.Diff = diff.String()
+
+	// Marshal the struct into JSON
+	jsonData, err := json.Marshal(diff)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		return
+	}
+
+	commit.Diff = string(jsonData)
 	commit.UserUUID = uploadedModel.Meta.Creator.UUID
 
 	status, parent, err := database.GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
@@ -230,8 +239,9 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 		return
 	}
 
-	// Return a successful response if model put is successful
-	c.JSON(http.StatusCreated, uploadedModel)
+	// Return a successful response if model put is
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(http.StatusCreated, changedModel)
 }
 
 // GetCommits godoc
@@ -289,17 +299,24 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		return
 	}
 
+	if version > commit.Version {
+		c.JSON(http.StatusConflict, gin.H{"Error": "Version requested is greater than the latest version"})
+	}
+
 	currVersion := commit.Version
 	currCommit := commit
 
 	currModelBytes, err := json.Marshal(latestVersionOfModel)
+
 	if err != nil {
 		// Return error based on the UpdateModel function response
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
 
-	for currVersion > version {
+	//reaches here
+
+	for {
 		diff := []byte(currCommit.Diff)
 		var patch jsondiff.Patch
 		//convert from byte array to patch object
@@ -308,12 +325,17 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 			return
 		}
-		//invert the patch and apply it to the model
+
 		invertedPatch, err := jsonDiffHelpers.InvertPatch(patch)
 		//apply the inverted patch to the current JSON bytes we have
 
-		//get byte array form of patach
-		invertedPatchBytes := []byte(invertedPatch.String())
+		//get byte array form of JSON form of inverted ptach
+		// Marshal the struct into JSON
+		invertedPatchBytes, err := json.Marshal(invertedPatch)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+			return
+		}
 		jsonpatchPatch, err := jsonpatch.DecodePatch(invertedPatchBytes)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
@@ -327,6 +349,12 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		currModelBytes = modified
 		currVersion--
 		parentIdStr := currCommit.ParentCommitID
+
+		//if we reach the version we want, return the model
+		if currVersion <= version {
+			break
+		}
+
 		if parentIdStr == "" {
 			c.JSON(http.StatusInternalServerError, "No parent ID") //if we encounter a null parent id, return error.
 			return
@@ -337,13 +365,15 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		_, currCommit, err = database.GetCommitByID(int(parentId))
 
 	}
+	fmt.Println(string(currModelBytes))
 
-	var finalModel interface{}
+	finalModel := apiTypes.CausalDecisionModel{}
 	if err := json.Unmarshal(currModelBytes, &finalModel); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, finalModel)
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(http.StatusOK, finalModel)
 
 }
 

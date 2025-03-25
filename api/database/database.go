@@ -672,7 +672,7 @@ func GetUserByID(id int) (int, *apiTypes.User, error) {
 
 func GetLatestCommitForModelUUID(uuid string) (int, *apiTypes.Commit, error) {
 	var commit apiTypes.Commit
-	err := dbInstance.Where("CDMUUID = ?", uuid).
+	err := dbInstance.Where("cdm_uuid = ?", uuid).
 		Order("created_at DESC").
 		First(&commit).Error
 
@@ -761,6 +761,12 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 				uploadedModel.Meta.Updaters[i] = existingUpdater
 			}
 		}
+	}
+
+	// Update the model meta
+	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
 	}
 
 	// Update the model
