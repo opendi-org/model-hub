@@ -29,7 +29,7 @@ const ModelMinicard = ({id, name, author, summary}) => {
             <Button 
                     variant="contained" 
                     color="primary" 
-                    component={NavLink} to={"model/" + id}
+                    component={NavLink} to={"/model/" + id}
                 >
                     View
                 </Button>
