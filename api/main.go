@@ -112,6 +112,7 @@ func main() {
 		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
 		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
+		models.GET("/search/:type/:name", modelHandler.ModelSearch)
 	}
 
 	//router group for all endpoints related to models

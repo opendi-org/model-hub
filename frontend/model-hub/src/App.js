@@ -15,6 +15,7 @@ import Navbar from './components/Navbar';
 import {theme} from './Theme'
 import {ThemeProvider} from '@mui/material/styles';
 import UserPage from "./pages/user";
+import SearchPage from "./pages/search";
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
         <Route path="/model" element={<ModelPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/user" element={<UserPage />} />
+        <Route path="/search" element={<SearchPage />} />
     </Routes>
 </Router>
 </ThemeProvider>
