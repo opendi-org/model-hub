@@ -35,7 +35,7 @@ const UserPage = () => {
       }
 
       function RightHandSide() {
-        if (menu == 'Profile') {
+        if (menu === 'Profile') {
           return (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, py: 4 }}>
               <Typography variant="h4" gutterBottom>Profile Information</Typography>

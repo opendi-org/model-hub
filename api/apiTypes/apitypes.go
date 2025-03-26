@@ -28,8 +28,8 @@ type Meta struct {
 	CreatedAt     time.Time       `json:"-"`
 	UpdatedAt     time.Time       `json:"-"`
 	UUID          string          `gorm:"unique" json:"uuid"`
-	Name          string          `json:"name,omitempty"`
-	Summary       string          `json:"summary,omitempty"`
+	Name          string          `gorm:"index:idx_name_summary,class:FULLTEXT" json:"name,omitempty"`
+	Summary       string          `gorm:"index:idx_name_summary,class:FULLTEXT" json:"summary,omitempty"`
 	Documentation json.RawMessage `json:"documentation,omitempty"`
 	Version       string          `json:"version,omitempty"`
 	Draft         bool            `json:"draft,omitempty"`

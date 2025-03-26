@@ -15,6 +15,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Menu from '@mui/material/Menu';
 import SearchIcon from '@mui/icons-material/Search';
 import Button from '@mui/material/Button';
+import API_URL from "../config";
 
 const Search = styled('div')(({ theme }) => ({
     position: 'relative',
@@ -31,6 +32,7 @@ const Search = styled('div')(({ theme }) => ({
         marginLeft: theme.spacing(3),
         width: 'auto',
     },
+    
 }));
 
 const SearchIconWrapper = styled('div')(({ theme }) => ({
@@ -169,13 +171,18 @@ export default function Navbar() {
                             placeholder="Search…"
                             inputProps={{ 'aria-label': 'search' }}
                             sx={{ width: '25em' }}
-
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    const searchTerm = e.target.value;
+                                    window.location.href = `/search?term=${searchTerm}`;
+                                }
+                            }}
                         />
                     </Search>
                     <Box sx={{ flexGrow: 1 }} />
 
                     <Box sx={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <Button color="inherit">Search</Button>
+                        <Button color="inherit" component={NavLink} to ="/search">Search</Button>
                         <Button color="inherit" component={NavLink} to="/model">Download</Button>
                         <Button color="inherit" component={NavLink} to="/UploadPage">Upload</Button>
                         <Button color="inherit">Popular</Button>

@@ -71,8 +71,6 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 // @Failure      500 {object} gin.H "Internal Server Error"
 // @Router       /v0/models/ [post]
 func (h *ModelHandler) UploadModel(c *gin.Context) {
-	database.ResetTables()
-	database.CreateExampleModels()
 	var uploadedModel apiTypes.CausalDecisionModel
 
 	// Bind the JSON payload to the uploaded model struct
@@ -237,6 +235,17 @@ func (h *ModelHandler) UploadCommit(c *gin.Context) {
 	c.JSON(http.StatusCreated, uploadedCommit)
 }
 
+// putModel godoc
+// @Summary      Login a user
+// @Description  Either login or create a user
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        user  body  apiTypes.User  true  "User login"
+// @Success      201 {object} apiTypes.User "logged in user"
+// @Failure      400 {object} gin.H "Bad Request"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /login [put]
 func (h *AuthHandler) UserLogin(c *gin.Context) {
 	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
 	email := c.Query("email")
@@ -277,4 +286,32 @@ func (h *LineageHandler) GetModelChildren(c *gin.Context) {
 	}
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(status, children)
+}
+
+func (h *ModelHandler) ModelSearch(c *gin.Context) {
+	fmt.Println("Searching")
+	searchType := c.Param("type")
+	name := c.Param("name")
+	if searchType == "model" {
+		fmt.Println("Searching by Model")
+		status, models, err := database.SearchModelsByName(name)
+		if err != nil {
+			c.JSON(status, gin.H{"Error": err.Error()})
+			return
+		}
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.IndentedJSON(status, models)
+	} else if searchType == "user" {
+		fmt.Println("Searching by User")
+		status, models, err := database.SearchModelsByUser(name)
+		if err != nil {
+			c.JSON(status, gin.H{"Error": err.Error()})
+			return
+		}
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.IndentedJSON(status, models)
+	} else {
+		c.JSON(404, gin.H{"Error": "This type of search does not exist"})
+		return
+	}
 }

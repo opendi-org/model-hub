@@ -242,7 +242,7 @@ func CreateExampleModels() {
 		UpdatedAt:     time.Now(),
 		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e",
 		Name:          "Test Child Model",
-		Summary:       "This is a test child model",
+		Summary:       "This is a test child model, which I want to search for based only on the summary. The summary is very important.",
 		Documentation: nil,
 		Version:       "1.0",
 		Draft:         false,
@@ -889,4 +889,50 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 	}
 
 	return http.StatusOK, children, nil
+}
+
+func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error) {
+	var models []apiTypes.CausalDecisionModel
+	
+	// Use GORM's query builder to work with Full-Text Search
+	if err := dbInstance.
+		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
+		Where("MATCH(meta.name, meta.summary) AGAINST(? IN NATURAL LANGUAGE MODE)", name).
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Find(&models).Error; err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	return http.StatusOK, models, nil
+}
+
+func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, error) {
+	var models []apiTypes.CausalDecisionModel
+	
+	if err := dbInstance.
+		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
+		Joins("JOIN users ON meta.creator_id = users.id").
+		Where("users.username LIKE ?", "%"+username+"%").
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Find(&models).Error; err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	return http.StatusOK, models, nil
 }

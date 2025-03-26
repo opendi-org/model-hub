@@ -10,7 +10,7 @@ import Button from '@mui/material/Button';
 import { useHistory } from 'react-router-dom';
 import { NavLink } from "react-router-dom";
 
-const ModelMinicard = ({id, name, author}) => {
+const ModelMinicard = ({id, name, author, summary}) => {
     return (
     <Grid xs={4}>
         <Card sx={{ minWidth: 275 }}>
@@ -22,14 +22,14 @@ const ModelMinicard = ({id, name, author}) => {
                     {author}
                 </Typography>
                 <Typography variant="body2">
-                    Summary
+                    {summary}
                 </Typography>
             </CardContent>
             <CardActions>
             <Button 
                     variant="contained" 
                     color="primary" 
-                    component={NavLink} to={"model/" + id}
+                    component={NavLink} to={"/model/" + id}
                 >
                     View
                 </Button>
