@@ -1,5 +1,11 @@
 import React from "react";
 const JsonPatchViewer = ({ lastVersionOfModel, commit }) => {
+
+  if (commit['version'] === 0) {
+    return <pre>{JSON.stringify(lastVersionOfModel, null, 2)}</pre>;
+    
+  }
+
   const patch = JSON.parse(commit.diff);
   let modifiedModel = JSON.parse(JSON.stringify(lastVersionOfModel));
 

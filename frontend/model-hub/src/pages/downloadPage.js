@@ -454,8 +454,7 @@ const DownloadPage = () => {
                             <Card sx={{ flex: 1 }}>
                                 <CardContent>
                                 <JsonPatchViewer lastVersionOfModel={lastVersionOfModel} commit={commit} />
- 
-                                <pre>{JSON.stringify(lastVersionOfModel, null, 2)}</pre>
+
                                 </CardContent>
                             </Card>
                         </Box>

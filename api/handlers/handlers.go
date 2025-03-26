@@ -206,6 +206,10 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 
 	commit.CDMUUID = uploadedModel.Meta.UUID
 
+	if diff.String() == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": "No changes made to model"})
+		return
+	}
 	// Marshal the struct into JSON
 	jsonData, err := json.Marshal(diff)
 	if err != nil {
