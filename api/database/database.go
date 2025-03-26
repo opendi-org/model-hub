@@ -272,6 +272,9 @@ func CreateExampleModels() {
 
 }
 
+//an exapmle of what this can do is it can allow upload model to upload a model with a diagram that already existed in the database
+//essentially, it set sup any component uploaded to prepare its associations to be set up correctly, without duplicates .
+
 // matchUUIDsToID recursively iterates through a CDM (or really any CDM component)
 // and its nested structures and finds matching UUIDs in the database and updates
 // the IDs of the components to match the ID found in the database
@@ -667,6 +670,31 @@ func GetUserByID(id int) (int, *apiTypes.User, error) {
 	return http.StatusOK, &user, nil
 }
 
+func GetLatestCommitForModelUUID(uuid string) (int, *apiTypes.Commit, error) {
+	var commit apiTypes.Commit
+	err := dbInstance.Where("cdm_uuid = ?", uuid).
+		Order("created_at DESC").
+		First(&commit).Error
+
+	if err == gorm.ErrRecordNotFound {
+		return http.StatusNotFound, nil, err
+	}
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusAccepted, &commit, nil
+}
+
+// gets commit by primary key id
+func GetCommitByID(id int) (int, *apiTypes.Commit, error) {
+	var commit apiTypes.Commit
+	err := dbInstance.Where("id = ?", id).First(&commit).Error
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusAccepted, &commit, nil
+}
+
 // UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction
 func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	// Begin transaction.
@@ -733,6 +761,12 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 				uploadedModel.Meta.Updaters[i] = existingUpdater
 			}
 		}
+	}
+
+	// Update the model meta
+	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
 	}
 
 	// Update the model
