@@ -281,3 +281,56 @@ func TestIinitializingDbInstance(t *testing.T) {
 	}
 
 }
+
+func TestCreateModelGivenEmail(t *testing.T) {
+	ResetTables()
+
+	//We need to create the user before we run the test
+	creator, err := CreateUser("testgivenemail", "pass")
+
+	// Ensure the user is not nil
+	if err != nil {
+		t.Fatalf("Unable to create test user.")
+	}
+
+
+	meta := apiTypes.Meta{
+		ID:            30,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		Name:          "Email Test Model",
+		Summary:       "This is a test model",
+		Documentation: nil,
+		Version:       "1.0",
+		Draft:         false,
+		Creator:       *creator,
+		CreatedDate:   "2021-07-01",
+		Updaters:      []apiTypes.User{},
+		UpdatedDate:   "2021-07-01",
+	}
+
+	model := apiTypes.CausalDecisionModel{
+		ID:        12367890,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Schema:    "Test Schema",
+		MetaID:    meta.ID,
+		Meta:      meta,
+		Diagrams:  nil,
+	}
+
+	status, err := CreateModelGivenEmail(&model)
+
+	if status != http.StatusCreated {
+		t.Fatalf("There was an error when creating the model given the email. Status: %d Error:%s", status, err.Error())
+	}
+
+	status2, models, err := GetAllModels()
+	if status2 != http.StatusOK {
+		t.Fatalf("Get all models failed.")
+	}
+
+	if models[0].Meta.Name != "Email Test Model" {
+		t.Fatalf("The model was created successfully but the names do not match. \n Expected name: Email Test Model. \n Actual name: %s ", models[0].Meta.Name )
+	}
+}

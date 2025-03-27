@@ -825,11 +825,12 @@ func GetUserByEmail(email string) (int, *apiTypes.User, error) {
 
 func CreateUser(email string, password string) (*apiTypes.User, error) {
 	var newuser apiTypes.User
+	newuuid, _ := generateUUID()
 	newuser.Username = email
 	newuser.Email = email
 	newuser.Password = password
 	//i don't see why user has to have a UUID
-	newuser.UUID = "uuid"
+	newuser.UUID = newuuid
 	// Ensure no other user with this email exists
 	var count int64
 	dbInstance.Model(&apiTypes.User{}).Where("email = ?", email).Count(&count)
