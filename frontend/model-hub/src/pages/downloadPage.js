@@ -447,6 +447,7 @@ const DownloadPage = () => {
                         <Box sx={{ display: "flex", gap: 2 }}>
                             <Card sx={{ flex: 1 }}>
                                 <CardContent>
+                                    <h3>Current JSON Model</h3>
                                     <pre>{JSON.stringify(model, null, 2)}</pre>
                                 </CardContent>
                             </Card>
