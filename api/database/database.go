@@ -532,13 +532,7 @@ func generateUUID() (string, error) {
 
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
 func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
-	// Ensure no other model with the same UUID exists.
-	var count int64
-	dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
-	if count > 0 {
-		// If a meta with the same UUID exists, return a conflict error.
-		return http.StatusConflict, fmt.Errorf("a model with UUID %s already exists", uploadedModel.Meta.UUID)
-	}
+	// No need to ensure no other model with the same UUID exists. CreateModelGivenEmail creates a unique UUID for us.
 
 	// Begin transaction.
 	transaction := dbInstance.Begin()
@@ -684,7 +678,7 @@ func GetLatestCommitForModelUUID(uuid string) (int, *apiTypes.Commit, error) {
 	if err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
-	return http.StatusAccepted, &commit, nil
+	return http.StatusOK, &commit, nil
 }
 
 // gets commit by primary key id
@@ -692,9 +686,9 @@ func GetCommitByID(id int) (int, *apiTypes.Commit, error) {
 	var commit apiTypes.Commit
 	err := dbInstance.Where("id = ?", id).First(&commit).Error
 	if err != nil {
-		return http.StatusInternalServerError, nil, err
+		return http.StatusNotFound, nil, err
 	}
-	return http.StatusAccepted, &commit, nil
+	return http.StatusOK, &commit, nil
 }
 
 // UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction
@@ -796,14 +790,13 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 	// Update the model before creating the commit so that on a bad
 	// put, we don't have to roll back the commit.
 	if status, err := UpdateModel(uploadedModel); err != nil {
+		//TODO fix this so that if we get an error here, we roll back the update
+		// Return error based on the UpdateModel function response
 		return nil, status, err
 	}
 
 	status, changedModel, err := GetModelByUUID(uploadedModel.Meta.UUID)
-
 	if err != nil {
-		//TODO fix this so that if we get an error here, we roll back the update
-		// Return error based on the UpdateModel function response
 		return nil, status, err
 	}
 
@@ -905,6 +898,8 @@ func GetUserByEmail(email string) (int, *apiTypes.User, error) {
 
 func CreateUser(email string, password string) (*apiTypes.User, error) {
 	var newuser apiTypes.User
+	// if you have an int field marked as a primary key with autoIncrement in GORM and it is left as 0 (its zero value),
+	// GORM will interpret it as "not explicitly set" and will allow the database to generate an auto-incremented value for it
 	newuuid, _ := generateUUID()
 	newuser.Username = email
 	newuser.Email = email

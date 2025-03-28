@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	jsonDiffHelpers "opendi/model-hub/api/jsondiffhelpers"
+	"opendi/model-hub/api/testutils"
 	"os"
 	"testing"
 	"time"
@@ -146,6 +147,8 @@ func TestCreateModel(t *testing.T) {
 	if model.Meta.UUID != model2.Meta.UUID {
 		t.Errorf("Models have differing UUID.")
 	}
+
+	//tests creating a model with the same UUID
 
 }
 
@@ -320,6 +323,9 @@ func TestCreateModelGivenEmail(t *testing.T) {
 		Diagrams:  nil,
 	}
 
+	//note that:
+	//model.Meta gets a COPY of meta, meaning they are two separate Meta instances in memory.
+
 	status, err := CreateModelGivenEmail(&model)
 
 	if status != http.StatusCreated {
@@ -334,6 +340,28 @@ func TestCreateModelGivenEmail(t *testing.T) {
 	if models[0].Meta.Name != "Email Test Model" {
 		t.Fatalf("The model was created successfully but the names do not match. \n Expected name: Email Test Model. \n Actual name: %s ", models[0].Meta.Name)
 	}
+
+	status, _, err = GetUserByEmail("nope")
+	if status != http.StatusNotFound {
+		t.Fatalf("There was an error when getting the user by email. Status: %d Error:%s", status, err.Error())
+	}
+
+	//tests creating a model with an incorrect email for the associated user.
+
+	/*
+		meta.Creator.Email = "nope"
+		fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
+		model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as Meta!
+	*/
+	model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as Meta!
+	//fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
+
+	status, err = CreateModelGivenEmail(&model)
+
+	if status != http.StatusConflict {
+		t.Fatalf("There was an error when creating the model given the email. Status: %d", status)
+	}
+
 }
 
 // also test applyInvertedPatch
@@ -382,7 +410,7 @@ func TestGetAllCommits(t *testing.T) {
 
 	//try applying diff to get first model.
 	//first get byte form of new model
-	changedMdelBytes, err := json.Marshal(changedModel)
+	changedMdelBytes, _ := json.Marshal(changedModel)
 
 	patchAppliedModel, err := jsonDiffHelpers.ApplyInvertedPatch(changedMdelBytes, []byte(commits[0].Diff))
 	if err != nil {
@@ -398,6 +426,203 @@ func TestGetAllCommits(t *testing.T) {
 
 	if string(patchAppliedModelBytes2) != string(oldModelBytes) {
 		t.Errorf("Expected model bytes to be equal, got %s and %s", string(patchAppliedModelBytes2), string(oldModelBytes))
+	}
+
+}
+
+func TestCreateUserGivenObject(t *testing.T) {
+	ResetTables()
+	CreateExampleModels() //also creates sample users
+	user := apiTypes.User{
+		ID: 1,
+	}
+	_, err := createUserGivenObject(user)
+	if err == nil {
+		t.Errorf("Error should have been created when creating user")
+	}
+
+}
+
+// doesn't test that every single ID with corresopnding UUID has been matched yet.
+// TODO note to Isaac - for consistency, should every UUID field be stored not in the Meta object, but the actual object?
+func TestMatchUUIDToID(t *testing.T) {
+	ResetTables()
+	var model4 apiTypes.CausalDecisionModel
+	err := testutils.LoadJSONFromFile("../test_files/model4.json", &model4)
+	if err != nil {
+		t.Fatalf("Error loading JSON file: %s", err)
+	}
+	model4.Diagrams[0].Dependencies[0].ID = 0
+	model4.Diagrams[0].Dependencies[0].Meta.Creator.ID = 0
+	model4.Diagrams[0].Dependencies[0].Meta.ID = 0
+	model4.Diagrams[0].Elements[0].ID = 0
+	model4.ID = 0
+
+	transaction := dbInstance.Begin()
+	if err := matchUUIDsToID(transaction, model4); err != nil {
+		transaction.Rollback()
+		t.Errorf("Error matching UUIDs to ID: %s", err)
+	}
+	_, err = CreateModel(&model4)
+	if err != nil {
+		t.Errorf("Error creating model: %s", err)
+	}
+	transaction.Commit()
+	// Check if the IDs are set correctly
+	if model4.Diagrams[0].Dependencies[0].ID == 0 {
+		t.Errorf("Error: ID should not be 0")
+	}
+	if model4.Diagrams[0].Dependencies[0].Meta.Creator.ID == 0 {
+
+		t.Errorf("Error: Creator ID should not be 0")
+	}
+	if model4.Diagrams[0].Dependencies[0].Meta.ID == 0 {
+		t.Errorf("Error: Meta ID should not be 0")
+	}
+	if model4.Diagrams[0].Elements[0].ID == 0 {
+		t.Errorf("Error: Element ID should not be 0")
+	}
+
+}
+
+func TestGetCommitById(t *testing.T) {
+	ResetTables()
+	CreateExampleModels()
+
+	// create a commit
+	status, models, err := GetAllModels()
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+	expectedModel := models[0]
+	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
+		expectedModel = models[1]
+	}
+	//prevSummary := expectedModel.Meta.Summary
+	// Create a commit
+	expectedModel.Meta.Summary = "changed!"
+
+	_, oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
+
+	_, status, err = UpdateModelAndCreateCommit(&expectedModel, oldModel)
+
+	//get the commit
+	_, commits, err := GetAllCommits()
+
+	commit := commits[0]
+
+	status, commit2, err := GetCommitByID(commit.ID)
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+	if commit.Diff != commit2.Diff {
+		t.Errorf("Expected commit diff to be equal, got %s and %s", commit.Diff, commit2.Diff)
+	}
+
+	status, _, err = GetCommitByID(17)
+	if status != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusNotFound, status, err)
+	}
+
+}
+
+func TestUpdateModelAndCreateCommit(t *testing.T) {
+	ResetTables()
+	CreateExampleModels()
+
+	// create a commit
+	status, models, err := GetAllModels()
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+	expectedModel := models[0]
+	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
+		expectedModel = models[1]
+	}
+	//prevSummary := expectedModel.Meta.Summary
+	// Create a commit
+	expectedModel.Meta.Summary = "changed!"
+
+	_, oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
+
+	newmodel, status, err := UpdateModelAndCreateCommit(&expectedModel, oldModel)
+
+	newmodelbytes, _ := json.Marshal(newmodel)
+	expectedmodelbytes, _ := json.Marshal(expectedModel)
+	if string(newmodelbytes) != string(expectedmodelbytes) {
+		t.Errorf("Expected model to be equal, got %s and %s", newmodelbytes, expectedmodelbytes)
+	}
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+
+	//add another commit
+	expectedModel.Meta.Summary = "changed again!"
+	_, status, err = UpdateModelAndCreateCommit(newmodel, oldModel)
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+	// get latest commit
+	status, commit, err := GetLatestCommitForModelUUID(expectedModel.Meta.UUID)
+
+	//commit version should be 2, parent should not be ""
+	if commit.Version != 2 {
+		t.Errorf("Expected commit version 2, got %d", commit.Version)
+	}
+	if commit.ParentCommitID == "" {
+		t.Errorf("Expected parent commit ID to be not empty, got %s", commit.ParentCommitID)
+	}
+
+}
+
+func TestUserLogin(t *testing.T) {
+	ResetTables()
+	CreateExampleModels()
+
+	//for now, failed login creates a user
+	status, _, err := UserLogin("heehee", "password")
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+
+	status, _, err = UserLogin("creator@example.com", "x")
+	if status != http.StatusUnauthorized {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusUnauthorized, status, err)
+	}
+
+	status, _, err = UserLogin("creator@example.com", "p")
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusUnauthorized, status, err)
+	}
+
+}
+
+func TestSearchModelsByName(t *testing.T) {
+	ResetTables()
+	CreateExampleModels()
+
+	// Search for models by name
+	status, models, err := SearchModelsByName("Child")
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+	if len(models) != 1 {
+		t.Errorf("Expected 1 model, got %d", len(models))
+	}
+
+}
+
+func TestSearchModelsByUser(t *testing.T) {
+	ResetTables()
+	CreateExampleModels()
+
+	// Search for models by name
+	status, models, err := SearchModelsByUser("Child")
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+	if len(models) != 1 {
+		t.Errorf("Expected 1 model, got %d", len(models))
 	}
 
 }
