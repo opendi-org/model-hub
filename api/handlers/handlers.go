@@ -308,7 +308,7 @@ func (h *CommitHandler) UploadCommit(c *gin.Context) {
 }
 */
 
-// putModel godoc
+// userLogin godoc
 // @Summary      Login a user
 // @Description  Either login or create a user
 // @Tags         models
