@@ -7,8 +7,10 @@
 package jsondiffhelpers
 
 import (
+	"encoding/json"
 	"fmt"
 
+	jsonpatch "github.com/evanphx/json-patch"
 	jsondiff "github.com/wI2L/jsondiff"
 )
 
@@ -25,6 +27,36 @@ const (
 	OperationCopy    = "copy"
 	OperationTest    = "test"
 )
+
+// inverts the given patch and applies it to the current model bytes
+func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error) {
+	// Create a new patch object
+	var patch jsondiff.Patch
+	//convert from byte array to patch object
+	err := json.Unmarshal(patchBytes, &patch)
+	if err != nil {
+
+		return nil, fmt.Errorf("error unmarshalling patch: %v", err)
+	}
+
+	invertedPatch, _ := InvertPatch(patch)
+	//apply the inverted patch to the current JSON bytes we have
+
+	//get byte array form of JSON form of inverted ptach
+	// Marshal the struct into JSON
+	invertedPatchBytes, err := json.Marshal(invertedPatch)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling inverted patch: %v", err)
+	}
+	jsonpatchPatch, err := jsonpatch.DecodePatch(invertedPatchBytes)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding inverted patch: %v", err)
+	}
+
+	//apply the patch
+	modified, err := jsonpatchPatch.Apply(currModelBytes)
+	return modified, err
+}
 
 // InvertPatch inverts a JSON Patch, preparing the patch to reverse the operations.
 // It supports "add", "remove", and "replace" operations for now.

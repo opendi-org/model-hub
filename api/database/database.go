@@ -6,12 +6,14 @@ package database
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"os"
 	"time"
 
+	"github.com/wI2L/jsondiff"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -789,6 +791,84 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	return http.StatusCreated, nil
 }
 
+func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, oldModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalDecisionModel, int, error) {
+
+	// Update the model before creating the commit so that on a bad
+	// put, we don't have to roll back the commit.
+	if status, err := UpdateModel(uploadedModel); err != nil {
+		return nil, status, err
+	}
+
+	status, changedModel, err := GetModelByUUID(uploadedModel.Meta.UUID)
+
+	if err != nil {
+		//TODO fix this so that if we get an error here, we roll back the update
+		// Return error based on the UpdateModel function response
+		return nil, status, err
+	}
+
+	//TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
+	//Let's say that the raw JSON of the original JSON file doesn't contain default values.
+	//If we take the raw JSOn, translate it into a Go struct (which definition has default values), change some values (and convert the new struct back to JSON),
+	// and then perform a JSON diff between the original JSON and the new JSON,
+	//then the diff will think that the default values are part of the JSOn files.
+
+	//this means that if we actually try to apply the diff on the raw JSON, we will get an error because the default values are not in the raw JSON file.
+
+	//so this shows how changing Go structs and then applying the JSON on their raw JSON forms can be a problem. (The standard way is to apply changes to the raw JSON forms instead)
+	//However, this is not a problem for our purposes, because we only will aplpy the diff when we convert Go structs to raw JSON - not getting raw JSON from somewhere else.
+
+	changedModelBytes, err := json.Marshal(changedModel)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	oldmodelBytes, err := json.Marshal(oldModel)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	diff, err := jsondiff.CompareJSON(oldmodelBytes, changedModelBytes, jsondiff.Invertible())
+
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	var commit apiTypes.Commit
+
+	commit.CDMUUID = uploadedModel.Meta.UUID
+
+	if diff.String() == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("no changes made to model")
+	}
+	// Marshal the struct into JSON
+	jsonData, err := json.Marshal(diff)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	commit.Diff = string(jsonData)
+	commit.UserUUID = uploadedModel.Meta.Creator.UUID
+
+	status, parent, err := GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
+
+	//if there's no latest commit, this must be the first.
+	if status == http.StatusNotFound {
+		commit.ParentCommitID = ""
+		commit.Version = 1
+	} else if status == http.StatusInternalServerError {
+		return nil, status, err
+
+	} else {
+		commit.ParentCommitID = fmt.Sprintf("%d", parent.ID)
+		commit.Version = parent.Version + 1
+	}
+
+	if status, err := CreateCommit(&commit); err != nil {
+		return nil, status, err
+	}
+	return changedModel, http.StatusOK, nil
+}
+
 // CreateCommit encapsulates the GORM functionality for creating a commit in a transaction
 func CreateCommit(uploadedCommit *apiTypes.Commit) (int, error) {
 
@@ -928,7 +1008,7 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 
 func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
-	
+
 	// Use GORM's query builder to work with Full-Text Search
 	if err := dbInstance.
 		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
@@ -951,7 +1031,7 @@ func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error
 
 func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
-	
+
 	if err := dbInstance.
 		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
 		Joins("JOIN users ON meta.creator_id = users.id").

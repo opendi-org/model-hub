@@ -1,9 +1,11 @@
 package database
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
+	jsonDiffHelpers "opendi/model-hub/api/jsondiffhelpers"
 	"os"
 	"testing"
 	"time"
@@ -293,7 +295,6 @@ func TestCreateModelGivenEmail(t *testing.T) {
 		t.Fatalf("Unable to create test user.")
 	}
 
-
 	meta := apiTypes.Meta{
 		ID:            30,
 		CreatedAt:     time.Now(),
@@ -331,6 +332,72 @@ func TestCreateModelGivenEmail(t *testing.T) {
 	}
 
 	if models[0].Meta.Name != "Email Test Model" {
-		t.Fatalf("The model was created successfully but the names do not match. \n Expected name: Email Test Model. \n Actual name: %s ", models[0].Meta.Name )
+		t.Fatalf("The model was created successfully but the names do not match. \n Expected name: Email Test Model. \n Actual name: %s ", models[0].Meta.Name)
 	}
+}
+
+// also test applyInvertedPatch
+func TestGetAllCommits(t *testing.T) {
+	ResetTables()
+	CreateExampleModels()
+	ret, commits, error := GetAllCommits()
+	if ret != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
+	}
+	if len(commits) != 0 {
+		t.Errorf("Expected 0 commits, got %d", len(commits))
+	}
+
+	// create a commit
+	status, models, err := GetAllModels()
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+	expectedModel := models[0]
+	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
+		expectedModel = models[1]
+	}
+	//prevSummary := expectedModel.Meta.Summary
+	// Create a commit
+	expectedModel.Meta.Summary = "changed!"
+
+	status, oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
+
+	changedModel, status, err := UpdateModelAndCreateCommit(&expectedModel, oldModel)
+
+	if status != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	}
+	// Get all commits
+	ret, commits, error = GetAllCommits()
+	if ret != http.StatusOK {
+		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
+	}
+	if len(commits) != 1 {
+		t.Errorf("Expected 1 commit, got %d", len(commits))
+	}
+	if commits[0].ParentCommitID != "" {
+		t.Errorf("Expected parent commit ID to be empty, got %s", commits[0].ParentCommitID)
+	}
+
+	//try applying diff to get first model.
+	//first get byte form of new model
+	changedMdelBytes, err := json.Marshal(changedModel)
+
+	patchAppliedModel, err := jsonDiffHelpers.ApplyInvertedPatch(changedMdelBytes, []byte(commits[0].Diff))
+	if err != nil {
+		t.Errorf("Error applying patch: %s", err)
+	}
+	//get the old model bytes to compare to.
+	oldModelBytes, _ := json.Marshal(oldModel)
+
+	//reformat patchAppliedModel so that the JSON is in the correct order, not alphabetical
+	var tempModel *apiTypes.CausalDecisionModel
+	json.Unmarshal(patchAppliedModel, &tempModel)
+	patchAppliedModelBytes2, _ := json.Marshal(tempModel)
+
+	if string(patchAppliedModelBytes2) != string(oldModelBytes) {
+		t.Errorf("Expected model bytes to be equal, got %s and %s", string(patchAppliedModelBytes2), string(oldModelBytes))
+	}
+
 }
