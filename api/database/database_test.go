@@ -341,6 +341,28 @@ func TestCreateModelGivenEmail(t *testing.T) {
 		t.Fatalf("The model was created successfully but the names do not match. \n Expected name: Email Test Model. \n Actual name: %s ", models[0].Meta.Name)
 
 	}
+
+	status, _, err = GetUserByEmail("nope")
+	if status != http.StatusNotFound {
+		t.Fatalf("There was an error when getting the user by email. Status: %d Error:%s", status, err.Error())
+	}
+
+	//tests creating a model with an incorrect email for the associated user.
+
+	/*
+		meta.Creator.Email = "nope"
+		fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
+		model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as Meta!
+	*/
+	model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as Meta!
+	//fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
+
+	status, err = CreateModelGivenEmail(&model)
+
+	if status != http.StatusConflict {
+		t.Fatalf("There was an error when creating the model given the email. Status: %d", status)
+	}
+
 }
 
 func TestCreateUser(t *testing.T) {
@@ -431,27 +453,6 @@ func TestUserLogin(t *testing.T) {
 	} else if status2 != http.StatusUnauthorized {
 		t.Fatal("User was able to login with the wrong password.")
 
-	}
-
-	status, _, err = GetUserByEmail("nope")
-	if status != http.StatusNotFound {
-		t.Fatalf("There was an error when getting the user by email. Status: %d Error:%s", status, err.Error())
-	}
-
-	//tests creating a model with an incorrect email for the associated user.
-
-	/*
-		meta.Creator.Email = "nope"
-		fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
-		model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as Meta!
-	*/
-	model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as Meta!
-	//fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
-
-	status, err = CreateModelGivenEmail(&model)
-
-	if status != http.StatusConflict {
-		t.Fatalf("There was an error when creating the model given the email. Status: %d", status)
 	}
 
 }
@@ -663,28 +664,6 @@ func TestUpdateModelAndCreateCommit(t *testing.T) {
 	}
 	if commit.ParentCommitID == "" {
 		t.Errorf("Expected parent commit ID to be not empty, got %s", commit.ParentCommitID)
-	}
-
-}
-
-func TestUserLogin(t *testing.T) {
-	ResetTables()
-	CreateExampleModels()
-
-	//for now, failed login creates a user
-	status, _, err := UserLogin("heehee", "password")
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
-	}
-
-	status, _, err = UserLogin("creator@example.com", "x")
-	if status != http.StatusUnauthorized {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusUnauthorized, status, err)
-	}
-
-	status, _, err = UserLogin("creator@example.com", "p")
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusUnauthorized, status, err)
 	}
 
 }
