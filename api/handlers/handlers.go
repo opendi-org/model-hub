@@ -13,9 +13,7 @@ import (
 	jsonDiffHelpers "opendi/model-hub/api/jsondiffhelpers"
 	"strconv" //for applying patches generated with jsondiff
 
-	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/gin-gonic/gin"
-	jsondiff "github.com/wI2L/jsondiff"
 )
 
 // ModelHandler struct for handling model requests
@@ -136,6 +134,7 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 // @Failure      500 {object} gin.H "Internal Server Error"
 // @Router       /v0/models/ [put]
 func (h *ModelHandler) PutModel(c *gin.Context) {
+	//TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
 	var uploadedModel apiTypes.CausalDecisionModel
 
 	// Bind the JSON payload to the uploaded model struct
@@ -152,95 +151,12 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 		return
 	}
 
-	// Update the model before creating the commit so that on a bad
-	// put, we don't have to roll back the commit.
-	if status, err := database.UpdateModel(&uploadedModel); err != nil {
+	changedModel, status, err := database.UpdateModelAndCreateCommit(&uploadedModel, oldmodel)
+	if err != nil {
 		// Return error based on the UpdateModel function response
 		c.JSON(status, gin.H{"Error": err.Error()})
 		return
 	}
-
-	status, changedModel, err := database.GetModelByUUID(uploadedModel.Meta.UUID)
-
-	if err != nil {
-		//TODO fix this so that if we get an error here, we roll back the update
-		// Return error based on the UpdateModel function response
-		c.JSON(status, gin.H{"Error": err.Error()})
-		return
-	}
-
-	//TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
-
-	//Let's say that the raw JSON of the original JSON file doesn't contain default values.
-	//If we take the raw JSOn, translate it into a Go struct (which definition has default values), change some values (and convert the new struct back to JSON),
-	// and then perform a JSON diff between the original JSON and the new JSON,
-	//then the diff will think that the default values are part of the JSOn files.
-
-	//this means that if we actually try to apply the diff on the raw JSON, we will get an error because the default values are not in the raw JSON file.
-
-	//so this shows how changing Go structs and then applying the JSON on their raw JSON forms can be a problem. (The standard way is to apply changes to the raw JSON forms instead)
-	//However, this is not a problem for our purposes, because we only will aplpy the diff when we convert Go structs to raw JSON - not getting raw JSON from somewhere else.
-
-	changedModelBytes, err := json.Marshal(changedModel)
-	if err != nil {
-		// Return error based on the UpdateModel function response
-		c.JSON(500, gin.H{"Error": err.Error()})
-		return
-	}
-	oldmodelBytes, err := json.Marshal(oldmodel)
-	if err != nil {
-		// Return error based on the UpdateModel function response
-		c.JSON(500, gin.H{"Error": err.Error()})
-		return
-	}
-
-	diff, err := jsondiff.CompareJSON(oldmodelBytes, changedModelBytes, jsondiff.Invertible())
-
-	if err != nil {
-		// Return error based on the UpdateModel function response
-		c.JSON(500, gin.H{"Error": err.Error()})
-		return
-	}
-
-	var commit apiTypes.Commit
-
-	commit.CDMUUID = uploadedModel.Meta.UUID
-
-	if diff.String() == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": "No changes made to model"})
-		return
-	}
-	// Marshal the struct into JSON
-	jsonData, err := json.Marshal(diff)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-		return
-	}
-
-	commit.Diff = string(jsonData)
-	commit.UserUUID = uploadedModel.Meta.Creator.UUID
-
-	status, parent, err := database.GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
-
-	//if there's no latest commit, this must be the first.
-	if status == http.StatusNotFound {
-		commit.ParentCommitID = ""
-		commit.Version = 1
-	} else if status == http.StatusInternalServerError {
-		c.JSON(status, gin.H{"Error": err.Error()})
-		return
-
-	} else {
-		commit.ParentCommitID = fmt.Sprintf("%d", parent.ID)
-		commit.Version = parent.Version + 1
-	}
-
-	if status, err := database.CreateCommit(&commit); err != nil {
-		// Return error based on the CreateCommit function response
-		c.JSON(status, gin.H{"Error": err.Error()})
-		return
-	}
-
 	// Return a successful response if model put is
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.IndentedJSON(http.StatusCreated, changedModel)
@@ -320,32 +236,11 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 
 	for {
 		diff := []byte(currCommit.Diff)
-		var patch jsondiff.Patch
-		//convert from byte array to patch object
-		err = json.Unmarshal(diff, &patch)
+		modified, err := jsonDiffHelpers.ApplyInvertedPatch(currModelBytes, diff)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 			return
 		}
-
-		invertedPatch, err := jsonDiffHelpers.InvertPatch(patch)
-		//apply the inverted patch to the current JSON bytes we have
-
-		//get byte array form of JSON form of inverted ptach
-		// Marshal the struct into JSON
-		invertedPatchBytes, err := json.Marshal(invertedPatch)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-			return
-		}
-		jsonpatchPatch, err := jsonpatch.DecodePatch(invertedPatchBytes)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-			return
-		}
-
-		//apply the patch
-		modified, err := jsonpatchPatch.Apply(currModelBytes)
 
 		//reset variables for next iteration of applying patches
 		currModelBytes = modified
@@ -364,7 +259,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 
 		parentId, _ := strconv.ParseInt(parentIdStr, 10, 64)
 
-		_, currCommit, err = database.GetCommitByID(int(parentId))
+		_, currCommit, _ = database.GetCommitByID(int(parentId))
 
 	}
 	fmt.Println(string(currModelBytes))
