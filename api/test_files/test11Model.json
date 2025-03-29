@@ -1,0 +1,124 @@
+{
+  "$schema": "model2schema",
+  "diagrams": [
+    {
+      "addons": [
+        0
+      ],
+      "dependencies": [
+        {
+          "meta": {
+            "createdDate": "string",
+            "creator": {
+              "email": "b",
+              "username": "b",
+              "uuid": "uuid"
+            },
+            "documentation": [
+              0
+            ],
+            "draft": true,
+            "name": "string",
+            "summary": "string",
+            "updatedDate": "string",
+            "updaters": [
+              {
+                "email": "b",
+                "username": "b",
+                "uuid": "uuid"
+              }
+            ],
+            "uuid": "meta1",
+            "version": "string"
+          },
+          "source": "string",
+          "target": "string"
+        }
+      ],
+      "elements": [
+        {
+          "associatedEvalElements": [
+            0
+          ],
+          "causalType": "string",
+          "content": [
+            0
+          ],
+          "diaType": "string",
+          "meta": {
+            "createdDate": "string",
+            "creator": {
+              "email": "b",
+              "username": "b",
+              "uuid": "uuid"
+            },
+            "documentation": [
+              0
+            ],
+            "draft": true,
+            "name": "string",
+            "summary": "string",
+            "updatedDate": "string",
+            "updaters": [
+              {
+                "email": "b",
+                "username": "b",
+                "uuid": "uuid"
+              }
+            ],
+            "uuid": "meta2",
+            "version": "string"
+          }
+        }
+      ],
+      "meta": {
+        "createdDate": "string",
+        "creator": {
+          "email": "b",
+          "username": "b",
+          "uuid": "uuid"
+        },
+        "documentation": [
+          0
+        ],
+        "draft": true,
+        "name": "string",
+        "summary": "string",
+        "updatedDate": "string",
+        "updaters": [
+          {
+            "email": "b",
+            "username": "b",
+            "uuid": "uuid"
+          }
+        ],
+        "uuid": "meta3",
+        "version": "string"
+      }
+    }
+  ],
+  "meta": {
+    "createdDate": "string",
+    "creator": {
+      "email": "b",
+      "username": "b",
+      "uuid": "uuid"
+    },
+    "documentation": [
+      0
+    ],
+    "draft": true,
+    "name": "modelTest11",
+    "summary": "string",
+    "updatedDate": "string",
+    "updaters": [
+      {
+        "email": "b",
+        "username": "b",
+        "uuid": "uuid"
+      }
+    ],
+    "uuid": "meta4",
+    "version": "string"
+  }
+}
