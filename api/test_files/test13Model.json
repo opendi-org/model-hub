@@ -1,0 +1,219 @@
+{
+  "$schema": "model2schema",
+  "meta": {
+    "uuid": "bc653611-ef02-23e2-4d56-c7a9586e5cb0",
+    "name": "NewName",
+    "summary": "string",
+    "documentation": [
+      0
+    ],
+    "version": "string",
+    "draft": true,
+    "creator": {
+      "uuid": "uuid",
+      "username": "a",
+      "email": "a"
+    },
+    "createdDate": "string",
+    "updaters": [
+      {
+        "uuid": "uuid",
+        "username": "a",
+        "email": "a"
+      }
+    ],
+    "updatedDate": "string"
+  },
+  "diagrams": [
+    {
+      "addons": [
+        0
+      ],
+      "dependencies": [
+        {
+          "meta": {
+            "createdDate": "string",
+            "creator": {
+              "email": "b",
+              "username": "b",
+              "uuid": "uuid"
+            },
+            "documentation": [
+              0
+            ],
+            "draft": true,
+            "name": "string",
+            "summary": "string",
+            "updatedDate": "string",
+            "updaters": [
+              {
+                "email": "b",
+                "username": "b",
+                "uuid": "uuid"
+              }
+            ],
+            "uuid": "meta1",
+            "version": "string"
+          },
+          "source": "string",
+          "target": "string"
+        }
+      ],
+      "elements": [
+        {
+          "associatedEvalElements": [
+            0
+          ],
+          "causalType": "string",
+          "content": [
+            0
+          ],
+          "diaType": "string",
+          "meta": {
+            "createdDate": "string",
+            "creator": {
+              "email": "b",
+              "username": "b",
+              "uuid": "uuid"
+            },
+            "documentation": [
+              0
+            ],
+            "draft": true,
+            "name": "string",
+            "summary": "string",
+            "updatedDate": "string",
+            "updaters": [
+              {
+                "email": "b",
+                "username": "b",
+                "uuid": "uuid"
+              }
+            ],
+            "uuid": "meta2",
+            "version": "string"
+          }
+        }
+      ],
+      "meta": {
+        "createdDate": "string",
+        "creator": {
+          "email": "b",
+          "username": "b",
+          "uuid": "uuid"
+        },
+        "documentation": [
+          0
+        ],
+        "draft": true,
+        "name": "string",
+        "summary": "string",
+        "updatedDate": "string",
+        "updaters": [
+          {
+            "email": "b",
+            "username": "b",
+            "uuid": "uuid"
+          }
+        ],
+        "uuid": "meta3",
+        "version": "string"
+      }
+    },
+    {
+      "addons": [
+        0
+      ],
+      "dependencies": [
+        {
+          "meta": {
+            "createdDate": "string",
+            "creator": {
+              "email": "creator@example.com",
+              "username": "string",
+              "uuid": "user-uuid-creator"
+            },
+            "documentation": [
+              0
+            ],
+            "draft": true,
+            "name": "string",
+            "summary": "string",
+            "updatedDate": "string",
+            "updaters": [
+              {
+                "email": "creator@example.com",
+                "username": "string",
+                "uuid": "user-uuid-creator"
+              }
+            ],
+            "uuid": "meta5",
+            "version": "string"
+          },
+          "source": "string",
+          "target": "string"
+        }
+      ],
+      "elements": [
+        {
+          "associatedEvalElements": [
+            0
+          ],
+          "causalType": "string",
+          "content": [
+            0
+          ],
+          "diaType": "string",
+          "meta": {
+            "createdDate": "string",
+            "creator": {
+              "email": "creator@example.com",
+              "username": "string",
+              "uuid": "user-uuid-creator"
+            },
+            "documentation": [
+              0
+            ],
+            "draft": true,
+            "name": "string",
+            "summary": "string",
+            "updatedDate": "string",
+            "updaters": [
+              {
+                "email": "creator@example.com",
+                "username": "string",
+                "uuid": "user-uuid-creator"
+              }
+            ],
+            "uuid": "meta6",
+            "version": "string"
+          }
+        }
+      ],
+      "meta": {
+        "createdDate": "string",
+        "creator": {
+          "email": "creator@example.com",
+          "username": "string",
+          "uuid": "user-uuid-creator"
+        },
+        "documentation": [
+          0
+        ],
+        "draft": true,
+        "name": "string",
+        "summary": "string",
+        "updatedDate": "string",
+        "updaters": [
+          {
+            "email": "creator@example.com",
+            "username": "string",
+            "uuid": "user-uuid-creator"
+          }
+        ],
+        "uuid": "meta7",
+        "version": "string"
+      }
+    }
+  ]
+}
