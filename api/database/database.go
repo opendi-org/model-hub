@@ -309,12 +309,12 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		// TODO: Change this so we no longer create a new user if the UUID is not found
 		// Right now this is just a workaround to create a new user, but in the future when
 		// we have a way to properly create users, we should not do this, and instead if there
-		// is no user with the UUID, we should error out and not create a new user.
+		// is no user with the email, we should error out and not create a new user.
 
-		// Match Creator UUID to ID
-		if meta.Creator.UUID != "" {
+		// Match Creator email to ID
+		if meta.Creator.Email != "" {
 			var existingUser apiTypes.User
-			if err := tx.Where("uuid = ?", meta.Creator.UUID).First(&existingUser).Error; err == nil {
+			if err := tx.Where("email = ?", meta.Creator.Email).First(&existingUser).Error; err == nil {
 				meta.Creator = existingUser
 				meta.CreatorID = existingUser.ID
 			} else if meta.Creator.ID == 0 {
@@ -326,11 +326,11 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 			}
 		}
 
-		// Match Updaters UUIDs to IDs
+		// Match Updaters emails to IDs
 		for i, updater := range meta.Updaters {
-			if updater.UUID != "" {
+			if updater.Email != "" {
 				var existingUser apiTypes.User
-				if err := tx.Where("uuid = ?", updater.UUID).First(&existingUser).Error; err == nil {
+				if err := tx.Where("email = ?", updater.Email).First(&existingUser).Error; err == nil {
 					meta.Updaters[i] = existingUser
 				} else if updater.ID == 0 {
 					// Create updater if not exists
@@ -343,10 +343,10 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		return nil
 	}
 
-	// Check if this is a User struct and match its UUID to ID
-	if user, ok := component.(*apiTypes.User); ok && user.UUID != "" {
+	// Check if this is a User struct and match its Email to ID
+	if user, ok := component.(*apiTypes.User); ok && user.Email != "" {
 		var existingUser apiTypes.User
-		if err := tx.Where("uuid = ?", user.UUID).First(&existingUser).Error; err == nil {
+		if err := tx.Where("email = ?", user.Email).First(&existingUser).Error; err == nil {
 			// Match the existing user ID to the current user
 			user.ID = existingUser.ID
 		}
@@ -646,6 +646,12 @@ func GetModelByUUID(uuid string) (int, *apiTypes.CausalDecisionModel, error) {
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
 		Preload("Meta.Updaters").
+		Preload("Diagrams.Meta.Creator").
+		Preload("Diagrams.Meta.Updaters").
+		Preload("Diagrams.Elements.Meta.Creator").
+		Preload("Diagrams.Elements.Meta.Updaters").
+		Preload("Diagrams.Dependencies.Meta.Creator").
+		Preload("Diagrams.Dependencies.Meta.Updaters").
 		Where("meta_id = ?", meta.ID).
 		First(&model).Error; err != nil {
 		return http.StatusNotFound, nil, fmt.Errorf("this meta is not associated with a model")
@@ -993,6 +999,12 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 		Preload("Diagrams.Dependencies.Meta").
 		Preload("Meta.Creator").
 		Preload("Meta.Updaters").
+		Preload("Diagrams.Meta.Creator").
+		Preload("Diagrams.Meta.Updaters").
+		Preload("Diagrams.Elements.Meta.Creator").
+		Preload("Diagrams.Elements.Meta.Updaters").
+		Preload("Diagrams.Dependencies.Meta.Creator").
+		Preload("Diagrams.Dependencies.Meta.Updaters").
 		Where("parent_uuid = ?", uuid).
 		Find(&children).Error; err != nil {
 		return http.StatusNotFound, nil, err

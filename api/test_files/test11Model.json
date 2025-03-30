@@ -11,8 +11,7 @@
             "createdDate": "string",
             "creator": {
               "email": "b",
-              "username": "b",
-              "uuid": "uuid"
+              "username": "b"
             },
             "documentation": [
               0
@@ -24,8 +23,7 @@
             "updaters": [
               {
                 "email": "b",
-                "username": "b",
-                "uuid": "uuid"
+                "username": "b"
               }
             ],
             "uuid": "meta1",
@@ -49,8 +47,7 @@
             "createdDate": "string",
             "creator": {
               "email": "b",
-              "username": "b",
-              "uuid": "uuid"
+              "username": "b"
             },
             "documentation": [
               0
@@ -62,8 +59,7 @@
             "updaters": [
               {
                 "email": "b",
-                "username": "b",
-                "uuid": "uuid"
+                "username": "b"
               }
             ],
             "uuid": "meta2",
@@ -75,8 +71,7 @@
         "createdDate": "string",
         "creator": {
           "email": "b",
-          "username": "b",
-          "uuid": "uuid"
+          "username": "b"
         },
         "documentation": [
           0
@@ -88,8 +83,7 @@
         "updaters": [
           {
             "email": "b",
-            "username": "b",
-            "uuid": "uuid"
+            "username": "b"
           }
         ],
         "uuid": "meta3",
@@ -101,8 +95,7 @@
     "createdDate": "string",
     "creator": {
       "email": "b",
-      "username": "b",
-      "uuid": "uuid"
+      "username": "b"
     },
     "documentation": [
       0
@@ -114,8 +107,7 @@
     "updaters": [
       {
         "email": "b",
-        "username": "b",
-        "uuid": "uuid"
+        "username": "b"
       }
     ],
     "uuid": "meta4",
