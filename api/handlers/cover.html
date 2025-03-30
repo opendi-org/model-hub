@@ -1,0 +1,493 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>handlers: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">opendi/model-hub/api/handlers/handlers.go (53.1%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">//
+// COPYRIGHT OpenDI
+//
+
+package handlers
+
+import (
+        "encoding/json"
+        "fmt"
+        "net/http"
+        "opendi/model-hub/api/apiTypes"
+        "opendi/model-hub/api/database"
+        jsonDiffHelpers "opendi/model-hub/api/jsondiffhelpers"
+        "strconv" //for applying patches generated with jsondiff
+
+        "github.com/gin-gonic/gin"
+)
+
+// ModelHandler struct for handling model requests
+type ModelHandler struct {
+}
+
+// CommitHandler struct for handling commit requests
+type CommitHandler struct {
+}
+
+// AuthHandler struct for handling user login/auth requests
+type AuthHandler struct {
+}
+
+// method for getting an instance of ModelHandler
+func NewModelHandler() (*ModelHandler, error) <span class="cov8" title="1">{
+
+        return &amp;ModelHandler{}, nil
+}</span>
+
+// method for getting an instance of CommitHandler
+func NewCommitHandler() (*CommitHandler, error) <span class="cov8" title="1">{
+
+        return &amp;CommitHandler{}, nil
+}</span>
+
+func NewAuthHandler() (*AuthHandler, error) <span class="cov8" title="1">{
+        return &amp;AuthHandler{}, nil
+}</span>
+
+// GetModels godoc
+// @Summary      Get all models
+// @Description  gets all models
+// @Tags         models
+// @Produce      json
+// @Success      200
+// @Failure      500
+// @Router       /v0/models/ [get]
+func (h *ModelHandler) GetModels(c *gin.Context) <span class="cov8" title="1">{
+        var models []apiTypes.CausalDecisionModel
+        status, models, err := database.GetAllModels()
+        if models == nil </span><span class="cov0" title="0">{
+                c.JSON(status, gin.H{"Error": err.Error()})
+        }</span>
+
+        <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(status, models)</span>
+}
+
+// UploadModel godoc
+// @Summary      Upload a new model
+// @Description  Uploads a causal decision model along with its metadata in a single transaction.
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        model  body  apiTypes.CausalDecisionModel  true  "Causal Decision Model Payload"
+// @Success      201 {object} apiTypes.CausalDecisionModel "Created model"
+// @Failure      400 {object} gin.H "Bad Request"
+// @Failure      409 {object} gin.H "Conflict: Model with same UUID already exists"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /v0/models/ [post]
+func (h *ModelHandler) UploadModel(c *gin.Context) <span class="cov8" title="1">{
+        var uploadedModel apiTypes.CausalDecisionModel
+
+        // Bind the JSON payload to the uploaded model struct
+        if err := c.ShouldBindJSON(&amp;uploadedModel); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+                return
+        }</span>
+
+        // Call the encapsulated CreateModel method from the database package
+        <span class="cov8" title="1">if status, err := database.CreateModelGivenEmail(&amp;uploadedModel); err != nil </span><span class="cov0" title="0">{
+                // Return error based on the CreateModel function response
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }</span>
+
+        // Return a successful response if model creation is successful
+        <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+        c.JSON(http.StatusCreated, uploadedModel)</span>
+}
+
+// GetModelByUUID godoc
+// @Summary      Get model by its uuid
+// @Description  gets models using its uuid
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        uuid path string true "Model UUID"
+// @Success      200
+// @Failure      404 {object} gin.H "Model not found"
+// @Router       /v0/models/{uuid} [get]
+func (h *ModelHandler) GetModelByUUID(c *gin.Context) <span class="cov8" title="1">{
+        uuid := c.Param("uuid")
+
+        // Call the encapsulated GetModelByUUID function from the database package
+        status, model, err := database.GetModelByUUID(uuid)
+        if err != nil </span><span class="cov8" title="1">{
+                // If error, return an appropriate response based on the error
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }</span>
+
+        // Return the model if found
+        <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(status, model)</span>
+}
+
+// putModel godoc
+// @Summary      Update model
+// @Description  Updates a causal decision model along with its metadata in a single transaction.
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        model  body  apiTypes.CausalDecisionModel  true  "Causal Decision Model Payload"
+// @Success      201 {object} apiTypes.CausalDecisionModel "Updated model"
+// @Failure      400 {object} gin.H "Bad Request"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /v0/models/ [put]
+func (h *ModelHandler) PutModel(c *gin.Context) <span class="cov8" title="1">{
+        //TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
+        var uploadedModel apiTypes.CausalDecisionModel
+
+        // Bind the JSON payload to the uploaded model struct
+        if err := c.ShouldBindJSON(&amp;uploadedModel); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+                return
+        }</span>
+
+        <span class="cov8" title="1">status, oldmodel, err := database.GetModelByUUID(uploadedModel.Meta.UUID)
+
+        if err != nil </span><span class="cov0" title="0">{
+                // Return error based on the UpdateModel function response
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }</span>
+
+        <span class="cov8" title="1">changedModel, status, err := database.UpdateModelAndCreateCommit(&amp;uploadedModel, oldmodel)
+        if err != nil </span><span class="cov0" title="0">{
+                // Return error based on the UpdateModel function response
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }</span>
+        // Return a successful response if model put is
+        <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(http.StatusCreated, changedModel)</span>
+}
+
+// GetCommits godoc
+// @Summary      Get all commits
+// @Description  gets all commits
+// @Tags         commits
+// @Produce      json
+// @Success      200
+// @Failure      500
+// @Router       /v0/commits/ [get]
+func (h *CommitHandler) GetCommits(c *gin.Context) <span class="cov8" title="1">{
+        var models []apiTypes.Commit
+        status, models, err := database.GetAllCommits()
+        if models == nil </span><span class="cov0" title="0">{
+                c.JSON(status, gin.H{"Error": err.Error()})
+        }</span>
+
+        <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(status, models)</span>
+}
+
+func (h *CommitHandler) GetLatestCommitByModelUUID(c *gin.Context) <span class="cov8" title="1">{
+        uuid := c.Param("uuid")
+
+        // Call the encapsulated GetModelByUUID function from the database package
+        status, commit, err := database.GetLatestCommitForModelUUID(uuid)
+        if err != nil </span><span class="cov8" title="1">{
+                // If error, return an appropriate response based on the error
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }</span>
+
+        // Return the commit if found
+        <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(status, commit)</span>
+}
+
+// doesn't do anything to the database, but just returns the version of the model associated with the commit version
+func (h *ModelHandler) GetVersionOfModel(c *gin.Context) <span class="cov0" title="0">{
+        strVersion := c.Param("version")
+        uuid := c.Param("uuid")
+        version, err := strconv.Atoi(strVersion)
+        _, latestVersionOfModel, err := database.GetModelByUUID(uuid)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+                return
+        }</span>
+        <span class="cov0" title="0">_, commit, err := database.GetLatestCommitForModelUUID(uuid)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+                return
+        }</span>
+        <span class="cov0" title="0">if version == commit.Version </span><span class="cov0" title="0">{
+                c.JSON(http.StatusOK, latestVersionOfModel)
+                return
+        }</span>
+
+        <span class="cov0" title="0">if version &gt; commit.Version </span><span class="cov0" title="0">{
+                c.JSON(http.StatusConflict, gin.H{"Error": "Version requested is greater than the latest version"})
+        }</span>
+
+        <span class="cov0" title="0">currVersion := commit.Version
+        currCommit := commit
+
+        currModelBytes, err := json.Marshal(latestVersionOfModel)
+
+        if err != nil </span><span class="cov0" title="0">{
+                // Return error based on the UpdateModel function response
+                c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+                return
+        }</span>
+
+        //reaches here
+
+        <span class="cov0" title="0">for </span><span class="cov0" title="0">{
+                diff := []byte(currCommit.Diff)
+                modified, err := jsonDiffHelpers.ApplyInvertedPatch(currModelBytes, diff)
+                if err != nil </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+                        return
+                }</span>
+
+                //reset variables for next iteration of applying patches
+                <span class="cov0" title="0">currModelBytes = modified
+                currVersion--
+                parentIdStr := currCommit.ParentCommitID
+
+                //if we reach the version we want, return the model
+                if currVersion &lt;= version </span><span class="cov0" title="0">{
+                        break</span>
+                }
+
+                <span class="cov0" title="0">if parentIdStr == "" </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusInternalServerError, "No parent ID") //if we encounter a null parent id, return error.
+                        return
+                }</span>
+
+                <span class="cov0" title="0">parentId, _ := strconv.ParseInt(parentIdStr, 10, 64)
+
+                _, currCommit, _ = database.GetCommitByID(int(parentId))</span>
+
+        }
+        <span class="cov0" title="0">fmt.Println(string(currModelBytes))
+
+        finalModel := apiTypes.CausalDecisionModel{}
+        if err := json.Unmarshal(currModelBytes, &amp;finalModel); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+                return
+        }</span>
+        <span class="cov0" title="0">c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(http.StatusOK, finalModel)</span>
+
+}
+
+/* //ERIC - we only needed this for testing.
+// UploadCommit godoc
+// @Summary      Upload a new commit
+// @Description  Uploads a commit
+// @Tags         commits
+// @Accept       json
+// @Produce      json
+// @Param        model  body  apiTypes.Commit  true  "Commit Payload"
+// @Success      201 {object} apiTypes.Commit "Created Commit"
+// @Failure      400 {object} gin.H "Bad Request"
+// @Failure      409 {object} gin.H "Conflict: Commit with same UUID already exists"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /v0/commits/ [post]
+func (h *CommitHandler) UploadCommit(c *gin.Context) {
+        var uploadedCommit apiTypes.Commit
+
+        // Bind the JSON payload to the uploaded commit struct
+        if err := c.ShouldBindJSON(&amp;uploadedCommit); err != nil {
+                c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+                return
+        }
+
+        // Call the encapsulated CreateCommit method from the database package
+        if status, err := database.CreateCommit(&amp;uploadedCommit); err != nil {
+                // Return error based on the CreateCommit function response
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }
+
+        // Return a successful response if commit creation is successful
+        c.JSON(http.StatusCreated, uploadedCommit)
+}
+*/
+
+// userLogin godoc
+// @Summary      Login a user
+// @Description  Either login or create a user
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        user  body  apiTypes.User  true  "User login"
+// @Success      201 {object} apiTypes.User "logged in user"
+// @Failure      400 {object} gin.H "Bad Request"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /login [put]
+func (h *AuthHandler) UserLogin(c *gin.Context) <span class="cov8" title="1">{
+        //For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
+        email := c.Query("email")
+        pass := c.Query("password")
+        fmt.Println("EMAIL: " + email)
+
+        status, user, err := database.UserLogin(email, pass)
+
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }</span>
+        <span class="cov8" title="1">user.Password = "secret"
+        fmt.Println(user)
+
+        // Return the user
+        c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(status, user)</span>
+}
+
+func (h *ModelHandler) GetModelLineage(c *gin.Context) <span class="cov8" title="1">{
+        uuid := c.Param("uuid")
+        status, lineage, err := database.GetModelLineage(uuid)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }</span>
+        <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(status, lineage)</span>
+}
+
+func (h *ModelHandler) GetModelChildren(c *gin.Context) <span class="cov8" title="1">{
+        uuid := c.Param("uuid")
+        status, children, err := database.GetModelChildren(uuid)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }</span>
+        <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(status, children)</span>
+}
+
+func (h *ModelHandler) ModelSearch(c *gin.Context) <span class="cov8" title="1">{
+        fmt.Println("Searching")
+        searchType := c.Param("type")
+        name := c.Param("name")
+        if searchType == "model" </span><span class="cov8" title="1">{
+                fmt.Println("Searching by Model")
+                status, models, err := database.SearchModelsByName(name)
+                if err != nil </span><span class="cov0" title="0">{
+                        c.JSON(status, gin.H{"Error": err.Error()})
+                        return
+                }</span>
+                <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+                c.IndentedJSON(status, models)</span>
+        } else<span class="cov8" title="1"> if searchType == "user" </span><span class="cov8" title="1">{
+                fmt.Println("Searching by User")
+                status, models, err := database.SearchModelsByUser(name)
+                if err != nil </span><span class="cov0" title="0">{
+                        c.JSON(status, gin.H{"Error": err.Error()})
+                        return
+                }</span>
+                <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
+                c.IndentedJSON(status, models)</span>
+        } else<span class="cov0" title="0"> {
+                c.JSON(404, gin.H{"Error": "This type of search does not exist"})
+                return
+        }</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
