@@ -202,12 +202,21 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 	strVersion := c.Param("version")
 	uuid := c.Param("uuid")
 	version, err := strconv.Atoi(strVersion)
-	_, latestVersionOfModel, err := database.GetModelByUUID(uuid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
-	_, commit, err := database.GetLatestCommitForModelUUID(uuid)
+	_, latestVersionOfModel, err := database.GetModelByUUID(uuid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+		return
+	}
+	status, commit, err := database.GetLatestCommitForModelUUID(uuid)
+	if version == 0 && status == http.StatusNotFound {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.IndentedJSON(http.StatusOK, latestVersionOfModel)
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return

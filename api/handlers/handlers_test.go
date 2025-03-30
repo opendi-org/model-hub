@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
 	"os"
 	"strings"
@@ -82,6 +83,7 @@ func SetUpRouter() *gin.Engine {
 		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
+		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
 	}
 
 	r.POST("/login", authHandler.UserLogin)
@@ -346,5 +348,82 @@ func TestGetLatestCommitByUUID(t *testing.T) {
 	router.ServeHTTP(w2, req2)
 
 	assert.Equal(t, http.StatusOK, w2.Code)
+
+}
+
+func TestGetVersionOfModel(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
+
+	req, _ := http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/0", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var returnedModel apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &returnedModel)
+	byteReturnedModel, _ := json.Marshal(returnedModel)
+	strReturnedModel := string(byteReturnedModel)
+
+	_, model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	bytemodel, _ := json.Marshal(model)
+	strmodel := string(bytemodel)
+
+	assert.Equal(t, strmodel, strReturnedModel)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/haha", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4bfff/0", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	//push a change to our model.
+	returnedModel.Meta.Summary = "Updated summary"
+	database.UpdateModelAndCreateCommit(&returnedModel, model)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/1", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var returnedModel2 apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &returnedModel2)
+	byteReturnedModel2, _ := json.Marshal(returnedModel2)
+	strReturnedModel2 := string(byteReturnedModel2)
+
+	byteReturnedModel, _ = json.Marshal(returnedModel)
+	strReturnedModel = string(byteReturnedModel)
+
+	assert.Equal(t, strReturnedModel2, strReturnedModel)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/2", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/0", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var returnedModel3 apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &returnedModel3)
+	byteReturnedModel3, _ := json.Marshal(returnedModel3)
+	strReturnedModel3 := string(byteReturnedModel3)
+
+	assert.Equal(t, strReturnedModel3, strmodel)
 
 }
