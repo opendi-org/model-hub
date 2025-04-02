@@ -437,11 +437,6 @@ const DownloadPage = () => {
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={2}>
                     <FormGroup>
-                        <FormControlLabel 
-                            control={<Checkbox defaultChecked />} 
-                            label="View Substantial Changes" 
-                            sx={{ mb: "1em" }} 
-                        />
 
                         {/* Flex container for cards */}
                         <Box sx={{ display: "flex", gap: 2 }}>
