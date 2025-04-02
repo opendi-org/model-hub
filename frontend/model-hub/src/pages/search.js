@@ -59,6 +59,11 @@ const SearchPage = () => {
                             </IconButton>
                         ),
                     }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            handleSearch()
+                        }
+                    }}
                 />
                 <FormControl>
                 <InputLabel>Filter</InputLabel>
