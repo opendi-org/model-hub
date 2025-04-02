@@ -1,0 +1,26 @@
+{
+  "id": 2,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Test Model",
+    "summary": "This was updated",
+    "version": "1.0",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "Test Creator",
+      "email": "creator@example.com",
+      "password": "p"
+    },
+    "createdDate": "2021-07-01",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2021-07-01"
+  }
+}

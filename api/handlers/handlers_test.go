@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -54,10 +56,21 @@ func SetUpRouter() *gin.Engine {
 
 	authHandler, _ := NewAuthHandler()
 
+	commitHandler, _ := NewCommitHandler()
+
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
 		os.Exit(1)
+	}
+
+	//router group for all endpoints related to commits
+	commits := r.Group("/v0/commits")
+	{
+
+		commits.GET("", commitHandler.GetCommits) // Get all commits
+		commits.GET("/:uuid", commitHandler.GetLatestCommitByModelUUID)
+		//commits.POST("", commitHandler.UploadCommit) // Create a commit (for testing)
 	}
 
 	//router group for all endpoints related to models
@@ -66,9 +79,11 @@ func SetUpRouter() *gin.Engine {
 		models.GET("", modelHandler.GetModels)            // Get all models
 		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
 		models.POST("", modelHandler.UploadModel)         // Upload a model
+		models.PUT("", modelHandler.PutModel)             // Update a model
 		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
+		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
 	}
 
 	r.POST("/login", authHandler.UserLogin)
@@ -127,6 +142,14 @@ func TestUploadModel(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
+
+	// invalid empty(not a model)
+	req2, _ := http.NewRequest("POST", "/v0/models", nil)
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	assert.Equal(t, http.StatusBadRequest, w2.Code)
 }
 
 func TestGetModelLineage(t *testing.T) {
@@ -202,4 +225,205 @@ func TestModelSearch(t *testing.T) {
 	assert.Equal(t, len(responseBody), 1)
 	assert.Contains(t, responseBody2[0]["meta"].(map[string]interface{})["name"], "Test")
 	assert.Contains(t, responseBody2[1]["meta"].(map[string]interface{})["creator"].(map[string]interface{})["username"], "Test")
+}
+
+func TestPutModel(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
+
+	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
+	if err != nil {
+		t.Errorf("Error reading test data: %s", err)
+
+	}
+
+	//Need to have the user be created in order for this to work, so
+	//we can log the user in
+	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+
+	reqBody := bytes.NewBuffer(example)
+	req, _ := http.NewRequest("PUT", "/v0/models", reqBody)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	// invalid empty(not a model)
+	req2, _ := http.NewRequest("PUT", "/v0/models", nil)
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	assert.Equal(t, http.StatusBadRequest, w2.Code)
+
+	// cdm uuid not in database
+	model4, err := os.ReadFile("../test_files/model4.json")
+	req3Body := bytes.NewBuffer(model4)
+	req3, _ := http.NewRequest("PUT", "/v0/models", req3Body)
+	req3.Header.Set("Content-Type", "application/json")
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+
+	assert.Equal(t, http.StatusNotFound, w3.Code)
+
+}
+
+func TestGetAllCommits(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
+
+	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
+	if err != nil {
+		t.Errorf("Error reading test data: %s", err)
+
+	}
+
+	//Need to have the user be created in order for this to work, so
+	//we can log the user in
+	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+
+	req3, _ := http.NewRequest("GET", "/v0/commits", nil)
+	req3.Header.Set("Content-Type", "application/json")
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+
+	assert.Equal(t, http.StatusOK, w3.Code)
+	assert.False(t, strings.Contains(w3.Body.String(), "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"))
+
+	reqBody := bytes.NewBuffer(example)
+	req, _ := http.NewRequest("PUT", "/v0/models", reqBody)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	req2, _ := http.NewRequest("GET", "/v0/commits", nil)
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	assert.Equal(t, http.StatusOK, w2.Code)
+	assert.True(t, strings.Contains(w2.Body.String(), "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"))
+}
+
+func TestGetLatestCommitByUUID(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
+
+	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
+	if err != nil {
+		t.Errorf("Error reading test data: %s", err)
+
+	}
+
+	//Need to have the user be created in order for this to work, so
+	//we can log the user in
+	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+
+	req3, _ := http.NewRequest("GET", "/v0/commits/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	req3.Header.Set("Content-Type", "application/json")
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+
+	assert.Equal(t, http.StatusNotFound, w3.Code)
+
+	reqBody := bytes.NewBuffer(example)
+	req, _ := http.NewRequest("PUT", "/v0/models", reqBody)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	req2, _ := http.NewRequest("GET", "/v0/commits/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+}
+
+func TestGetVersionOfModel(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleModels()
+
+	req, _ := http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/0", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var returnedModel apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &returnedModel)
+	byteReturnedModel, _ := json.Marshal(returnedModel)
+	strReturnedModel := string(byteReturnedModel)
+
+	_, model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	bytemodel, _ := json.Marshal(model)
+	strmodel := string(bytemodel)
+
+	assert.Equal(t, strmodel, strReturnedModel)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/haha", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4bfff/0", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	//push a change to our model.
+	returnedModel.Meta.Summary = "Updated summary"
+	database.UpdateModelAndCreateCommit(&returnedModel, model)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/1", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var returnedModel2 apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &returnedModel2)
+	byteReturnedModel2, _ := json.Marshal(returnedModel2)
+	strReturnedModel2 := string(byteReturnedModel2)
+
+	byteReturnedModel, _ = json.Marshal(returnedModel)
+	strReturnedModel = string(byteReturnedModel)
+
+	assert.Equal(t, strReturnedModel2, strReturnedModel)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/2", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/0", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var returnedModel3 apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &returnedModel3)
+	byteReturnedModel3, _ := json.Marshal(returnedModel3)
+	strReturnedModel3 := string(byteReturnedModel3)
+
+	assert.Equal(t, strReturnedModel3, strmodel)
+
 }
