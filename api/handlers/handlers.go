@@ -218,6 +218,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		fmt.Println("Line 221")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
@@ -237,6 +238,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 
 	if err != nil {
 		// Return error based on the UpdateModel function response
+		fmt.Println("Line 241")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
@@ -247,6 +249,8 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		diff := []byte(currCommit.Diff)
 		modified, err := jsonDiffHelpers.ApplyInvertedPatch(currModelBytes, diff)
 		if err != nil {
+			fmt.Println("Line 252")
+			fmt.Println(err.Error())
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 			return
 		}
@@ -262,6 +266,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		}
 
 		if parentIdStr == "" {
+			fmt.Println("Line 268")
 			c.JSON(http.StatusInternalServerError, "No parent ID") //if we encounter a null parent id, return error.
 			return
 		}
@@ -271,10 +276,10 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		_, currCommit, _ = database.GetCommitByID(int(parentId))
 
 	}
-	fmt.Println(string(currModelBytes))
 
 	finalModel := apiTypes.CausalDecisionModel{}
 	if err := json.Unmarshal(currModelBytes, &finalModel); err != nil {
+		fmt.Println("Line 281")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
@@ -332,7 +337,6 @@ func (h *AuthHandler) UserLogin(c *gin.Context) {
 	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
 	email := c.Query("email")
 	pass := c.Query("password")
-	fmt.Println("EMAIL: " + email)
 
 	status, user, err := database.UserLogin(email, pass)
 
@@ -341,7 +345,6 @@ func (h *AuthHandler) UserLogin(c *gin.Context) {
 		return
 	}
 	user.Password = "secret"
-	fmt.Println(user)
 
 	// Return the user
 	c.Header("Access-Control-Allow-Origin", "*")
@@ -371,11 +374,9 @@ func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 }
 
 func (h *ModelHandler) ModelSearch(c *gin.Context) {
-	fmt.Println("Searching")
 	searchType := c.Param("type")
 	name := c.Param("name")
 	if searchType == "model" {
-		fmt.Println("Searching by Model")
 		status, models, err := database.SearchModelsByName(name)
 		if err != nil {
 			c.JSON(status, gin.H{"Error": err.Error()})
@@ -384,7 +385,6 @@ func (h *ModelHandler) ModelSearch(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.IndentedJSON(status, models)
 	} else if searchType == "user" {
-		fmt.Println("Searching by User")
 		status, models, err := database.SearchModelsByUser(name)
 		if err != nil {
 			c.JSON(status, gin.H{"Error": err.Error()})

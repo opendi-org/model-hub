@@ -48,6 +48,7 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling inverted patch: %v", err)
 	}
+	fmt.Println(string(invertedPatchBytes))
 	jsonpatchPatch, err := jsonpatch.DecodePatch(invertedPatchBytes)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding inverted patch: %v", err)
@@ -55,6 +56,10 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 
 	//apply the patch
 	modified, err := jsonpatchPatch.Apply(currModelBytes)
+	if err != nil {
+		fmt.Println("Error is in .Apply()")
+		fmt.Println(err.Error())
+	}
 	return modified, err
 }
 
