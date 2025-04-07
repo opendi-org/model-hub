@@ -831,6 +831,8 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 	}
 	//fmt.Println(string(oldmodelBytes))
 
+	//NOTE the RFC 6902 spec for JSON diffs  will not work with any JSON keys that are of value "-"
+
 	diff, err := jsondiff.CompareJSON(oldmodelBytes, changedModelBytes, jsondiff.Invertible())
 
 	if err != nil {

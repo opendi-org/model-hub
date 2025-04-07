@@ -10,6 +10,7 @@ import JsonPatchViewer from "../components/JsonPatchViewer";
 import opendiIcon from '../opendi-icon.png';
 import API_URL from '../config';
 import { useMemo } from 'react';
+import { JSONTree } from 'react-json-tree';
 import {
     Box,
     Button,
@@ -35,6 +36,8 @@ import DialogTitle from '@mui/material/DialogTitle';
 import { useParams } from "react-router-dom";
 import { useDropzone } from "react-dropzone";
 import { useCallback } from "react";
+import JsonDiffViewer from "../components/JsonDiffViewer";
+
 
 const DownloadPage = () => {
     const [uploadStatus, setUploadStatus] = useState(null);
@@ -442,14 +445,21 @@ const DownloadPage = () => {
                         <Box sx={{ display: "flex", gap: 2 }}>
                             <Card sx={{ flex: 1 }}>
                                 <CardContent>
-                                    <h3>Current JSON Model</h3>
-                                    <pre>{JSON.stringify(model, null, 2)}</pre>
+                                <h3>Current JSON Model</h3>
+                                    <JSONTree
+                                    data={model}   // Pass in the JSON data
+                                    shouldExpandNodeInitially={() => true}
+                                    />
+
+
+                                <pre>{JSON.stringify(model, null, 2)}</pre>
+
                                 </CardContent>
                             </Card>
 
                             <Card sx={{ flex: 1 }}>
                                 <CardContent>
-                                <JsonPatchViewer lastVersionOfModel={lastVersionOfModel} commit={commit} />
+                                <JsonDiffViewer lastVersionOfModel={lastVersionOfModel} commit={commit} />
 
                                 </CardContent>
                             </Card>
