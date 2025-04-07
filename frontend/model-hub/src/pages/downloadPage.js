@@ -12,6 +12,7 @@ import API_URL from '../config';
 import { useMemo } from 'react';
 import { JSONTree } from 'react-json-tree';
 import {
+    Alert,
     Box,
     Button,
     Tabs,
@@ -189,11 +190,13 @@ const DownloadPage = () => {
 
             setUploadStatus("success");
             setErrorMessage("");
+            handleClose();
 
         } catch (error) {
             console.error("Error uploading file:", error);
             setUploadStatus("error");
-            setErrorMessage(error.message || "Upload failed.");
+            setErrorMessage(error.message || "Update failed.");
+            handleClose();
         }
     }, []);
 
@@ -371,9 +374,28 @@ const DownloadPage = () => {
                 />
 
                 <Box sx={{ display: "flex", flexDirection: "column", p: 3, flex: 1 }}>
+
+
+
+                    {/* Show Success Alert */}
+                    {uploadStatus === "success" && (
+                        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setUploadStatus(null)}>
+                            File uploaded successfully! Please refresh the page to see the changes. 
+                        </Alert>
+                    )}
+    
+                    {/* Show Error Alert */}
+                    {uploadStatus === "error" && (
+                        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setUploadStatus(null)}>
+                            {errorMessage}
+                        </Alert>
+                    )}
+
+
+
                     <Typography variant="h4" sx={{ pb: 1 }}>   {model.meta ? model.meta.name : ""} </Typography>
                     <Typography variant="subtitle1" sx={{ pb: 2 }}> By: {model && model.meta && model.meta.creator ? model.meta.creator.username : ""} </Typography>
-
+                
                     <Stack direction="row" spacing={1} sx={{ pb: 8 }}>
                         <Chip label="Tag 1" />
                         <Chip label="Tag 2" />
@@ -398,19 +420,6 @@ const DownloadPage = () => {
                     <Dialog
                         open={open}
                         onClose={handleClose}
-                        slotProps={{
-                            paper: {
-                                component: 'form',
-                                onSubmit: (event) => {
-                                    event.preventDefault();
-                                    const formData = new FormData(event.currentTarget);
-                                    const formJson = Object.fromEntries(formData.entries());
-                                    const email = formJson.email;
-                                    console.log(email);
-                                    handleClose();
-                                },
-                            },
-                        }}
                     >
                         <DialogTitle>Update Model</DialogTitle>
                         <DialogContent>
@@ -459,6 +468,7 @@ const DownloadPage = () => {
 
                             <Card sx={{ flex: 1 }}>
                                 <CardContent>
+                                <h3>Previous JSON Model</h3>
                                 <JsonDiffViewer lastVersionOfModel={lastVersionOfModel} commit={commit} />
 
                                 </CardContent>
