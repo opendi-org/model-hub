@@ -11,6 +11,7 @@ import API_URL from '../config'
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState(false);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -19,9 +20,11 @@ const Login = () => {
         .then(response => {
             if (!response.ok) {
                 return response.json().then(error => {
+                    setLoginError(true)
                     throw new Error(error.message);
                 });
             }
+            setLoginError(false)
             return response.json();
         })
         .then(data => {
@@ -76,6 +79,21 @@ const Login = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+
+          <Box 
+            sx={{
+              display: loginError ? 'block' : 'none',
+              backgroundColor: '#ffebee',
+              color: '#c62828',
+              padding: 2,
+              borderRadius: 1,
+              mt: 2
+            }}
+          >
+            <Typography variant="body2">
+              Username or password is incorrect
+            </Typography>
+          </Box>
           <Button
             type="submit"
             fullWidth
