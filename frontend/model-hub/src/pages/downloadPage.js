@@ -187,16 +187,20 @@ const DownloadPage = () => {
                 const data = await response.json();
                 setSelectedVersionModel(data);
                 
-                // If this isn't the first version, fetch the previous version too
-                if (selectedVersion > 1) {
-                    const prevResponse = await fetch(`${API_URL}/v0/models/modelVersion/${uuid}/${selectedVersion - 1}`);
-                    if (!prevResponse.ok) {
-                        throw new Error('Network response was not ok for getting previous model version');
+                // Always try to fetch the previous version, even for version 1
+                const prevResponse = await fetch(`${API_URL}/v0/models/modelVersion/${uuid}/${selectedVersion - 1}`);
+                if (!prevResponse.ok) {
+                    // For version 1, we need to handle the special case where version 0 might not be directly accessible
+                    if (selectedVersion === 1) {
+                        console.log("Fetching version 0 (original state)");
+                        // The backend should reconstruct version 0 from the version 1 diff
+                    } else {
+                        console.error('Error fetching previous version:', prevResponse.statusText);
                     }
+                    setPrevVersionModel("No previous version");
+                } else {
                     const prevData = await prevResponse.json();
                     setPrevVersionModel(prevData);
-                } else {
-                    setPrevVersionModel("No previous version");
                 }
             } catch (error) {
                 console.error('Error fetching model versions:', error);
