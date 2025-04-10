@@ -1065,3 +1065,21 @@ func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, e
 
 	return http.StatusOK, models, nil
 }
+
+// GetCommitsByModelUUID returns all commits for a model UUID, ordered by version
+func GetCommitsByModelUUID(uuid string) (int, []apiTypes.Commit, error) {
+	var commits []apiTypes.Commit
+	err := dbInstance.Where("cdm_uuid = ?", uuid).
+		Order("version DESC").
+		Find(&commits).Error
+
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	if len(commits) == 0 {
+		return http.StatusNotFound, nil, fmt.Errorf("no commits found for model with UUID %s", uuid)
+	}
+
+	return http.StatusOK, commits, nil
+}

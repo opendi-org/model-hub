@@ -27,7 +27,11 @@ import {
     FormGroup,
     Card,
     CardContent,
-    TextField
+    TextField,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem
 } from "@mui/material";
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -45,6 +49,12 @@ const DownloadPage = () => {
     const [errorMessage, setErrorMessage] = useState("");
     const [open, setOpen] = React.useState(false);
 
+    // New state for all commits and selected version
+    const [allCommits, setAllCommits] = useState([]);
+    const [selectedVersion, setSelectedVersion] = useState(null);
+    const [selectedVersionModel, setSelectedVersionModel] = useState(null);
+    const [prevVersionModel, setPrevVersionModel] = useState(null);
+
     const handleClickOpen = () => {
         setOpen(true);
     };
@@ -61,7 +71,7 @@ const DownloadPage = () => {
     const { uuid } = useParams();
     // console.log( uuid );
 
-        //useState returns an array of two elements that contain a state variable and a method to change the variable (and in doing so, re-render)
+    //useState returns an array of two elements that contain a state variable and a method to change the variable (and in doing so, re-render)
     const [model, setModel] = useState({})
 
     /*
@@ -105,10 +115,33 @@ const DownloadPage = () => {
             })
             .then(data => {
                     setCommit(data); // Set commit data if the response was valid
+                    if (data.version > 0 && !selectedVersion) {
+                        setSelectedVersion(data.version);
+                    }
             })
             .catch(error => console.error('There was a problem with the fetch operation:', error));
-    }, [uuid]);
+    }, [uuid, selectedVersion]);
 
+    // Fetch all commits for the model
+    useEffect(() => {
+        if (!uuid) return;
+        
+        fetch(`${API_URL}/v0/commits/model/${uuid}`)
+            .then(response => {
+                if (response.status === 404) {
+                    setAllCommits([]); // Set empty array if no commits found
+                    return [];
+                }
+                if (!response.ok) {
+                    throw new Error('Network response was not ok for getting commits');
+                }
+                return response.json();
+            })
+            .then(data => {
+                setAllCommits(data);
+            })
+            .catch(error => console.error('Error fetching commits:', error));
+    }, [uuid]);
 
     // Get previous version of model
     //note that for development purposes, in react strict mode, useEffect invokes twice. 
@@ -140,8 +173,49 @@ const DownloadPage = () => {
 
         fetchData();
     }, [model, commit]); // Re-run when model or commit changes
+    
+    // Effect for fetching the selected version model
+    useEffect(() => {
+        if (!uuid || !selectedVersion) return;
+        
+        const fetchSelectedVersion = async () => {
+            try {
+                const response = await fetch(`${API_URL}/v0/models/modelVersion/${uuid}/${selectedVersion}`);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok for getting selected model version');
+                }
+                const data = await response.json();
+                setSelectedVersionModel(data);
+                
+                // If this isn't the first version, fetch the previous version too
+                if (selectedVersion > 1) {
+                    const prevResponse = await fetch(`${API_URL}/v0/models/modelVersion/${uuid}/${selectedVersion - 1}`);
+                    if (!prevResponse.ok) {
+                        throw new Error('Network response was not ok for getting previous model version');
+                    }
+                    const prevData = await prevResponse.json();
+                    setPrevVersionModel(prevData);
+                } else {
+                    setPrevVersionModel("No previous version");
+                }
+            } catch (error) {
+                console.error('Error fetching model versions:', error);
+            }
+        };
+        
+        fetchSelectedVersion();
+    }, [uuid, selectedVersion]);
 
+    // Handle version selection
+    const handleVersionChange = (event) => {
+        setSelectedVersion(Number(event.target.value));
+    };
 
+    // Find the selected commit from allCommits
+    const selectedCommit = useMemo(() => {
+        if (!selectedVersion || !allCommits.length) return null;
+        return allCommits.find(c => c.version === selectedVersion) || null;
+    }, [selectedVersion, allCommits]);
 
     async function getCDM() {
         // console.log("Creator: " + cdm.creator);
@@ -449,6 +523,23 @@ const DownloadPage = () => {
                 </CustomTabPanel>
                 <CustomTabPanel value={value} index={2}>
                     <FormGroup>
+                        {/* Version selector dropdown */}
+                        <Box sx={{ mb: 3 }}>
+                            <FormControl fullWidth>
+                                <InputLabel>Select Diff</InputLabel>
+                                <Select
+                                    value={selectedVersion || ''}
+                                    onChange={handleVersionChange}
+                                    label="Select Diff"
+                                >
+                                    {allCommits.map((commitItem) => (
+                                        <MenuItem key={commitItem.version} value={commitItem.version}>
+                                            Diff {commitItem.version} - {new Date(commitItem.CreatedAt).toLocaleString()}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Box>
 
                         {/* Flex container for cards */}
                         <Box sx={{ display: "flex", gap: 2 }}>
@@ -456,21 +547,19 @@ const DownloadPage = () => {
                                 <CardContent>
                                 <h3>Current JSON Model</h3>
                                     <JSONTree
-                                    data={model}   // Pass in the JSON data
+                                    data={selectedVersionModel || model}
                                     shouldExpandNodeInitially={() => true}
                                     />
-
-
-                                <pre>{JSON.stringify(model, null, 2)}</pre>
-
                                 </CardContent>
                             </Card>
 
                             <Card sx={{ flex: 1 }}>
                                 <CardContent>
                                 <h3>Previous JSON Model</h3>
-                                <JsonDiffViewer lastVersionOfModel={lastVersionOfModel} commit={commit} />
-
+                                <JsonDiffViewer 
+                                    lastVersionOfModel={selectedVersion === commit.version ? lastVersionOfModel : prevVersionModel} 
+                                    commit={selectedCommit || commit} 
+                                />
                                 </CardContent>
                             </Card>
                         </Box>
