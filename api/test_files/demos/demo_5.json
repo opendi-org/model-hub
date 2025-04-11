@@ -1,0 +1,26 @@
+{
+  "id": 201,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Treatment Protocol Selector",
+    "summary": "Medical. This decision support system recommends evidence-based treatment protocols based on patient diagnosis, medical history, and current clinical guidelines.",
+    "version": "3.2",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "Clinical Excellence Partners",
+      "email": "protocols@clinicalpartners.org",
+      "password": "p"
+    },
+    "createdDate": "2022-04-03",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-01-18"
+  }
+}

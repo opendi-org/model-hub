@@ -5,7 +5,7 @@
     "id": null,
     "uuid": "",
     "name": "Test Model",
-    "summary": "This is a test model. Note that when creating this model, it relies on creator with email already existing",
+    "summary": "This is a test summary.",
     "version": "1.0",
     "creator": {
       "uuid": "creator-uuid",

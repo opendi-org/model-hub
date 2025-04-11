@@ -1,0 +1,26 @@
+{
+  "id": 205,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Patient Readmission Predictor",
+    "summary": "Medical. This model analyzes discharge data to identify patients at high risk for readmission, enabling proactive follow-up care and intervention.",
+    "version": "2.0",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "ContinuumCare Analytics",
+      "email": "outcomes@continuumcare.org",
+      "password": "p"
+    },
+    "createdDate": "2021-10-08",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2023-11-22"
+  }
+}

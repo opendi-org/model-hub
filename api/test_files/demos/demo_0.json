@@ -1,0 +1,25 @@
+{
+  "id": 101,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Investment Portfolio Optimization",
+    "summary": "Financial. This model helps financial advisors optimize investment portfolios based on client risk tolerance, time horizon, and financial goals.",
+    "version": "2.3",
+    "creator": {
+      "email": "creator@example.com",
+      "username": "string",
+      "uuid": "user-uuid-creator"
+    },
+    "createdDate": "2022-03-15",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-01-22"
+  }
+}

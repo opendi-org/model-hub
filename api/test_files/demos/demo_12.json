@@ -1,0 +1,26 @@
+{
+  "id": 303,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Talent Acquisition Prioritizer",
+    "summary": "Business. This model helps HR departments prioritize hiring needs based on skill gaps, growth projections, and strategic business objectives.",
+    "version": "2.2",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "TalentForge Consulting",
+      "email": "recruiting@talentforge.com",
+      "password": "p"
+    },
+    "createdDate": "2022-05-03",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-02-15"
+  }
+}

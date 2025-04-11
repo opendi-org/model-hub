@@ -1,0 +1,26 @@
+{
+  "id": 103,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Currency Hedging Strategy",
+    "summary": "Financial. This model assesses international market volatility to recommend optimal currency hedging strategies for multinational corporations.",
+    "version": "3.1",
+    "creator": {
+      "uuid": "creator-fix",
+      "username": "GlobalFX Insights",
+      "email": "strategy@globalfx.com",
+      "password": "p"
+    },
+    "createdDate": "2022-05-19",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-02-28"
+  }
+}

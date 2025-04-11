@@ -1,0 +1,26 @@
+{
+  "id": 405,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Technology Stack Modernization",
+    "summary": "Technical. This tool evaluates legacy systems and recommends modernization strategies based on business needs, technical debt, and emerging technology capabilities.",
+    "version": "1.9",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "Legacy Transformation Group",
+      "email": "modernize@legacytransform.com",
+      "password": "p"
+    },
+    "createdDate": "2021-12-05",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2023-11-10"
+  }
+}

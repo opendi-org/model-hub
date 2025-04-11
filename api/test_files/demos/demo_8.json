@@ -1,0 +1,26 @@
+{
+  "id": 204,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Medication Compatibility Checker",
+    "summary": "Medical. This system identifies potential drug interactions and contraindications based on a patient's current medications, allergies, and medical conditions.",
+    "version": "3.5",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "PharmaSafe Solutions",
+      "email": "interactions@pharmasafe.com",
+      "password": "p"
+    },
+    "createdDate": "2022-02-14",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-03-01"
+  }
+}

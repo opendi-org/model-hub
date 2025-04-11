@@ -1,0 +1,26 @@
+{
+  "id": 403,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Deployment Strategy Evaluator",
+    "summary": "Technical. This model analyzes software release strategies to recommend the optimal deployment approach based on risk tolerance, system criticality, and team capabilities.",
+    "version": "2.4",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "DevOps Excellence",
+      "email": "releases@devopsex.com",
+      "password": "p"
+    },
+    "createdDate": "2022-06-21",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-02-22"
+  }
+}
