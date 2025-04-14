@@ -6,7 +6,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
@@ -271,7 +270,6 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		_, currCommit, _ = database.GetCommitByID(int(parentId))
 
 	}
-	fmt.Println(string(currModelBytes))
 
 	finalModel := apiTypes.CausalDecisionModel{}
 	if err := json.Unmarshal(currModelBytes, &finalModel); err != nil {
@@ -332,7 +330,6 @@ func (h *AuthHandler) UserLogin(c *gin.Context) {
 	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
 	email := c.Query("email")
 	pass := c.Query("password")
-	fmt.Println("EMAIL: " + email)
 
 	status, user, err := database.UserLogin(email, pass)
 
@@ -341,7 +338,6 @@ func (h *AuthHandler) UserLogin(c *gin.Context) {
 		return
 	}
 	user.Password = "secret"
-	fmt.Println(user)
 
 	// Return the user
 	c.Header("Access-Control-Allow-Origin", "*")
@@ -371,11 +367,9 @@ func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 }
 
 func (h *ModelHandler) ModelSearch(c *gin.Context) {
-	fmt.Println("Searching")
 	searchType := c.Param("type")
 	name := c.Param("name")
 	if searchType == "model" {
-		fmt.Println("Searching by Model")
 		status, models, err := database.SearchModelsByName(name)
 		if err != nil {
 			c.JSON(status, gin.H{"Error": err.Error()})
@@ -384,7 +378,6 @@ func (h *ModelHandler) ModelSearch(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.IndentedJSON(status, models)
 	} else if searchType == "user" {
-		fmt.Println("Searching by User")
 		status, models, err := database.SearchModelsByUser(name)
 		if err != nil {
 			c.JSON(status, gin.H{"Error": err.Error()})
@@ -396,4 +389,29 @@ func (h *ModelHandler) ModelSearch(c *gin.Context) {
 		c.JSON(404, gin.H{"Error": "This type of search does not exist"})
 		return
 	}
+}
+
+// GetCommitsByModelUUID godoc
+// @Summary      Get all commits for a model
+// @Description  gets all commits for a specific model by its UUID
+// @Tags         commits
+// @Produce      json
+// @Param        uuid path string true "Model UUID"
+// @Success      200
+// @Failure      404 {object} gin.H "Commits not found"
+// @Router       /v0/commits/model/{uuid} [get]
+func (h *CommitHandler) GetCommitsByModelUUID(c *gin.Context) {
+	uuid := c.Param("uuid")
+
+	// Call the database function to get all commits for the model
+	status, commits, err := database.GetCommitsByModelUUID(uuid)
+	if err != nil {
+		// If error, return an appropriate response
+		c.JSON(status, gin.H{"Error": err.Error()})
+		return
+	}
+
+	// Return the commits if found
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.IndentedJSON(status, commits)
 }

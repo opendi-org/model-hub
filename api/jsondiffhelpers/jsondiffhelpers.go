@@ -9,8 +9,10 @@ package jsondiffhelpers
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	jsonpatch "github.com/evanphx/json-patch"
+	"github.com/qri-io/jsonpointer"
 	jsondiff "github.com/wI2L/jsondiff"
 )
 
@@ -38,8 +40,10 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 
 		return nil, fmt.Errorf("error unmarshalling patch: %v", err)
 	}
+	//fmt.Println("Patch is:")
+	//fmt.Println((string(patchBytes)))
 
-	invertedPatch, _ := InvertPatch(patch)
+	invertedPatch, _ := InvertPatch(patch, currModelBytes)
 	//apply the inverted patch to the current JSON bytes we have
 
 	//get byte array form of JSON form of inverted ptach
@@ -48,6 +52,8 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling inverted patch: %v", err)
 	}
+	//fmt.Println("Inverted Patch is:")
+	//fmt.Println(string(invertedPatchBytes))
 	jsonpatchPatch, err := jsonpatch.DecodePatch(invertedPatchBytes)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding inverted patch: %v", err)
@@ -55,32 +61,31 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 
 	//apply the patch
 	modified, err := jsonpatchPatch.Apply(currModelBytes)
+	if err != nil {
+		fmt.Println("Error is in .Apply()")
+		fmt.Println(err.Error())
+	}
 	return modified, err
 }
 
 // InvertPatch inverts a JSON Patch, preparing the patch to reverse the operations.
 // It supports "add", "remove", and "replace" operations for now.
 // The returned patch is still invertible.
-func InvertPatch(patch jsondiff.Patch) (jsondiff.Patch, error) {
+func InvertPatch(patch jsondiff.Patch, originalJSON []byte) (jsondiff.Patch, error) {
+	//TODO the creator of the jsondiff library should have added an invert method
 	var invertedPatch jsondiff.Patch
 
 	var prevTestOp *jsondiff.Operation
 
 	for _, op := range patch {
+		//fmt.Println("Path: ", op.Path)
 		switch op.Type {
 		case OperationAdd:
-			// Add operation is inverted by a remove operation with the same path
-			//to make it invertible, we first add a test operation with the value now removed.
-			invertedPatch = append(invertedPatch, jsondiff.Operation{
-				Type:  OperationTest,
-				Path:  op.Path,
-				Value: op.Value,
-			})
-			//then we add the remove operation
-			invertedPatch = append(invertedPatch, jsondiff.Operation{
-				Type: OperationRemove,
-				Path: op.Path,
-			})
+
+			//add gets a bit complicated
+			invertedPatch2 := invertOperationAdd(invertedPatch, op, originalJSON)
+			invertedPatch = invertedPatch2
+
 		case OperationRemove:
 			// Remove operation is inverted by an add operation with the same path. The value is taken from the previous test operation.
 			if prevTestOp == nil {
@@ -114,4 +119,74 @@ func InvertPatch(patch jsondiff.Patch) (jsondiff.Patch, error) {
 	}
 
 	return invertedPatch, nil
+}
+
+func invertOperationAdd(invertedPatch jsondiff.Patch, op jsondiff.Operation, originalJSON []byte) jsondiff.Patch {
+
+	//if the add has a - at the end, it is appending to the end of the array at the path.
+	if op.Path[len(op.Path)-1] == '-' {
+		//remove the - from the path as ewll as the trailing slash
+		newPath := op.Path[:len(op.Path)-2]
+		array, _ := GetJSONByPath(originalJSON, newPath)
+		length, _, _ := getLastElement(array)
+
+		toPrint := fmt.Sprintf("%T", op.Value)
+		fmt.Println("Type of v is: ", toPrint)
+
+		//add a test operation that checks if the array has the value we got.
+		invertedPatch = append(invertedPatch, jsondiff.Operation{
+			Type:  OperationTest,
+			Path:  newPath + "/" + strconv.Itoa(length-1),
+			Value: op.Value,
+		})
+		//we need the remove operation to remove the length of the array - 1.
+		invertedPatch = append(invertedPatch, jsondiff.Operation{
+			Type: OperationRemove,
+			Path: newPath + "/" + strconv.Itoa(length-1),
+		})
+		return invertedPatch
+	}
+
+	//otherwise, add operation -- whether adding to an array indice or just adding a key to a map, is standard
+
+	// Add operation is inverted by a remove operation with the same path
+	//to make it invertible, we first add a test operation with the value now removed.
+	invertedPatch = append(invertedPatch, jsondiff.Operation{
+		Type:  OperationTest,
+		Path:  op.Path,
+		Value: op.Value,
+	})
+	//then we add the remove operation
+	invertedPatch = append(invertedPatch, jsondiff.Operation{
+		Type: OperationRemove,
+		Path: op.Path,
+	})
+	return invertedPatch
+}
+
+// GetJSONByPath returns the JSON of the given path in the JSON document.
+func GetJSONByPath(jsonText []byte, path string) ([]byte, error) {
+	parsed := map[string]interface{}{}
+	json.Unmarshal([]byte(jsonText), &parsed)
+
+	//create a JSON pointer
+	pointer, _ := jsonpointer.Parse(string(path))
+	value, _ := pointer.Eval(parsed)
+	// Marshal the value back to JSON
+	jsonValue, _ := json.Marshal(value)
+	return jsonValue, nil
+}
+
+func getLastElement(jsonArray []byte) (int, []byte, error) {
+	// Declare a slice to hold the unmarshalled data
+	var array []interface{}
+
+	// Unmarshal the JSON array string into the slice
+	if err := json.Unmarshal(jsonArray, &array); err != nil {
+		return 0, nil, err
+	}
+	//get last element
+	lastElement, _ := json.Marshal(array[len(array)-1])
+	// Return the length of the slice
+	return len(array), lastElement, nil
 }

@@ -1,4 +1,6 @@
 import React from "react";
+//legacy patch viewer, no longer in use
+//some bugs are with some paths returned from the diff. 
 const JsonPatchViewer = ({ lastVersionOfModel, commit }) => {
 
   if (commit['version'] === 0) {

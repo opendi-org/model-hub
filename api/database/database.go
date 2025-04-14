@@ -821,10 +821,15 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
+	//fmt.Printf("Changed model: %s\n", string(changedModelBytes))
+
 	oldmodelBytes, err := json.Marshal(oldModel)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
+	//fmt.Println(string(oldmodelBytes))
+
+	//NOTE the RFC 6902 spec for JSON diffs  will not work with any JSON keys that are of value "-"
 
 	diff, err := jsondiff.CompareJSON(oldmodelBytes, changedModelBytes, jsondiff.Invertible())
 
@@ -1057,4 +1062,22 @@ func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, e
 	}
 
 	return http.StatusOK, models, nil
+}
+
+// GetCommitsByModelUUID returns all commits for a model UUID, ordered by version
+func GetCommitsByModelUUID(uuid string) (int, []apiTypes.Commit, error) {
+	var commits []apiTypes.Commit
+	err := dbInstance.Where("cdm_uuid = ?", uuid).
+		Order("version DESC").
+		Find(&commits).Error
+
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	if len(commits) == 0 {
+		return http.StatusNotFound, nil, fmt.Errorf("no commits found for model with UUID %s", uuid)
+	}
+
+	return http.StatusOK, commits, nil
 }

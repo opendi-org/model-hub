@@ -54,9 +54,9 @@ func main() {
 		os.Exit(1)
 	}
 	//initialize handler
-	modelHandler, err := handlers.NewModelHandler()
+	modelHandler, _ := handlers.NewModelHandler()
 
-	authHandler, err := handlers.NewAuthHandler()
+	authHandler, _ := handlers.NewAuthHandler()
 
 	commitHandler, err := handlers.NewCommitHandler()
 
@@ -121,6 +121,7 @@ func main() {
 
 		commits.GET("", commitHandler.GetCommits) // Get all commits
 		commits.GET("/:uuid", commitHandler.GetLatestCommitByModelUUID)
+		commits.GET("model/:uuid", commitHandler.GetCommitsByModelUUID)
 		//commits.POST("", commitHandler.UploadCommit) // Create a commit (for testing)
 	}
 
