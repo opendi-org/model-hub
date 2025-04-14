@@ -798,13 +798,11 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 	if status, err := UpdateModel(uploadedModel); err != nil {
 		//TODO fix this so that if we get an error here, we roll back the update
 		// Return error based on the UpdateModel function response
-		fmt.Println("The error was thrown from UpdateModel")
 		return nil, status, err
 	}
 
 	status, changedModel, err := GetModelByUUID(uploadedModel.Meta.UUID)
 	if err != nil {
-		fmt.Println("The error was thrown from GetModelByUUID")
 		return nil, status, err
 	}
 

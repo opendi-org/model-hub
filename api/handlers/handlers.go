@@ -218,7 +218,6 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		fmt.Println("Line 221")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
@@ -238,7 +237,6 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 
 	if err != nil {
 		// Return error based on the UpdateModel function response
-		fmt.Println("Line 241")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
@@ -249,8 +247,6 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		diff := []byte(currCommit.Diff)
 		modified, err := jsonDiffHelpers.ApplyInvertedPatch(currModelBytes, diff)
 		if err != nil {
-			fmt.Println("Line 252")
-			fmt.Println(err.Error())
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 			return
 		}
@@ -266,7 +262,6 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		}
 
 		if parentIdStr == "" {
-			fmt.Println("Line 268")
 			c.JSON(http.StatusInternalServerError, "No parent ID") //if we encounter a null parent id, return error.
 			return
 		}
@@ -279,7 +274,6 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 
 	finalModel := apiTypes.CausalDecisionModel{}
 	if err := json.Unmarshal(currModelBytes, &finalModel); err != nil {
-		fmt.Println("Line 281")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
