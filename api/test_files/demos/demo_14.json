@@ -1,0 +1,26 @@
+{
+  "id": 305,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Product Discontinuation Evaluator",
+    "summary": "Business. This tool assesses underperforming products to determine whether they should be discontinued, revitalized, or repositioned in the market.",
+    "version": "1.7",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "Portfolio Strategy Group",
+      "email": "lifecycle@portfoliostrategy.com",
+      "password": "p"
+    },
+    "createdDate": "2021-11-14",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2023-10-29"
+  }
+}

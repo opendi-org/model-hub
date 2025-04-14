@@ -1,0 +1,26 @@
+{
+  "id": 401,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Database Migration Planner",
+    "summary": "Technical. This model creates optimized database migration plans based on data volume, schema complexity, downtime constraints, and system dependencies.",
+    "version": "2.9",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "DataShift Technologies",
+      "email": "migrations@datashift.com",
+      "password": "p"
+    },
+    "createdDate": "2022-04-17",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-01-30"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": 304,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Pricing Strategy Optimizer",
+    "summary": "Business. This system recommends optimal pricing strategies based on market conditions, competitor analysis, cost structures, and customer willingness to pay.",
+    "version": "3.8",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "Revenue Optimization Partners",
+      "email": "pricing@revenueopt.com",
+      "password": "p"
+    },
+    "createdDate": "2022-01-19",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-03-08"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": 404,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Security Control Prioritizer",
+    "summary": "Technical. This system evaluates an organization's security posture to recommend which security controls should be implemented first based on threat landscape and resource constraints.",
+    "version": "3.7",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "CyberDefense Partners",
+      "email": "controls@cyberdefense.com",
+      "password": "p"
+    },
+    "createdDate": "2022-02-03",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-03-19"
+  }
+}

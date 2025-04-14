@@ -1,0 +1,26 @@
+{
+  "id": 104,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Fraud Detection Engine",
+    "summary": "Financial. This system analyzes transaction patterns to identify potential fraudulent activities in real-time for financial institutions.",
+    "version": "4.0",
+    "creator": {
+      "uuid": "creator-bank",
+      "username": "SecureBank Analytics",
+      "email": "security@securebank.com",
+      "password": "p"
+    },
+    "createdDate": "2022-01-07",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-03-12"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": 203,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Surgical Risk Calculator",
+    "summary": "Medical. This tool evaluates patient-specific factors to determine surgical risks and helps surgeons make informed decisions about procedure selection and timing.",
+    "version": "4.1",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "SurgicalMetrics Institute",
+      "email": "risk@surgicalmetrics.org",
+      "password": "p"
+    },
+    "createdDate": "2022-06-11",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-02-09"
+  }
+}
