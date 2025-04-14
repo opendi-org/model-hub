@@ -12,8 +12,8 @@ import (
 	"strconv"
 
 	jsonpatch "github.com/evanphx/json-patch"
+	"github.com/qri-io/jsonpointer"
 	jsondiff "github.com/wI2L/jsondiff"
-	"github.com/xeipuuv/gojsonpointer"
 )
 
 //wrote this file because the jsondiff library didn't have an invert patch function at the time of writing. curious...
@@ -166,12 +166,12 @@ func invertOperationAdd(invertedPatch jsondiff.Patch, op jsondiff.Operation, ori
 
 // GetJSONByPath returns the JSON of the given path in the JSON document.
 func GetJSONByPath(jsonText []byte, path string) ([]byte, error) {
-	var jsonDocument map[string]interface{}
-	json.Unmarshal([]byte(jsonText), &jsonDocument)
+	parsed := map[string]interface{}{}
+	json.Unmarshal([]byte(jsonText), &parsed)
 
 	//create a JSON pointer
-	pointer, _ := gojsonpointer.NewJsonPointer(string(path))
-	value, _, _ := pointer.Get(jsonDocument)
+	pointer, _ := jsonpointer.Parse(string(path))
+	value, _ := pointer.Eval(parsed)
 	// Marshal the value back to JSON
 	jsonValue, _ := json.Marshal(value)
 	return jsonValue, nil
