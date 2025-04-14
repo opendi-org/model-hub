@@ -1,0 +1,26 @@
+{
+  "id": 402,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Cloud Provider Selector",
+    "summary": "Technical. This tool compares cloud service providers based on performance requirements, budget constraints, compliance needs, and existing technology stack compatibility.",
+    "version": "3.4",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "CloudStrat Advisors",
+      "email": "providers@cloudstrat.com",
+      "password": "p"
+    },
+    "createdDate": "2021-10-02",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2023-12-11"
+  }
+}

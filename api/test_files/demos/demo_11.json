@@ -1,0 +1,26 @@
+{
+  "id": 302,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Market Expansion Analyzer",
+    "summary": "Business. This tool evaluates potential new markets by analyzing demographic data, competitive landscape, regulatory requirements, and infrastructure needs.",
+    "version": "3.3",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "GlobalGrowth Advisors",
+      "email": "expansion@globalgrowth.com",
+      "password": "p"
+    },
+    "createdDate": "2021-09-25",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2023-12-18"
+  }
+}

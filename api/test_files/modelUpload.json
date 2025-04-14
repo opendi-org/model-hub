@@ -1,0 +1,25 @@
+{
+    "id": 2,
+    "$schema": "Test Schema",
+    "meta": {
+      "id": 5,
+      "uuid": "",
+      "name": "Test Model",
+      "summary": "This is a test model. Note that when creating this model, it relies on creator with email already existing",
+      "version": "1.0",
+      "creator": {
+        "uuid": "",
+        "username": "",
+        "email": "creator@example.com",
+        "password": ""
+      },
+      "createdDate": "2021-07-01",
+      "updater": {
+        "uuid": "updater-uuid",
+        "username": "Test Updater",
+        "email": "updater@example.com",
+        "password": "q"
+      },
+      "updatedDate": "2021-07-01"
+    }
+  }

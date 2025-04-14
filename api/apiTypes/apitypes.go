@@ -28,8 +28,8 @@ type Meta struct {
 	CreatedAt     time.Time       `json:"-"`
 	UpdatedAt     time.Time       `json:"-"`
 	UUID          string          `gorm:"unique" json:"uuid"`
-	Name          string          `json:"name,omitempty"`
-	Summary       string          `json:"summary,omitempty"`
+	Name          string          `gorm:"index:idx_name_summary,class:FULLTEXT" json:"name,omitempty"`
+	Summary       string          `gorm:"index:idx_name_summary,class:FULLTEXT" json:"summary,omitempty"`
 	Documentation json.RawMessage `json:"documentation,omitempty"`
 	Version       string          `json:"version,omitempty"`
 	Draft         bool            `json:"draft,omitempty"`
@@ -75,10 +75,20 @@ type CausalDependency struct {
 
 type User struct {
 	ID       int    `gorm:"primaryKey" json:"-"`
-	UUID     string `gorm:"unique" json:"uuid"`
+	UUID     string `json:"uuid"`
 	Username string `json:"username"`
-	Email    string `json:"email"`
+	Email    string `gorm:"unique" json:"email"`
 	Password string `json:"-"`
+}
+
+type Commit struct {
+	ID             int       `gorm:"primaryKey" json:"-"`
+	ParentCommitID string    `json:"parentCommitID"`
+	Diff           string    `json:"diff"`
+	UserUUID       string    `json:"useruuid"`
+	CDMUUID        string    `json:"cdmuuid"`
+	CreatedAt      time.Time `json:"CreatedAt"`
+	Version        int       `json:"version"`
 }
 
 func (cdm CausalDecisionModel) Equals(other CausalDecisionModel) bool {
@@ -153,4 +163,9 @@ func (dep CausalDependency) Equals(other CausalDependency) bool {
 
 func (u User) Equals(other User) bool {
 	return u.Username == other.Username
+}
+
+// for testing purposes
+func (c Commit) Equals(other Commit) bool {
+	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID && c.Diff == other.Diff && c.UserUUID == other.UserUUID
 }

@@ -1,0 +1,26 @@
+{
+  "id": 202,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Emergency Triage Assistant",
+    "summary": "Medical. This model prioritizes emergency department patients based on vital signs, symptoms, and medical history to optimize resource allocation during high-volume periods.",
+    "version": "2.7",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "EmergeCare Systems",
+      "email": "triage@emergecare.com",
+      "password": "p"
+    },
+    "createdDate": "2021-08-22",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2023-12-05"
+  }
+}

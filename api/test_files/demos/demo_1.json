@@ -1,0 +1,26 @@
+{
+  "id": 102,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Mortgage Approval System",
+    "summary": "Financial. This tool evaluates mortgage applications by analyzing credit scores, income history, debt-to-income ratios, and property values to determine loan eligibility.",
+    "version": "1.8",
+    "creator": {
+      "uuid": "creator-home",
+      "username": "SecureHome Lending",
+      "email": "approvals@securehome.com",
+      "password": "p"
+    },
+    "createdDate": "2021-09-12",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2023-11-04"
+  }
+}

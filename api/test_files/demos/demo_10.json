@@ -1,0 +1,26 @@
+{
+  "id": 301,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Supplier Selection Framework",
+    "summary": "Business. This model evaluates potential suppliers based on pricing, reliability, quality metrics, and sustainability practices to optimize procurement decisions.",
+    "version": "2.6",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "Strategic Sourcing Group",
+      "email": "vendor@strategicsourcing.com",
+      "password": "p"
+    },
+    "createdDate": "2022-03-05",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2024-01-12"
+  }
+}

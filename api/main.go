@@ -12,6 +12,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -53,16 +54,19 @@ func main() {
 		os.Exit(1)
 	}
 	//initialize handler
-	modelHandler, err := handlers.NewModelHandler()
+	modelHandler, _ := handlers.NewModelHandler()
+
+	authHandler, _ := handlers.NewAuthHandler()
+
+	commitHandler, err := handlers.NewCommitHandler()
 
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
 		os.Exit(1)
 	}
-
 	// Debug, creates a model and meta in the database
-	database.CreateExampleModel()
+	database.CreateExampleModels()
 
 	//router group for all endpoints related to models
 	models := router.Group("/v0/models")
@@ -103,6 +107,22 @@ func main() {
 		models.GET("", modelHandler.GetModels)            // Get all models
 		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
 		models.POST("", modelHandler.UploadModel)         // Upload a model
+		models.PUT("", modelHandler.PutModel)             // Update a model
+
+		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
+		models.GET("/children/:uuid", modelHandler.GetModelChildren)
+		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
+		models.GET("/search/:type/:name", modelHandler.ModelSearch)
+	}
+
+	//router group for all endpoints related to models
+	commits := router.Group("/v0/commits")
+	{
+
+		commits.GET("", commitHandler.GetCommits) // Get all commits
+		commits.GET("/:uuid", commitHandler.GetLatestCommitByModelUUID)
+		commits.GET("model/:uuid", commitHandler.GetCommitsByModelUUID)
+		//commits.POST("", commitHandler.UploadCommit) // Create a commit (for testing)
 	}
 
 	//router group for uploading models
@@ -127,6 +147,8 @@ func main() {
 	modelHubPort = val
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	router.POST("/login", authHandler.UserLogin)
 
 	router.Run(modelHubAddress + ":" + modelHubPort)
 }

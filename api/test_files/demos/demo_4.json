@@ -1,0 +1,26 @@
+{
+  "id": 105,
+  "$schema": "Test Schema",
+  "meta": {
+    "id": null,
+    "uuid": "",
+    "name": "Budget Allocation Optimizer",
+    "summary": "Financial. This tool helps organizations determine optimal budget allocations across departments and projects to maximize ROI and achieve strategic objectives.",
+    "version": "2.5",
+    "creator": {
+      "uuid": "creator-uuid",
+      "username": "FiscalPro Consulting",
+      "email": "planning@fiscalpro.com",
+      "password": "p"
+    },
+    "createdDate": "2021-11-30",
+    "updaters": [
+      {
+        "uuid": "user-uuid-updater",
+        "username": "Test Updater",
+        "email": "updater@example.com"
+      }
+    ],
+    "updatedDate": "2023-10-15"
+  }
+}

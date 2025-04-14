@@ -1,39 +1,73 @@
 //
 // COPYRIGHT OpenDI
 //
-
+import React, { useState } from 'react';
 import { CardActions, Typography} from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import Card from '@mui/material/Card';
+import CardHeader from '@mui/material/CardHeader';
 import CardContent from '@mui/material/CardContent';
 import Button from '@mui/material/Button';
 import { useHistory } from 'react-router-dom';
 import { NavLink } from "react-router-dom";
 
-const ModelMinicard = ({id, name, author}) => {
-    return (
+const ModelMinicard = ({id, name, author, summary, version, updatedDate}) => {
+    let color = '#ffffff'
+    let hoverColor = '#ffffff'
+    const keywords = ["Financial", "Medical", "Business", "Technical"];
+    const foundKeyword = keywords.find(word => summary.includes(word)) || "";
+    switch(foundKeyword) {
+        case 'Financial':
+            color = '#6ae48a';
+            hoverColor = '#92ebaa'
+            break;
+        case 'Medical':
+            color = '#ff555a';
+            hoverColor = '#ff9396'
+            break;
+        case 'Business':
+            color = '#f9ff6b'
+            hoverColor = '#fbffa9'
+            break;
+        case 'Technical':
+            color = '#b595ff'
+            hoverColor = '#d9c8ff'
+    }
+    return ( 
     <Grid xs={4}>
-        <Card sx={{ minWidth: 275 }}>
+        <Card sx={{ minWidth: 275, maxWidth: 550}}>
+            <CardHeader
+                title = {name}
+                subheader={author}
+                action = {
+                    <Typography gutterBottom variant="body2" sx={{ color: 'text.secondary' }}>
+                        {version}
+                    </Typography>
+                }
+                sx={{bgcolor: color,  '&:hover': {bgcolor: hoverColor}}}
+                component={NavLink} 
+                to={"/model/" + id}
+                style={{ textDecoration: 'none', color: 'inherit' }}
+            />
             <CardContent>
-                <Typography gutterBottom variant="h6" sx={{ color: 'text.primary'}}>
-                    {name}
+                <Typography variant="body2">
+                    {summary}
                 </Typography>
                 <Typography gutterBottom variant="body2" sx={{ color: 'text.secondary' }}>
-                    {author}
-                </Typography>
-                <Typography variant="body2">
-                    Summary
+                    {'Last Updated: ' + updatedDate}
                 </Typography>
             </CardContent>
-            <CardActions>
+            {/* <CardActions>
             <Button 
                     variant="contained" 
                     color="primary" 
-                    component={NavLink} to={"model/" + id}
+                    component={NavLink} 
+                    to={"/model/" + id}
+                    style={{ textDecoration: 'none' }}
                 >
                     View
                 </Button>
-            </CardActions>
+            </CardActions> */}
         </Card>
     </Grid>
 )};

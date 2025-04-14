@@ -15,6 +15,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Menu from '@mui/material/Menu';
 import SearchIcon from '@mui/icons-material/Search';
 import Button from '@mui/material/Button';
+import API_URL from "../config";
 
 const Search = styled('div')(({ theme }) => ({
     position: 'relative',
@@ -31,6 +32,7 @@ const Search = styled('div')(({ theme }) => ({
         marginLeft: theme.spacing(3),
         width: 'auto',
     },
+    
 }));
 
 const SearchIconWrapper = styled('div')(({ theme }) => ({
@@ -94,6 +96,53 @@ export default function Navbar() {
         </Menu>
     );
 
+    function LoginButton() {
+        if (!sessionStorage.getItem('username')) {
+            return <Button color="inherit" component={NavLink} to="/login">Login</Button>
+        }
+        else {
+            return null
+        }
+    }
+
+    function SigninButton() {
+        if (!sessionStorage.getItem('username')) {
+            return <Button
+                            color="inherit"
+                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
+                        >
+                            Sign Up
+                        </Button>
+        }
+        else {
+            return <Button
+                            color="inherit"
+                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
+                            component={NavLink} to="/user"
+                        >
+                            Welcome {sessionStorage.getItem('username')}
+                        </Button>
+        }
+    }
+    function SignoutButton() {
+        if (!sessionStorage.getItem('username')) {
+            return null
+        }
+        else {
+            return <Button
+                            color="inherit"
+                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
+                            onClick={() => {
+                                sessionStorage.removeItem('username');
+                                sessionStorage.removeItem('email');
+                                window.location.reload();
+                              }}
+                        >
+                            Logout
+                        </Button>
+        }
+    }
+
     return (
         <Box sx={{ flexGrow: 1 }}>
             <AppBar position="static" sx={{ backgroundColor: 'white', color: 'black' }}>
@@ -122,24 +171,25 @@ export default function Navbar() {
                             placeholder="Search…"
                             inputProps={{ 'aria-label': 'search' }}
                             sx={{ width: '25em' }}
-
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    const searchTerm = e.target.value;
+                                    window.location.href = `/search?term=${searchTerm}`;
+                                }
+                            }}
                         />
                     </Search>
                     <Box sx={{ flexGrow: 1 }} />
 
                     <Box sx={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <Button color="inherit">Search</Button>
+                        <Button color="inherit" component={NavLink} to ="/search">Search</Button>
                         <Button color="inherit" component={NavLink} to="/model">Download</Button>
                         <Button color="inherit" component={NavLink} to="/UploadPage">Upload</Button>
                         <Button color="inherit">Popular</Button>
                         <Button color="inherit">About</Button>
-                        <Button color="inherit">Login</Button>
-                        <Button
-                            color="inherit"
-                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
-                        >
-                            Sign Up
-                        </Button>
+                        <LoginButton/>
+                        <SignoutButton/>
+                        <SigninButton/>
                     </Box>
                 </Toolbar>
             </AppBar>
