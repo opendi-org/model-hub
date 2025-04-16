@@ -118,6 +118,10 @@ func InvertPatch(patch jsondiff.Patch, originalJSON []byte) (jsondiff.Patch, []b
 	//for each operation in the patch, we need to invert it.
 	for i := len(patch) - 1; i >= 0; i-- {
 		op := patch[i]
+		if i > 0 {
+			prevTestOp = &patch[i-1] //we get the corresponding test operation if the operation is an remove or replace operation.
+
+		}
 		//fmt.Println("Path: ", op.Path)
 		switch op.Type {
 		case OperationAdd:
@@ -148,8 +152,7 @@ func InvertPatch(patch jsondiff.Patch, originalJSON []byte) (jsondiff.Patch, []b
 				Value: prevTestOp.Value,
 			})
 		case OperationTest:
-			// store the test operation as it holds the previous value of a remove or replace
-			prevTestOp = &op
+			// do nothing
 		default:
 			return nil, nil, fmt.Errorf("unsupported operation: %s", op.Type)
 		}
