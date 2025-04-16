@@ -12,11 +12,11 @@ import (
 	"strconv"
 
 	jsonpatch "github.com/evanphx/json-patch"
+	//https://github.com/evanphx/json-patch?tab=BSD-3-Clause-1-ov-file
+	// see BSD-3 License for licensing details.
 	"github.com/qri-io/jsonpointer"
 	jsondiff "github.com/wI2L/jsondiff"
 )
-
-//wrote this file because the jsondiff library didn't have an invert patch function at the time of writing. curious...
 
 // JSON Patch operation types.
 // These are defined in RFC 6902 section 4.
@@ -54,6 +54,8 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 	}
 	//fmt.Println("Inverted Patch is:")
 	//fmt.Println(string(invertedPatchBytes))
+
+	//we need to use the jsonpatch library to actually apply the patch. Given that it's the same struct structurally, the byte form will decode properly .
 	jsonpatchPatch, err := jsonpatch.DecodePatch(invertedPatchBytes)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding inverted patch: %v", err)
@@ -68,15 +70,16 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 	return modified, err
 }
 
+// TODO there is a bug with this. fix it!
 // InvertPatch inverts a JSON Patch, preparing the patch to reverse the operations.
 // It supports "add", "remove", and "replace" operations for now.
 // The returned patch is still invertible.
 func InvertPatch(patch jsondiff.Patch, originalJSON []byte) (jsondiff.Patch, error) {
-	//TODO the creator of the jsondiff library should have added an invert method
+	//TODO the creator of the jsondiff library should have added an invert method. Then, we have no need for this method.
 	var invertedPatch jsondiff.Patch
 
 	var prevTestOp *jsondiff.Operation
-
+	//for each operation in the patch, we need to invert it.
 	for _, op := range patch {
 		//fmt.Println("Path: ", op.Path)
 		switch op.Type {

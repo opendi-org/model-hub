@@ -15,6 +15,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+//note - we technically don't need these structs for now. However, they could be useful in the future.
+
 // ModelHandler struct for handling model requests
 type ModelHandler struct {
 }
@@ -64,7 +66,7 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 
 // UploadModel godoc
 // @Summary      Upload a new model
-// @Description  Uploads a causal decision model along with its metadata in a single transaction.
+// @Description  Given a body of a model with a creator with an email that corresponds to a user in the database, creates the model.
 // @Tags         models
 // @Accept       json
 // @Produce      json
@@ -133,7 +135,7 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 // @Failure      500 {object} gin.H "Internal Server Error"
 // @Router       /v0/models/ [put]
 func (h *ModelHandler) PutModel(c *gin.Context) {
-	//TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
+
 	var uploadedModel apiTypes.CausalDecisionModel
 
 	// Bind the JSON payload to the uploaded model struct
@@ -141,7 +143,7 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
-
+	//if we can't find the model with the given UUID, return error.
 	status, oldmodel, err := database.GetModelByUUID(uploadedModel.Meta.UUID)
 
 	if err != nil {
@@ -170,6 +172,7 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 // @Failure      500
 // @Router       /v0/commits/ [get]
 func (h *CommitHandler) GetCommits(c *gin.Context) {
+	//TODO remove this API. No real need for it.
 	var models []apiTypes.Commit
 	status, models, err := database.GetAllCommits()
 	if models == nil {
@@ -197,6 +200,19 @@ func (h *CommitHandler) GetLatestCommitByModelUUID(c *gin.Context) {
 }
 
 // doesn't do anything to the database, but just returns the version of the model associated with the commit version
+
+// GetVersionOfModel godoc
+// @Summary      Get version of model
+// @Description  gets models using its uuid
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        uuid path string true "Model UUID"
+// @Param        version path string true "Model Version"
+// @Success      200
+// @Failure      404 {object} gin.H "Model not found"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /v0/models/version/{uuid}/{version} [get]
 func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 	strVersion := c.Param("version")
 	uuid := c.Param("uuid")
@@ -205,11 +221,13 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
+	//get latest version of model.
 	_, latestVersionOfModel, err := database.GetModelByUUID(uuid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
 		return
 	}
+	//get latest commit for model UUID.
 	status, commit, err := database.GetLatestCommitForModelUUID(uuid)
 	if version == 0 && status == http.StatusNotFound {
 		c.Header("Access-Control-Allow-Origin", "*")
@@ -220,13 +238,19 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
+	//if the version requested is the latest version of the model, just return.
 	if version == commit.Version {
 		c.JSON(http.StatusOK, latestVersionOfModel)
 		return
 	}
-
+	//if the version requested is greater than the latest version of the model, return error.
 	if version > commit.Version {
 		c.JSON(http.StatusConflict, gin.H{"Error": "Version requested is greater than the latest version"})
+		return
+	}
+	if version < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": "Version requested is less than 0"})
+		return
 	}
 
 	currVersion := commit.Version
@@ -240,8 +264,8 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		return
 	}
 
-	//reaches here
-
+	// loop through the commits until we reach the version we want.
+	// we need to apply the diff to the model in reverse order, so we start with the latest commit and go backwards.
 	for {
 		diff := []byte(currCommit.Diff)
 		modified, err := jsonDiffHelpers.ApplyInvertedPatch(currModelBytes, diff)
@@ -344,6 +368,17 @@ func (h *AuthHandler) UserLogin(c *gin.Context) {
 	c.IndentedJSON(status, user)
 }
 
+// GetModelLineage godoc
+// @Summary      Get model lineage
+// @Description  gets models using its uuid
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        uuid path string true "Model UUID"
+// @Success      200
+// @Failure      404 {object} gin.H "Model not found"
+// @Router       /v0/models/lineage/{uuid} [get]
+
 func (h *ModelHandler) GetModelLineage(c *gin.Context) {
 	uuid := c.Param("uuid")
 	status, lineage, err := database.GetModelLineage(uuid)
@@ -355,6 +390,16 @@ func (h *ModelHandler) GetModelLineage(c *gin.Context) {
 	c.IndentedJSON(status, lineage)
 }
 
+// GetModelChildren godoc
+// @Summary      Get model children
+// @Description  gets models using its uuid
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        uuid path string true "Model UUID"
+// @Success      200
+// @Failure      404 {object} gin.H "Model not found"
+// @Router       /v0/models/children/{uuid} [get]
 func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 	uuid := c.Param("uuid")
 	status, children, err := database.GetModelChildren(uuid)
@@ -366,6 +411,18 @@ func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 	c.IndentedJSON(status, children)
 }
 
+// ModelSearch godoc
+// @Summary      Search for models
+// @Description  Search for models by name or user
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        type path string true "Search type (model or user)"
+// @Param        name path string true "Search name"
+// @Success      200 {object} []apiTypes.CausalDecisionModel "List of models"
+// @Failure      404 {object} gin.H "Model not found"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /v0/models/search/{type}/{name} [get]
 func (h *ModelHandler) ModelSearch(c *gin.Context) {
 	searchType := c.Param("type")
 	name := c.Param("name")
