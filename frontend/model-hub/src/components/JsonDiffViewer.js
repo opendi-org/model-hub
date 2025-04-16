@@ -37,8 +37,10 @@ const JsonDiffViewer = ({ lastVersionOfModel, commit }) => {
 
 
     if (commit['version'] === 0) {
+        if (lastVersionOfModel == null) {
+          return <pre>No previous version</pre>
+        }
         return <pre>{JSON.stringify(lastVersionOfModel, null, 2)}</pre>;
-        
     }
 
     const patch = JSON.parse(commit.diff);
