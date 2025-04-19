@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">opendi/model-hub/api/handlers/handlers.go (53.1%)</option>
+				<option value="file0">opendi/model-hub/api/handlers/handlers.go (75.5%)</option>
 				
 				</select>
 			</div>
@@ -77,7 +77,6 @@ package handlers
 
 import (
         "encoding/json"
-        "fmt"
         "net/http"
         "opendi/model-hub/api/apiTypes"
         "opendi/model-hub/api/database"
@@ -86,6 +85,8 @@ import (
 
         "github.com/gin-gonic/gin"
 )
+
+//note - we technically don't need these structs for now. However, they could be useful in the future.
 
 // ModelHandler struct for handling model requests
 type ModelHandler struct {
@@ -136,7 +137,7 @@ func (h *ModelHandler) GetModels(c *gin.Context) <span class="cov8" title="1">{
 
 // UploadModel godoc
 // @Summary      Upload a new model
-// @Description  Uploads a causal decision model along with its metadata in a single transaction.
+// @Description  Given a body of a model with a creator with an email that corresponds to a user in the database, creates the model.
 // @Tags         models
 // @Accept       json
 // @Produce      json
@@ -150,7 +151,7 @@ func (h *ModelHandler) UploadModel(c *gin.Context) <span class="cov8" title="1">
         var uploadedModel apiTypes.CausalDecisionModel
 
         // Bind the JSON payload to the uploaded model struct
-        if err := c.ShouldBindJSON(&amp;uploadedModel); err != nil </span><span class="cov0" title="0">{
+        if err := c.ShouldBindJSON(&amp;uploadedModel); err != nil </span><span class="cov8" title="1">{
                 c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
                 return
         }</span>
@@ -205,18 +206,18 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) <span class="cov8" title="
 // @Failure      500 {object} gin.H "Internal Server Error"
 // @Router       /v0/models/ [put]
 func (h *ModelHandler) PutModel(c *gin.Context) <span class="cov8" title="1">{
-        //TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
+
         var uploadedModel apiTypes.CausalDecisionModel
 
         // Bind the JSON payload to the uploaded model struct
-        if err := c.ShouldBindJSON(&amp;uploadedModel); err != nil </span><span class="cov0" title="0">{
+        if err := c.ShouldBindJSON(&amp;uploadedModel); err != nil </span><span class="cov8" title="1">{
                 c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
                 return
         }</span>
-
+        //if we can't find the model with the given UUID, return error.
         <span class="cov8" title="1">status, oldmodel, err := database.GetModelByUUID(uploadedModel.Meta.UUID)
 
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
                 // Return error based on the UpdateModel function response
                 c.JSON(status, gin.H{"Error": err.Error()})
                 return
@@ -242,6 +243,7 @@ func (h *ModelHandler) PutModel(c *gin.Context) <span class="cov8" title="1">{
 // @Failure      500
 // @Router       /v0/commits/ [get]
 func (h *CommitHandler) GetCommits(c *gin.Context) <span class="cov8" title="1">{
+        //TODO remove this API. No real need for it.
         var models []apiTypes.Commit
         status, models, err := database.GetAllCommits()
         if models == nil </span><span class="cov0" title="0">{
@@ -269,30 +271,60 @@ func (h *CommitHandler) GetLatestCommitByModelUUID(c *gin.Context) <span class="
 }
 
 // doesn't do anything to the database, but just returns the version of the model associated with the commit version
-func (h *ModelHandler) GetVersionOfModel(c *gin.Context) <span class="cov0" title="0">{
+
+// GetVersionOfModel godoc
+// @Summary      Get version of model
+// @Description  gets models using its uuid
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        uuid path string true "Model UUID"
+// @Param        version path string true "Model Version"
+// @Success      200
+// @Failure      404 {object} gin.H "Model not found"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /v0/models/version/{uuid}/{version} [get]
+func (h *ModelHandler) GetVersionOfModel(c *gin.Context) <span class="cov8" title="1">{
         strVersion := c.Param("version")
         uuid := c.Param("uuid")
         version, err := strconv.Atoi(strVersion)
-        _, latestVersionOfModel, err := database.GetModelByUUID(uuid)
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+                return
+        }</span>
+        //get latest version of model.
+        <span class="cov8" title="1">_, latestVersionOfModel, err := database.GetModelByUUID(uuid)
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+                return
+        }</span>
+        //get latest commit for model UUID.
+        <span class="cov8" title="1">status, commit, err := database.GetLatestCommitForModelUUID(uuid)
+        if version == 0 &amp;&amp; status == http.StatusNotFound </span><span class="cov8" title="1">{
+                c.Header("Access-Control-Allow-Origin", "*")
+                c.IndentedJSON(http.StatusOK, latestVersionOfModel)
+                return
+        }</span>
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
                 c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
                 return
         }</span>
-        <span class="cov0" title="0">_, commit, err := database.GetLatestCommitForModelUUID(uuid)
-        if err != nil </span><span class="cov0" title="0">{
-                c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-                return
-        }</span>
-        <span class="cov0" title="0">if version == commit.Version </span><span class="cov0" title="0">{
+        //if the version requested is the latest version of the model, just return.
+        <span class="cov8" title="1">if version == commit.Version </span><span class="cov8" title="1">{
                 c.JSON(http.StatusOK, latestVersionOfModel)
                 return
         }</span>
-
-        <span class="cov0" title="0">if version &gt; commit.Version </span><span class="cov0" title="0">{
+        //if the version requested is greater than the latest version of the model, return error.
+        <span class="cov8" title="1">if version &gt; commit.Version </span><span class="cov8" title="1">{
                 c.JSON(http.StatusConflict, gin.H{"Error": "Version requested is greater than the latest version"})
+                return
+        }</span>
+        <span class="cov8" title="1">if version &lt; 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"Error": "Version requested is less than 0"})
+                return
         }</span>
 
-        <span class="cov0" title="0">currVersion := commit.Version
+        <span class="cov8" title="1">currVersion := commit.Version
         currCommit := commit
 
         currModelBytes, err := json.Marshal(latestVersionOfModel)
@@ -303,9 +335,9 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) <span class="cov0" titl
                 return
         }</span>
 
-        //reaches here
-
-        <span class="cov0" title="0">for </span><span class="cov0" title="0">{
+        // loop through the commits until we reach the version we want.
+        // we need to apply the diff to the model in reverse order, so we start with the latest commit and go backwards.
+        <span class="cov8" title="1">for </span><span class="cov8" title="1">{
                 diff := []byte(currCommit.Diff)
                 modified, err := jsonDiffHelpers.ApplyInvertedPatch(currModelBytes, diff)
                 if err != nil </span><span class="cov0" title="0">{
@@ -314,12 +346,12 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) <span class="cov0" titl
                 }</span>
 
                 //reset variables for next iteration of applying patches
-                <span class="cov0" title="0">currModelBytes = modified
+                <span class="cov8" title="1">currModelBytes = modified
                 currVersion--
                 parentIdStr := currCommit.ParentCommitID
 
                 //if we reach the version we want, return the model
-                if currVersion &lt;= version </span><span class="cov0" title="0">{
+                if currVersion &lt;= version </span><span class="cov8" title="1">{
                         break</span>
                 }
 
@@ -333,14 +365,13 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) <span class="cov0" titl
                 _, currCommit, _ = database.GetCommitByID(int(parentId))</span>
 
         }
-        <span class="cov0" title="0">fmt.Println(string(currModelBytes))
 
-        finalModel := apiTypes.CausalDecisionModel{}
+        <span class="cov8" title="1">finalModel := apiTypes.CausalDecisionModel{}
         if err := json.Unmarshal(currModelBytes, &amp;finalModel); err != nil </span><span class="cov0" title="0">{
                 c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
                 return
         }</span>
-        <span class="cov0" title="0">c.Header("Access-Control-Allow-Origin", "*")
+        <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
         c.IndentedJSON(http.StatusOK, finalModel)</span>
 
 }
@@ -394,7 +425,6 @@ func (h *AuthHandler) UserLogin(c *gin.Context) <span class="cov8" title="1">{
         //For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
         email := c.Query("email")
         pass := c.Query("password")
-        fmt.Println("EMAIL: " + email)
 
         status, user, err := database.UserLogin(email, pass)
 
@@ -403,12 +433,22 @@ func (h *AuthHandler) UserLogin(c *gin.Context) <span class="cov8" title="1">{
                 return
         }</span>
         <span class="cov8" title="1">user.Password = "secret"
-        fmt.Println(user)
 
         // Return the user
         c.Header("Access-Control-Allow-Origin", "*")
         c.IndentedJSON(status, user)</span>
 }
+
+// GetModelLineage godoc
+// @Summary      Get model lineage
+// @Description  gets models using its uuid
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        uuid path string true "Model UUID"
+// @Success      200
+// @Failure      404 {object} gin.H "Model not found"
+// @Router       /v0/models/lineage/{uuid} [get]
 
 func (h *ModelHandler) GetModelLineage(c *gin.Context) <span class="cov8" title="1">{
         uuid := c.Param("uuid")
@@ -421,6 +461,16 @@ func (h *ModelHandler) GetModelLineage(c *gin.Context) <span class="cov8" title=
         c.IndentedJSON(status, lineage)</span>
 }
 
+// GetModelChildren godoc
+// @Summary      Get model children
+// @Description  gets models using its uuid
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        uuid path string true "Model UUID"
+// @Success      200
+// @Failure      404 {object} gin.H "Model not found"
+// @Router       /v0/models/children/{uuid} [get]
 func (h *ModelHandler) GetModelChildren(c *gin.Context) <span class="cov8" title="1">{
         uuid := c.Param("uuid")
         status, children, err := database.GetModelChildren(uuid)
@@ -432,12 +482,22 @@ func (h *ModelHandler) GetModelChildren(c *gin.Context) <span class="cov8" title
         c.IndentedJSON(status, children)</span>
 }
 
+// ModelSearch godoc
+// @Summary      Search for models
+// @Description  Search for models by name or user
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        type path string true "Search type (model or user)"
+// @Param        name path string true "Search name"
+// @Success      200 {object} []apiTypes.CausalDecisionModel "List of models"
+// @Failure      404 {object} gin.H "Model not found"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /v0/models/search/{type}/{name} [get]
 func (h *ModelHandler) ModelSearch(c *gin.Context) <span class="cov8" title="1">{
-        fmt.Println("Searching")
         searchType := c.Param("type")
         name := c.Param("name")
         if searchType == "model" </span><span class="cov8" title="1">{
-                fmt.Println("Searching by Model")
                 status, models, err := database.SearchModelsByName(name)
                 if err != nil </span><span class="cov0" title="0">{
                         c.JSON(status, gin.H{"Error": err.Error()})
@@ -446,7 +506,6 @@ func (h *ModelHandler) ModelSearch(c *gin.Context) <span class="cov8" title="1">
                 <span class="cov8" title="1">c.Header("Access-Control-Allow-Origin", "*")
                 c.IndentedJSON(status, models)</span>
         } else<span class="cov8" title="1"> if searchType == "user" </span><span class="cov8" title="1">{
-                fmt.Println("Searching by User")
                 status, models, err := database.SearchModelsByUser(name)
                 if err != nil </span><span class="cov0" title="0">{
                         c.JSON(status, gin.H{"Error": err.Error()})
@@ -458,6 +517,31 @@ func (h *ModelHandler) ModelSearch(c *gin.Context) <span class="cov8" title="1">
                 c.JSON(404, gin.H{"Error": "This type of search does not exist"})
                 return
         }</span>
+}
+
+// GetCommitsByModelUUID godoc
+// @Summary      Get all commits for a model
+// @Description  gets all commits for a specific model by its UUID
+// @Tags         commits
+// @Produce      json
+// @Param        uuid path string true "Model UUID"
+// @Success      200
+// @Failure      404 {object} gin.H "Commits not found"
+// @Router       /v0/commits/model/{uuid} [get]
+func (h *CommitHandler) GetCommitsByModelUUID(c *gin.Context) <span class="cov0" title="0">{
+        uuid := c.Param("uuid")
+
+        // Call the database function to get all commits for the model
+        status, commits, err := database.GetCommitsByModelUUID(uuid)
+        if err != nil </span><span class="cov0" title="0">{
+                // If error, return an appropriate response
+                c.JSON(status, gin.H{"Error": err.Error()})
+                return
+        }</span>
+
+        // Return the commits if found
+        <span class="cov0" title="0">c.Header("Access-Control-Allow-Origin", "*")
+        c.IndentedJSON(status, commits)</span>
 }
 </pre>
 		
