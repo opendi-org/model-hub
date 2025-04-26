@@ -1,38 +1,9 @@
-# OpenDI Model Hub
-
-# Developers Guide
-
-# Development Environment Setup, Project Structure, Extension Guidelines, API Documentation, Build & Testing
-
-# Open DI
-
-# CSC 492 Team 22
-
-# 
-
-# Connor Blumsack
-
-# Matthew Bunch Eric Jun
-
-# Alex Mize Jay Pham  
-
-# North Carolina State University
-
-# Department of Computer Science
-
-# 4/25/2025
-
-# Introduction {#introduction}
-
----
 
 A guide for sponsors or future development teams who wish to extend, modify, or integrate this project with other systems. It covers information such as environment setup, and application structure.
 
-# Table of Contents {#table-of-contents}
+# Table of Contents
 
 ---
-
-[**Introduction	2**](#introduction)
 
 [**Table of Contents	2**](#table-of-contents)
 
@@ -54,17 +25,17 @@ A guide for sponsors or future development teams who wish to extend, modify, or 
 
 [**Project Structure	6**](#project-structure)
 
-[Notable Directories & Files	7](#notable-directories-&-files)
+[Notable Directories & Files	7](#notable-directories-and-files)
 
 # 
 
-# System Requirements {#system-requirements}
+# System Requirements
 
 ---
 
 Software, libraries, dependencies, and tools required to develop and run the web application.
 
-## Required Tools {#required-tools}
+## Required Tools
 
 Programming Language(s): Go  
 Framework(s): React, Swaggo  
@@ -72,24 +43,24 @@ Database System(s): MySQL
 Other Dependencies: Node.js, Docker, NPM  
 OS Compatibility: Windows, macOS, Linux
 
-# Familiarization with System {#familiarization-with-system}
+# Familiarization with System
 
 ---
 
 We suggest understanding the concept of **Provenance** and how it is implemented first. 
 
-# Development Environment {#development-environment}
+# Development Environment
 
 ---
 
-## Installation Instructions {#installation-instructions}
+## Installation Instructions
 
 Install `Node.js` with `npm`: [https://nodejs.org/en/download](https://nodejs.org/en/download)  
 Install `Go`: [https://go.dev/doc/install](https://go.dev/doc/install)  
 Install `Docker`: [https://docs.docker.com/desktop/setup/install/windows-install/](https://docs.docker.com/desktop/setup/install/windows-install/)  
 Install `MySQL Workbench`: [https://dev.mysql.com/downloads/workbench/](https://dev.mysql.com/downloads/workbench/)
 
-## Setting Up the Project {#setting-up-the-project}
+## Setting Up the Project
 
 1. Clone the repository:
 
@@ -145,7 +116,7 @@ OPENDI_MODEL_HUB_PORT=8080
 
 8. Create database by running `createDB.sql` located in the *api* directory
 
-## Running the Project {#running-the-project}
+## Running the Project
 
 **(Recommended)**
 
@@ -174,7 +145,7 @@ $ REACT_APP_API_URL=http://localhost:8080 npm start
 
 ## 
 
-## Running Unit Tests {#running-unit-tests}
+## Running Unit Tests
 
 1. Navigate to the directory containing the .go file to test
 
@@ -193,7 +164,7 @@ $ go test -v -coverprofile cover.out
 $ go tool cover -html=cover.out
 ```
 
-# Project Structure {#project-structure}
+# Project Structure
 
 ---
 
@@ -229,7 +200,7 @@ $ go tool cover -html=cover.out
 └── compose	
 ```
 
-## Notable Directories & Files {#notable-directories-&-files}
+## Notable Directories And Files
 
 `apiTypes/`: Contains API structure for GORM.  
 `database/`: Contains database interaction methods to interact with GORM.  
@@ -243,5 +214,5 @@ $ go tool cover -html=cover.out
 
 ---
 
-For instructions on how to extend the project, take a look at:  
-Suggestions for Future Teams in our FPR.
+For an idea on how to extend the project, take a look at:  
+The Issues Page
