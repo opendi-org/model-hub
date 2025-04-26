@@ -55,57 +55,13 @@ const Home = () => {
                     <Stack spacing={4}>
                         <Grid xs={12}>
                             <Typography variant="h6">
-                                Financial Models
+                                All Models
                             </Typography>
                         </Grid>
                         <Grid xs={12} container spacing={2}>
                             {
-                                models.map((model) => typeRenderer("Financial", model))
-                            }
-                        </Grid>
-                    </Stack>
-                </Stack>
-
-                <Stack sx={{ width: '100%', display: 'block', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 2 }}>
-                    <Stack spacing={4}>
-                        <Grid xs={12}>
-                            <Typography variant="h6">
-                                Medical Models
-                            </Typography>
-                        </Grid>
-                        <Grid xs={12} container spacing={2}>
-                            {
-                                models.map((model) => typeRenderer("Medical", model))
-                            }
-                        </Grid>
-                    </Stack>
-                </Stack>
-
-                <Stack sx={{ width: '100%', display: 'block', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 2 }}>
-                    <Stack spacing={4}>
-                        <Grid xs={12}>
-                            <Typography variant="h6">
-                                Business Models
-                            </Typography>
-                        </Grid>
-                        <Grid xs={12} container spacing={2}>
-                            {
-                                models.map((model) => typeRenderer("Business", model))
-                            }
-                        </Grid>
-                    </Stack>
-                </Stack>
-
-                <Stack sx={{ width: '100%', display: 'block', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 2 }}>
-                    <Stack spacing={4}>
-                        <Grid xs={12}>
-                            <Typography variant="h6">
-                                Technical Models
-                            </Typography>
-                        </Grid>
-                        <Grid xs={12} container spacing={2}>
-                            {
-                                models.map((model) => typeRenderer("Technical", model))
+                                models.map((model) => <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator.username} summary={model.meta.summary} 
+                                version={model.meta.version} updatedDate={model.meta.updatedDate}/> )
                             }
                         </Grid>
                     </Stack>

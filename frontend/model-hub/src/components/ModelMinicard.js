@@ -14,9 +14,12 @@ import { NavLink } from "react-router-dom";
 const ModelMinicard = ({id, name, author, summary, version, updatedDate}) => {
     let color = '#ffffff'
     let hoverColor = '#ffffff'
-    const keywords = ["Financial", "Medical", "Business", "Technical"];
-    const foundKeyword = keywords.find(word => summary.includes(word)) || "";
-    switch(foundKeyword) {
+
+    //For coloring models based off of keywords in their summary - should be replaced by model tags
+    
+    //const keywords = ["Financial", "Medical", "Business", "Technical"];
+    //const foundKeyword = keywords.find(word => summary.includes(word)) || "";
+    /**switch(foundKeyword) {
         case 'Financial':
             color = '#6ae48a';
             hoverColor = '#92ebaa'
@@ -32,7 +35,7 @@ const ModelMinicard = ({id, name, author, summary, version, updatedDate}) => {
         case 'Technical':
             color = '#b595ff'
             hoverColor = '#d9c8ff'
-    }
+    }*/
     return ( 
     <Grid xs={4}>
         <Card sx={{ minWidth: 275, maxWidth: 550}}>
@@ -44,7 +47,7 @@ const ModelMinicard = ({id, name, author, summary, version, updatedDate}) => {
                         {version}
                     </Typography>
                 }
-                sx={{bgcolor: color,  '&:hover': {bgcolor: hoverColor}}}
+                sx={{bgcolor: '#63bad6',  '&:hover': {bgcolor: '#34a4c8'}}}
                 component={NavLink} 
                 to={"/model/" + id}
                 style={{ textDecoration: 'none', color: 'inherit' }}
@@ -57,17 +60,6 @@ const ModelMinicard = ({id, name, author, summary, version, updatedDate}) => {
                     {'Last Updated: ' + updatedDate}
                 </Typography>
             </CardContent>
-            {/* <CardActions>
-            <Button 
-                    variant="contained" 
-                    color="primary" 
-                    component={NavLink} 
-                    to={"/model/" + id}
-                    style={{ textDecoration: 'none' }}
-                >
-                    View
-                </Button>
-            </CardActions> */}
         </Card>
     </Grid>
 )};
