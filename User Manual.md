@@ -1,31 +1,3 @@
----
-title: |
-  [OpenDI Model Hub]{.mark}
-
-  User Manual
-
-  [Core Features and Use Cases]{.mark}
-
-  [Open DI]{.mark}
-
-  CSC 492 Team 22
-
-  []{#_hrz496vv3n2u .anchor}Connor Blumsack
-
-  Matthew Bunch  
-  Eric Jun
-
-  Alex Mize  
-  Jay Pham  
-    
-
-  North Carolina State University
-
-  Department of Computer Science
-
-  []{#_luwv8e5xheve .anchor}4/25/2025
----
-
 # Introduction
 
 A guide designed for end users and provides clear, step-by-step
