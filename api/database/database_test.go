@@ -1,3 +1,7 @@
+//
+// COPYRIGHT OpenDI
+//
+
 package database
 
 import (
@@ -14,6 +18,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// TestMain is the entry point for the test suite. It sets up the environment and runs all tests.
 func TestMain(m *testing.M) {
 	// Setup code here (e.g., database connection, environment variables)
 	setup()
@@ -29,6 +34,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// setup initializes the database and loads environment variables
 func setup() {
 
 	//import environment variables
@@ -39,16 +45,19 @@ func setup() {
 	}
 	ret := 0
 
+	//initialize DB instance
 	ret, err = InitializeDBInstance()
 	if ret != 0 {
 		fmt.Println("Error initializing database: ", err)
 		os.Exit(1)
 	}
 
+	//reset the tables to have no contents.
 	ResetTables()
 
 }
 
+// teardown cleans up resources after tests are run
 func teardown() {
 	// Clean up resources
 }
@@ -59,9 +68,6 @@ func TestGetModelByUUID(t *testing.T) {
 	t.Log("Running TestGetModelByUUID")
 	CreateExampleModels()
 
-	//gets first user in database
-	//_, user, _ := GetUserByID(1)
-
 	//gets all models in the database
 	_, models, _ := GetAllModels()
 
@@ -70,6 +76,7 @@ func TestGetModelByUUID(t *testing.T) {
 
 	}
 
+	//get the first model in the database
 	status, model, err := GetModelByUUID(models[0].Meta.UUID)
 
 	if status != http.StatusOK {
@@ -91,6 +98,7 @@ func TestGetModelByUUID(t *testing.T) {
 
 }
 
+// TestCreateModel tests the CreateModel function
 func TestCreateModel(t *testing.T) {
 
 	ResetTables()
@@ -148,10 +156,9 @@ func TestCreateModel(t *testing.T) {
 		t.Errorf("Models have differing UUID.")
 	}
 
-	//tests creating a model with the same UUID
-
 }
 
+// tests getting all models in the database
 func TestGetAllModels(t *testing.T) {
 
 	ResetTables()
@@ -174,8 +181,10 @@ func TestGetAllModels(t *testing.T) {
 	}
 }
 
+// TestGetModelLineage tests the GetModelLineage function
 func TestGetModelLineage(t *testing.T) {
 	ResetTables()
+	//example model is a parent-child pair.
 	CreateExampleModels()
 
 	ret, models, error := GetModelLineage("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e")
@@ -191,8 +200,11 @@ func TestGetModelLineage(t *testing.T) {
 	}
 }
 
+// TestGetModelChildren tests the GetModelChildren function
+// This function is used to get the children of a model given its UUID
 func TestGetModelChildren(t *testing.T) {
 	ResetTables()
+	//example model is a parent-child pair.
 	CreateExampleModels()
 
 	ret, models, error := GetModelChildren("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
@@ -209,11 +221,11 @@ func TestGetModelChildren(t *testing.T) {
 
 }
 
+// TestInitializingDBInstance tests the InitializeDBInstance function.
 func TestIinitializingDbInstance(t *testing.T) {
 	// Test that the environment variables are not set up
 	// This test should fail if the environment variables are set up
 	// This is because the environment variables are not necessary for the program to run
-	// They are only necessary for the program to run in a specific environment
 
 	username, _ := os.LookupEnv("OPEN_DI_DB_USERNAME")
 
@@ -264,7 +276,6 @@ func TestIinitializingDbInstance(t *testing.T) {
 
 	os.Setenv("OPEN_DI_DB_NAME", dbname)
 
-	//tests whether this reset database instance if currently not nil
 	//_ = godotenv.Load("../config/.env.test") //note that godotenv doesn't set environment variables already set
 	_, err = InitializeDBInstance()
 	if err != nil {
@@ -324,7 +335,7 @@ func TestCreateModelGivenEmail(t *testing.T) {
 	}
 
 	//note that:
-	//model.Meta gets a COPY of meta, meaning they are two separate Meta instances in memory.
+	//model.Meta gets a COPY of the previous meta object, meaning they are two separate Meta instances in memory.
 
 	status, err := CreateModelGivenEmail(&model)
 
@@ -347,12 +358,12 @@ func TestCreateModelGivenEmail(t *testing.T) {
 		t.Fatalf("There was an error when getting the user by email. Status: %d Error:%s", status, err.Error())
 	}
 
-	//tests creating a model with an incorrect email for the associated user.
+	//tests creating a model with no user associated with the given email.
 
 	/*
 		meta.Creator.Email = "nope"
 		fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
-		model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as Meta!
+		model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as meta!
 	*/
 	model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as Meta!
 	//fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
@@ -457,7 +468,7 @@ func TestUserLogin(t *testing.T) {
 
 }
 
-// also test applyInvertedPatch
+// also tests applyInvertedPatch
 func TestGetAllCommits(t *testing.T) {
 	ResetTables()
 	CreateExampleModels()
@@ -489,7 +500,7 @@ func TestGetAllCommits(t *testing.T) {
 	if status != http.StatusOK {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
 	}
-	// Get all commits
+	// Get all commits  There should be a new model created after updating the model.
 	ret, commits, error = GetAllCommits()
 	if ret != http.StatusOK {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
@@ -512,7 +523,7 @@ func TestGetAllCommits(t *testing.T) {
 	//get the old model bytes to compare to.
 	oldModelBytes, _ := json.Marshal(oldModel)
 
-	//reformat patchAppliedModel so that the JSON is in the correct order, not alphabetical
+	//reformat patchAppliedModel so that the JSON is in the correct order, not alphabetical. When JSON.marshal is claled on a certain struct type, fields will always be i n the same order.
 	var tempModel *apiTypes.CausalDecisionModel
 	json.Unmarshal(patchAppliedModel, &tempModel)
 	patchAppliedModelBytes2, _ := json.Marshal(tempModel)
@@ -523,6 +534,7 @@ func TestGetAllCommits(t *testing.T) {
 
 }
 
+// testing create user given object given the same ID, which should throw an ID.
 func TestCreateUserGivenObject(t *testing.T) {
 	ResetTables()
 	CreateExampleModels() //also creates sample users
@@ -537,7 +549,6 @@ func TestCreateUserGivenObject(t *testing.T) {
 }
 
 // doesn't test that every single ID with corresopnding UUID has been matched yet.
-// TODO note to Isaac - for consistency, should every UUID field be stored not in the Meta object, but the actual object?
 func TestMatchUUIDToID(t *testing.T) {
 	ResetTables()
 	var model4 apiTypes.CausalDecisionModel
@@ -578,6 +589,7 @@ func TestMatchUUIDToID(t *testing.T) {
 
 }
 
+// tests getting commit by ID
 func TestGetCommitById(t *testing.T) {
 	ResetTables()
 	CreateExampleModels()
@@ -619,6 +631,7 @@ func TestGetCommitById(t *testing.T) {
 
 }
 
+// also tests getting latest commit for model UUID
 func TestUpdateModelAndCreateCommit(t *testing.T) {
 	ResetTables()
 	CreateExampleModels()

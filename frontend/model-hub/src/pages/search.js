@@ -65,7 +65,7 @@ const SearchPage = () => {
                         }
                     }}
                 />
-                <FormControl>
+                <FormControl sx={{ ml: 1, minWidth: 120 }}> {/* Added margin left for spacing */}
                 <InputLabel>Filter</InputLabel>
                 <Select
                     labelId="select-search"
@@ -78,13 +78,17 @@ const SearchPage = () => {
                     <MenuItem value={"user"}>Creator Name</MenuItem>
                 </Select>
                 </FormControl>
-                            </Box>
-            <List>
-                {results.map((result, index) => (
-                    <ModelMinicard key={result.meta.uuid} name={result.meta.name} id = {result.meta.uuid} author={result.meta.creator.username} summary={result.meta.summary}>
-                    </ModelMinicard>
+            </Box>
+            {/* Added display flex, flexDirection column, and alignItems center to center the cards */}
+            <Box display="flex" flexDirection="column" alignItems="center" mt={2}>
+                {results.map((result) => (
+                    <React.Fragment key={result.meta.uuid}>
+                        <ModelMinicard name={result.meta.name} id = {result.meta.uuid} author={result.meta.creator.username} summary={result.meta.summary}>
+                        </ModelMinicard>
+                        <Box mb={2} /> 
+                    </React.Fragment>
                 ))}
-            </List>
+            </Box>
         </Container>
     );
 };

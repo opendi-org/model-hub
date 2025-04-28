@@ -1,3 +1,7 @@
+//
+// COPYRIGHT OpenDI
+//
+
 package handlers
 
 import (
@@ -19,12 +23,14 @@ import (
 
 var router *gin.Engine
 
+// TestMain is the entry point for the test suite. It sets up the test environment and runs the tests.
 func TestMain(m *testing.M) {
 	// setup test env
 	setup()
 	os.Exit(m.Run())
 }
 
+// setup initializes the test environment by loading environment variables and setting up the database.
 func setup() {
 
 	//import environment variables
@@ -99,7 +105,6 @@ func TestGetModels(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "[]", w.Body.String())
-
 }
 
 func TestGetModelByUUID(t *testing.T) {
@@ -129,12 +134,13 @@ func TestUploadModel(t *testing.T) {
 	}
 
 	//Need to have the user be created in order for this to work, so
-	//we can log the user in
+	//we can log the user in TODO - is this true? someone check on this later.
 	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
 	req1.Header.Set("Content-Type", "application/json")
 	w1 := httptest.NewRecorder()
 	router.ServeHTTP(w1, req1)
 
+	//test creating a new model.
 	reqBody := bytes.NewBuffer(example)
 	req, _ := http.NewRequest("POST", "/v0/models", reqBody)
 	req.Header.Set("Content-Type", "application/json")
@@ -143,7 +149,7 @@ func TestUploadModel(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
-	// invalid empty(not a model)
+	// tests POST a nil.
 	req2, _ := http.NewRequest("POST", "/v0/models", nil)
 	req2.Header.Set("Content-Type", "application/json")
 	w2 := httptest.NewRecorder()
@@ -155,7 +161,7 @@ func TestUploadModel(t *testing.T) {
 func TestGetModelLineage(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleModels()
-
+	//tests if the handler returns a 200 OK status code when the model exists for the model lineage
 	req, _ := http.NewRequest("GET", "/v0/models/lineage/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -164,6 +170,7 @@ func TestGetModelLineage(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// tests whether we can get the children of a model. This is an OK test given that the route function is just a wrapper for the database function.
 func TestGetModelChildren(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleModels()
@@ -225,6 +232,16 @@ func TestModelSearch(t *testing.T) {
 	assert.Equal(t, len(responseBody), 1)
 	assert.Contains(t, responseBody2[0]["meta"].(map[string]interface{})["name"], "Test")
 	assert.Contains(t, responseBody2[1]["meta"].(map[string]interface{})["creator"].(map[string]interface{})["username"], "Test")
+
+	// try a type of search that doesnt exist
+	req3, _ := http.NewRequest("GET", "/v0/models/search/fake/summary", nil)
+	req3.Header.Set("Content-Type", "application/json")
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+
+	var responseBody3 []map[string]interface{}
+	err3 := json.Unmarshal(w3.Body.Bytes(), &responseBody3)
+	assert.Error(t, err3)
 }
 
 func TestPutModel(t *testing.T) {
@@ -244,6 +261,7 @@ func TestPutModel(t *testing.T) {
 	w1 := httptest.NewRecorder()
 	router.ServeHTTP(w1, req1)
 
+	//update the example model with the updated example model.
 	reqBody := bytes.NewBuffer(example)
 	req, _ := http.NewRequest("PUT", "/v0/models", reqBody)
 	req.Header.Set("Content-Type", "application/json")
@@ -252,7 +270,7 @@ func TestPutModel(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
-	// invalid empty(not a model)
+	// try to update with a Nil - should return bad request
 	req2, _ := http.NewRequest("PUT", "/v0/models", nil)
 	req2.Header.Set("Content-Type", "application/json")
 	w2 := httptest.NewRecorder()
@@ -260,7 +278,7 @@ func TestPutModel(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w2.Code)
 
-	// cdm uuid not in database
+	// try to update with a model currently not in the database.
 	model4, err := os.ReadFile("../test_files/model4.json")
 	req3Body := bytes.NewBuffer(model4)
 	req3, _ := http.NewRequest("PUT", "/v0/models", req3Body)
@@ -282,6 +300,12 @@ func TestGetAllCommits(t *testing.T) {
 
 	}
 
+	example2, err := os.ReadFile("../test_files/updatedExampleModel2.json")
+	if err != nil {
+		t.Errorf("Error reading test data: %s", err)
+
+	}
+
 	//Need to have the user be created in order for this to work, so
 	//we can log the user in
 	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
@@ -289,6 +313,7 @@ func TestGetAllCommits(t *testing.T) {
 	w1 := httptest.NewRecorder()
 	router.ServeHTTP(w1, req1)
 
+	//test get all commits  when no models have been updated yet.
 	req3, _ := http.NewRequest("GET", "/v0/commits", nil)
 	req3.Header.Set("Content-Type", "application/json")
 	w3 := httptest.NewRecorder()
@@ -303,6 +328,7 @@ func TestGetAllCommits(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
+	//Test get all commits after a model has been updated.
 	req2, _ := http.NewRequest("GET", "/v0/commits", nil)
 	req2.Header.Set("Content-Type", "application/json")
 	w2 := httptest.NewRecorder()
@@ -310,6 +336,25 @@ func TestGetAllCommits(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w2.Code)
 	assert.True(t, strings.Contains(w2.Body.String(), "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"))
+
+	//test creating a new model does not create a commit[nothing put yet] or break commits
+	reqBody6 := bytes.NewBuffer(example2)
+	req6, _ := http.NewRequest("POST", "/v0/models", reqBody6)
+	req6.Header.Set("Content-Type", "application/json")
+	w6 := httptest.NewRecorder()
+	router.ServeHTTP(w6, req6)
+
+	assert.Equal(t, http.StatusCreated, w6.Code)
+
+	req4, _ := http.NewRequest("GET", "/v0/commits", nil)
+	req4.Header.Set("Content-Type", "application/json")
+	w4 := httptest.NewRecorder()
+	router.ServeHTTP(w4, req4)
+
+	assert.Equal(t, http.StatusOK, w4.Code)
+	assert.True(t, strings.Contains(w4.Body.String(), "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"))
+	assert.False(t, strings.Contains(w4.Body.String(), "eeee5c4d-5e6f-7eb-140d"))
+
 }
 
 func TestGetLatestCommitByUUID(t *testing.T) {
@@ -328,7 +373,7 @@ func TestGetLatestCommitByUUID(t *testing.T) {
 	req1.Header.Set("Content-Type", "application/json")
 	w1 := httptest.NewRecorder()
 	router.ServeHTTP(w1, req1)
-
+	//get the latest commit for the example model.
 	req3, _ := http.NewRequest("GET", "/v0/commits/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
 	req3.Header.Set("Content-Type", "application/json")
 	w3 := httptest.NewRecorder()
@@ -341,7 +386,7 @@ func TestGetLatestCommitByUUID(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-
+	//get the latest commit after updating the model.
 	req2, _ := http.NewRequest("GET", "/v0/commits/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
 	req2.Header.Set("Content-Type", "application/json")
 	w2 := httptest.NewRecorder()
@@ -349,12 +394,22 @@ func TestGetLatestCommitByUUID(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w2.Code)
 
+	//get the latest commit for a model that doesnt exist.
+	req4, _ := http.NewRequest("GET", "/v0/commits/fake", nil)
+	req4.Header.Set("Content-Type", "application/json")
+	w4 := httptest.NewRecorder()
+	router.ServeHTTP(w4, req4)
+
+	assert.Equal(t, http.StatusNotFound, w4.Code)
+
 }
 
+// tests getting different versions of models.
 func TestGetVersionOfModel(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleModels()
 
+	//tests getting version 0 of a model that has not been updated yet.
 	req, _ := http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/0", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -371,14 +426,14 @@ func TestGetVersionOfModel(t *testing.T) {
 	strmodel := string(bytemodel)
 
 	assert.Equal(t, strmodel, strReturnedModel)
-
+	//tests non-number version that results in error.
 	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/haha", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-
+	//tests getting model version with a non-existent UUID.
 	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4bfff/0", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
@@ -388,7 +443,7 @@ func TestGetVersionOfModel(t *testing.T) {
 	//push a change to our model.
 	returnedModel.Meta.Summary = "Updated summary"
 	database.UpdateModelAndCreateCommit(&returnedModel, model)
-
+	//tests getting version 1 of a model that has been updated.
 	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/1", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
@@ -404,14 +459,14 @@ func TestGetVersionOfModel(t *testing.T) {
 	strReturnedModel = string(byteReturnedModel)
 
 	assert.Equal(t, strReturnedModel2, strReturnedModel)
-
+	//tests getting nonexistent version of a model.
 	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/2", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusConflict, w.Code)
-
+	//tests getting version 0 of a model that has been updated.
 	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/0", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()

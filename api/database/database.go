@@ -53,7 +53,7 @@ func ResetTables() {
 
 }
 
-// initialize db instance
+// initialize db instance with expected tables.
 func InitializeDBInstance() (int, error) {
 
 	// Construct the Data Source Name (DSN) for the database connection
@@ -274,8 +274,8 @@ func CreateExampleModels() {
 
 }
 
-//an exapmle of what this can do is it can allow upload model to upload a model with a diagram that already existed in the database
-//essentially, it set sup any component uploaded to prepare its associations to be set up correctly, without duplicates .
+//an example  of what this can do is it can allow upload model to upload a model with a diagram that already existed in the database
+//essentially, for any component uploaded to the database it makes sure its associations will be set up correctly, without duplicates .
 
 // matchUUIDsToID recursively iterates through a CDM (or really any CDM component)
 // and its nested structures and finds matching UUIDs in the database and updates
@@ -672,6 +672,7 @@ func GetUserByID(id int) (int, *apiTypes.User, error) {
 	return http.StatusOK, &user, nil
 }
 
+// get the latest commit for a model with the given UUID
 func GetLatestCommitForModelUUID(uuid string) (int, *apiTypes.Commit, error) {
 	var commit apiTypes.Commit
 	err := dbInstance.Where("cdm_uuid = ?", uuid).
@@ -697,7 +698,11 @@ func GetCommitByID(id int) (int, *apiTypes.Commit, error) {
 	return http.StatusOK, &commit, nil
 }
 
-// UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction
+// UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction. This is a helper method for a PUT to a model.
+//
+//	Currently, for diagrams associated with the model, it creates diagrams that are not already in the database.
+//
+// however, for exisitng diagrams, it doesn't change them.
 func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	// Begin transaction.
 	transaction := dbInstance.Begin()
@@ -791,6 +796,7 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	return http.StatusCreated, nil
 }
 
+// Database method for PUT to a model.
 func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, oldModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalDecisionModel, int, error) {
 
 	// Update the model before creating the commit so that on a bad
@@ -807,22 +813,25 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 	}
 
 	//TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
+
+	//there's this edge case with jsondiff for raw JSOn files. Hopefully, we don't have to worry aobut this.
 	//Let's say that the raw JSON of the original JSON file doesn't contain default values.
 	//If we take the raw JSOn, translate it into a Go struct (which definition has default values), change some values (and convert the new struct back to JSON),
 	// and then perform a JSON diff between the original JSON and the new JSON,
-	//then the diff will think that the default values are part of the JSOn files.
+	//then the diff will think that the default values are part of the JSON files.
 
 	//this means that if we actually try to apply the diff on the raw JSON, we will get an error because the default values are not in the raw JSON file.
 
 	//so this shows how changing Go structs and then applying the JSON on their raw JSON forms can be a problem. (The standard way is to apply changes to the raw JSON forms instead)
 	//However, this is not a problem for our purposes, because we only will aplpy the diff when we convert Go structs to raw JSON - not getting raw JSON from somewhere else.
 
+	//get the changed model bytes.
 	changedModelBytes, err := json.Marshal(changedModel)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
 	//fmt.Printf("Changed model: %s\n", string(changedModelBytes))
-
+	//get the bytes of the old model
 	oldmodelBytes, err := json.Marshal(oldModel)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -830,13 +839,14 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 	//fmt.Println(string(oldmodelBytes))
 
 	//NOTE the RFC 6902 spec for JSON diffs  will not work with any JSON keys that are of value "-"
-
+	//get the diff between the old and new JSON.
 	diff, err := jsondiff.CompareJSON(oldmodelBytes, changedModelBytes, jsondiff.Invertible())
 
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
 
+	//time to create the commit object for GORM to save to our database.
 	var commit apiTypes.Commit
 
 	commit.CDMUUID = uploadedModel.Meta.UUID
@@ -844,7 +854,7 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 	if diff.String() == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("no changes made to model")
 	}
-	// Marshal the struct into JSON
+	// Marshal the diff to JSON, so we can convert it to a string to store in the database.
 	jsonData, err := json.Marshal(diff)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -855,7 +865,7 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 
 	status, parent, err := GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
 
-	//if there's no latest commit, this must be the first.
+	//if there's no latest commit for this model, this must be the first.
 	if status == http.StatusNotFound {
 		commit.ParentCommitID = ""
 		commit.Version = 1
@@ -866,7 +876,7 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 		commit.ParentCommitID = fmt.Sprintf("%d", parent.ID)
 		commit.Version = parent.Version + 1
 	}
-
+	//finally, create the commit that we made.
 	if status, err := CreateCommit(&commit); err != nil {
 		return nil, status, err
 	}
@@ -921,7 +931,7 @@ func CreateUser(email string, password string) (*apiTypes.User, error) {
 	var count int64
 	dbInstance.Model(&apiTypes.User{}).Where("email = ?", email).Count(&count)
 	if count > 0 {
-		// If a meta with the same email exists, return a conflict error.
+		// If a user with the same email exists, return a conflict error.
 		return nil, fmt.Errorf("a user with email %s already exists", email)
 	}
 
@@ -941,6 +951,7 @@ func CreateUser(email string, password string) (*apiTypes.User, error) {
 	return &newuser, nil
 }
 
+// if user doesn't exist, we create the user with the given email and password. TODO change this .
 func UserLogin(email string, password string) (int, *apiTypes.User, error) {
 
 	status, user, _ := GetUserByEmail(email)
@@ -961,6 +972,8 @@ func UserLogin(email string, password string) (int, *apiTypes.User, error) {
 	return http.StatusOK, user, nil
 }
 
+// / GetModelLineage returns the ancestry of a model given its UUID.
+// It retrieves the model and its ancestors in reverse order, starting from the most recent ancestor.
 func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
 	status, modelPtr, err := GetModelByUUID(uuid)
 
@@ -992,6 +1005,7 @@ func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
 	return http.StatusOK, lineage, nil
 }
 
+// get the children of this model.
 func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
 	var children []apiTypes.CausalDecisionModel
 	if err := dbInstance.

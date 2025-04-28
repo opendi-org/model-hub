@@ -12,11 +12,11 @@ import (
 	"strconv"
 
 	jsonpatch "github.com/evanphx/json-patch"
+	//https://github.com/evanphx/json-patch?tab=BSD-3-Clause-1-ov-file
+	// see BSD-3 License for licensing details.
 	"github.com/qri-io/jsonpointer"
 	jsondiff "github.com/wI2L/jsondiff"
 )
-
-//wrote this file because the jsondiff library didn't have an invert patch function at the time of writing. curious...
 
 // JSON Patch operation types.
 // These are defined in RFC 6902 section 4.
@@ -43,7 +43,7 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 	//fmt.Println("Patch is:")
 	//fmt.Println((string(patchBytes)))
 
-	invertedPatch, _ := InvertPatch(patch, currModelBytes)
+	invertedPatch, _, _ := InvertPatch(patch, currModelBytes)
 	//apply the inverted patch to the current JSON bytes we have
 
 	//get byte array form of JSON form of inverted ptach
@@ -54,6 +54,8 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 	}
 	//fmt.Println("Inverted Patch is:")
 	//fmt.Println(string(invertedPatchBytes))
+
+	//we need to use the jsonpatch library to actually apply the patch. Given that it's the same struct structurally, the byte form will decode properly .
 	jsonpatchPatch, err := jsonpatch.DecodePatch(invertedPatchBytes)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding inverted patch: %v", err)
@@ -68,34 +70,73 @@ func ApplyInvertedPatch(currModelBytes []byte, patchBytes []byte) ([]byte, error
 	return modified, err
 }
 
+// TODO there is a bug with this. fix it!
 // InvertPatch inverts a JSON Patch, preparing the patch to reverse the operations.
 // It supports "add", "remove", and "replace" operations for now.
 // The returned patch is still invertible.
-func InvertPatch(patch jsondiff.Patch, originalJSON []byte) (jsondiff.Patch, error) {
-	//TODO the creator of the jsondiff library should have added an invert method
+// This also returns the results of applying the inverted patch on the original json.
+func InvertPatch(patch jsondiff.Patch, originalJSON []byte) (jsondiff.Patch, []byte, error) {
+	//TODO the creator of the jsondiff library should have added an invert method by the time a new team gets this code. Then, we have no need for this method.
 	var invertedPatch jsondiff.Patch
 
-	var prevTestOp *jsondiff.Operation
+	// Create a new slice with the same length
+	//change tracker tracks the changes made to the original JSON.
+	/*
+		So, let's say we have an array.
+		{
+							"array": [1, 2, 3]
+		}
+				We have a patch that we want to invert.
+				The patch is constituted of:
+				op = add, path = /array/-, val = 4
+				op = add, path = /array/-, val = 5
 
-	for _, op := range patch {
+				This would result in the array [1, 2, 3, 4, 5] obviously.
+				But what does it look like when we invert it?
+
+				[1, 2, 3, 4, 5] -> [1, 2, 3]
+				op = reomve, path = /array/4, val = 5
+				op = remove, path = /array/3, val = 4
+
+				//so, we need to approach the patch's operations in reverse order. while doing so, we need to keep track of changes this inverted patch would make to the JSON.
+
+
+
+
+
+
+
+
+	*/
+	changeTracker := make([]byte, len(originalJSON))
+
+	// Copy the data
+	copy(changeTracker, originalJSON)
+
+	var prevTestOp *jsondiff.Operation
+	//we need to iterate through patch in reverse to properly invert it.
+	//for each operation in the patch, we need to invert it.
+	for i := len(patch) - 1; i >= 0; i-- {
+		op := patch[i]
+		if i > 0 {
+			prevTestOp = &patch[i-1] //we get the corresponding test operation if the operation is an remove or replace operation.
+
+		}
 		//fmt.Println("Path: ", op.Path)
 		switch op.Type {
 		case OperationAdd:
 
 			//add gets a bit complicated
-			invertedPatch2 := invertOperationAdd(invertedPatch, op, originalJSON)
+			invertedPatch2 := invertOperationAdd(invertedPatch, op, changeTracker)
 			invertedPatch = invertedPatch2
 
 		case OperationRemove:
 			// Remove operation is inverted by an add operation with the same path. The value is taken from the previous test operation.
 			if prevTestOp == nil {
-				return nil, fmt.Errorf("missing test operation for remove operation")
+				return nil, nil, fmt.Errorf("missing test operation for remove operation")
 			}
-			invertedPatch = append(invertedPatch, jsondiff.Operation{
-				Type:  OperationAdd,
-				Path:  op.Path,
-				Value: prevTestOp.Value,
-			})
+			invertedPatch = append(invertedPatch, invertOperationRemove(op, changeTracker, *prevTestOp))
+
 		case OperationReplace:
 			// Replace operation is inverted by:
 			// - a test operation to hold the now-previous value of the replace
@@ -111,27 +152,112 @@ func InvertPatch(patch jsondiff.Patch, originalJSON []byte) (jsondiff.Patch, err
 				Value: prevTestOp.Value,
 			})
 		case OperationTest:
-			// store the test operation as it holds the previous value of a remove or replace
-			prevTestOp = &op
+			// do nothing
 		default:
-			return nil, fmt.Errorf("unsupported operation: %s", op.Type)
+			return nil, nil, fmt.Errorf("unsupported operation: %s", op.Type)
+		}
+
+		//apply the inverted operation to the changetracker.
+		if op.Type != OperationTest {
+			//get what we just appended to the inverted patch
+			invertedOp := invertedPatch[len(invertedPatch)-1]
+			var tempPatch jsondiff.Patch
+			tempPatch = append(tempPatch, invertedOp)
+			//apply the patch to the change tracker.
+			tempPatchBytes, _ := json.Marshal(tempPatch)
+
+			//we need to use the jsonpatch library to actually apply the patch. Given that it's the same struct structurally, the byte form will decode properly .
+			jsonpatchPatch, _ := jsonpatch.DecodePatch(tempPatchBytes)
+			//apply the patch
+			modified, _ := jsonpatchPatch.Apply(changeTracker)
+
+			//update the change tracker with the modified JSON.
+			changeTracker = modified
+
 		}
 	}
 
-	return invertedPatch, nil
+	return invertedPatch, changeTracker, nil
 }
 
-func invertOperationAdd(invertedPatch jsondiff.Patch, op jsondiff.Operation, originalJSON []byte) jsondiff.Patch {
+func getAllCharactersAfterLastSlash(path string) string {
+	// Find the last occurrence of "/"
+	lastSlashIndex := -1
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' {
+			lastSlashIndex = i
+			break
+		}
+	}
+
+	// If no "/" is found, return the entire string
+	if lastSlashIndex == -1 {
+		return path
+	}
+
+	// Return the substring after the last "/"
+	return path[lastSlashIndex+1:]
+}
+
+func getAllCharactersBeforeLastSlash(path string) string {
+	// Find the last occurrence of "/"
+	lastSlashIndex := -1
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' {
+			lastSlashIndex = i
+			break
+		}
+	}
+
+	// If no "/" is found, return the entire string
+	if lastSlashIndex == -1 {
+		return path
+	}
+
+	// Return the substring before the last "/"
+	return path[:lastSlashIndex]
+}
+
+func invertOperationRemove(op jsondiff.Operation, changeTracker []byte, prevTestOp jsondiff.Operation) jsondiff.Operation {
+
+	//check if the remove is removing the last index of the array. If so, we need an add operation that adds to the end of the array using the "-" index.
+	finalPathElement := getAllCharactersAfterLastSlash(op.Path)
+	idx, err := strconv.Atoi(finalPathElement)
+	if err == nil {
+		//this must mean the path is to an array.
+		newPath := getAllCharactersBeforeLastSlash(op.Path)
+		array, _ := GetJSONByPath(changeTracker, newPath)
+		length, _, _ := getLastElement(array)
+		if idx == length-1 {
+			//we've confirmed that this remove is removing the last index of the array.
+			return jsondiff.Operation{
+				Type:  OperationAdd,
+				Path:  newPath + "/-",
+				Value: prevTestOp.Value,
+			}
+		}
+	}
+
+	//otherwise just return an add operation with the same value and path.
+
+	return jsondiff.Operation{
+		Type:  OperationAdd,
+		Path:  op.Path,
+		Value: prevTestOp.Value,
+	}
+}
+
+func invertOperationAdd(invertedPatch jsondiff.Patch, op jsondiff.Operation, changeTracker []byte) jsondiff.Patch {
 
 	//if the add has a - at the end, it is appending to the end of the array at the path.
 	if op.Path[len(op.Path)-1] == '-' {
 		//remove the - from the path as ewll as the trailing slash
 		newPath := op.Path[:len(op.Path)-2]
-		array, _ := GetJSONByPath(originalJSON, newPath)
+		array, _ := GetJSONByPath(changeTracker, newPath)
 		length, _, _ := getLastElement(array)
 
-		toPrint := fmt.Sprintf("%T", op.Value)
-		fmt.Println("Type of v is: ", toPrint)
+		//toPrint := fmt.Sprintf("%T", op.Value)
+		//fmt.Println("Type of v is: ", toPrint)
 
 		//add a test operation that checks if the array has the value we got.
 		invertedPatch = append(invertedPatch, jsondiff.Operation{

@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// CDM structs. TODO update with Isaac Kellog's newest CDM json defs.
 type CausalDecisionModel struct {
 	ID         int                  `gorm:"primaryKey" json:"-"`
 	CreatedAt  time.Time            `json:"-"`
@@ -91,6 +92,7 @@ type Commit struct {
 	Version        int       `json:"version"`
 }
 
+// testing functionality for CDM equality with other CDM.
 func (cdm CausalDecisionModel) Equals(other CausalDecisionModel) bool {
 	if cdm.ID != other.ID || cdm.Schema != other.Schema || cdm.MetaID != other.MetaID {
 		return false
@@ -121,10 +123,12 @@ func (cdm CausalDecisionModel) Equals(other CausalDecisionModel) bool {
 	return true
 }
 
+// testing functionality for Meta equal with other Meta.
 func (m Meta) Equals(other Meta) bool {
 	return m.UUID == other.UUID
 }
 
+// testing functioality for Diagram equal with other Diagram.
 func (d Diagram) Equals(other Diagram) bool {
 	if d.ID != other.ID || d.MetaID != other.MetaID || !d.Meta.Equals(other.Meta) {
 		return false
@@ -149,6 +153,7 @@ func (d Diagram) Equals(other Diagram) bool {
 	return bytes.Equal(d.Addons, other.Addons)
 }
 
+// testing functionality for DiaElement equal with other DiaElement.
 func (e DiaElement) Equals(other DiaElement) bool {
 	return e.ID == other.ID && e.MetaID == other.MetaID && e.Meta.Equals(other.Meta) &&
 		e.CausalType == other.CausalType && e.DiagramType == other.DiagramType &&
@@ -156,16 +161,18 @@ func (e DiaElement) Equals(other DiaElement) bool {
 		bytes.Equal(e.AssociatedElements, other.AssociatedElements)
 }
 
+// testing functionality for CausalDependency equal with other CausalDependency.
 func (dep CausalDependency) Equals(other CausalDependency) bool {
 	return dep.ID == other.ID && dep.MetaID == other.MetaID && dep.Meta.Equals(other.Meta) &&
 		dep.Source == other.Source && dep.Target == other.Target
 }
 
+// testing functionality for User equal with other User.
 func (u User) Equals(other User) bool {
 	return u.Username == other.Username
 }
 
-// for testing purposes
+// testing functionality for Commit equal with other Commit.
 func (c Commit) Equals(other Commit) bool {
 	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID && c.Diff == other.Diff && c.UserUUID == other.UserUUID
 }
