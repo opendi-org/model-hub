@@ -105,7 +105,6 @@ func TestGetModels(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "[]", w.Body.String())
-
 }
 
 func TestGetModelByUUID(t *testing.T) {
@@ -233,6 +232,16 @@ func TestModelSearch(t *testing.T) {
 	assert.Equal(t, len(responseBody), 1)
 	assert.Contains(t, responseBody2[0]["meta"].(map[string]interface{})["name"], "Test")
 	assert.Contains(t, responseBody2[1]["meta"].(map[string]interface{})["creator"].(map[string]interface{})["username"], "Test")
+
+	// try a type of search that doesnt exist
+	req3, _ := http.NewRequest("GET", "/v0/models/search/fake/summary", nil)
+	req3.Header.Set("Content-Type", "application/json")
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+
+	var responseBody3 []map[string]interface{}
+	err3 := json.Unmarshal(w3.Body.Bytes(), &responseBody3)
+	assert.Error(t, err3)
 }
 
 func TestPutModel(t *testing.T) {
@@ -291,6 +300,12 @@ func TestGetAllCommits(t *testing.T) {
 
 	}
 
+	example2, err := os.ReadFile("../test_files/updatedExampleModel2.json")
+	if err != nil {
+		t.Errorf("Error reading test data: %s", err)
+
+	}
+
 	//Need to have the user be created in order for this to work, so
 	//we can log the user in
 	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
@@ -321,6 +336,25 @@ func TestGetAllCommits(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w2.Code)
 	assert.True(t, strings.Contains(w2.Body.String(), "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"))
+
+	//test creating a new model does not create a commit[nothing put yet] or break commits
+	reqBody6 := bytes.NewBuffer(example2)
+	req6, _ := http.NewRequest("POST", "/v0/models", reqBody6)
+	req6.Header.Set("Content-Type", "application/json")
+	w6 := httptest.NewRecorder()
+	router.ServeHTTP(w6, req6)
+
+	assert.Equal(t, http.StatusCreated, w6.Code)
+
+	req4, _ := http.NewRequest("GET", "/v0/commits", nil)
+	req4.Header.Set("Content-Type", "application/json")
+	w4 := httptest.NewRecorder()
+	router.ServeHTTP(w4, req4)
+
+	assert.Equal(t, http.StatusOK, w4.Code)
+	assert.True(t, strings.Contains(w4.Body.String(), "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"))
+	assert.False(t, strings.Contains(w4.Body.String(), "eeee5c4d-5e6f-7eb-140d"))
+
 }
 
 func TestGetLatestCommitByUUID(t *testing.T) {
@@ -359,6 +393,14 @@ func TestGetLatestCommitByUUID(t *testing.T) {
 	router.ServeHTTP(w2, req2)
 
 	assert.Equal(t, http.StatusOK, w2.Code)
+
+	//get the latest commit for a model that doesnt exist.
+	req4, _ := http.NewRequest("GET", "/v0/commits/fake", nil)
+	req4.Header.Set("Content-Type", "application/json")
+	w4 := httptest.NewRecorder()
+	router.ServeHTTP(w4, req4)
+
+	assert.Equal(t, http.StatusNotFound, w4.Code)
 
 }
 

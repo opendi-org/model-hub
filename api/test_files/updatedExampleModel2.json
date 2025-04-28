@@ -1,0 +1,15 @@
+{
+    "$schema": "Test Schema2",
+    "meta": {
+      "uuid": "eeee5c4d-5e6f-7eb-140d",
+      "name": "Seperate Test Model",
+      "summary": "Example",
+      "version": "1.0",
+      "creator": {
+        "uuid": "user-uuid-creator",
+        "username": "Test Creator",
+        "email": "creator@example.com",
+        "password": "p"
+      }
+  }
+}
