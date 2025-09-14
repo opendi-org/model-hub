@@ -73,7 +73,6 @@ func SetUpRouter() *gin.Engine {
 	//router group for all endpoints related to commits
 	commits := r.Group("/v0/commits")
 	{
-
 		commits.GET("", commitHandler.GetCommits) // Get all commits
 		commits.GET("/:uuid", commitHandler.GetLatestCommitByModelUUID)
 		//commits.POST("", commitHandler.UploadCommit) // Create a commit (for testing)
@@ -92,7 +91,11 @@ func SetUpRouter() *gin.Engine {
 		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
 	}
 
-	r.POST("/login", authHandler.UserLogin)
+	auth := r.Group("/auth")
+	{
+		auth.GET("/google/login", authHandler.GoogleLogin)
+		auth.GET("/google/callback", authHandler.GoogleCallback)
+	}
 
 	return r
 }
@@ -109,7 +112,7 @@ func TestGetModels(t *testing.T) {
 
 func TestGetModelByUUID(t *testing.T) {
 	database.ResetTables()
-	database.CreateExampleModels()
+	database.CreateExampleData()
 	req, _ := http.NewRequest("GET", "/v0/models/123", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -160,7 +163,7 @@ func TestUploadModel(t *testing.T) {
 
 func TestGetModelLineage(t *testing.T) {
 	database.ResetTables()
-	database.CreateExampleModels()
+	database.CreateExampleData()
 	//tests if the handler returns a 200 OK status code when the model exists for the model lineage
 	req, _ := http.NewRequest("GET", "/v0/models/lineage/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e", nil)
 	req.Header.Set("Content-Type", "application/json")
@@ -173,7 +176,7 @@ func TestGetModelLineage(t *testing.T) {
 // tests whether we can get the children of a model. This is an OK test given that the route function is just a wrapper for the database function.
 func TestGetModelChildren(t *testing.T) {
 	database.ResetTables()
-	database.CreateExampleModels()
+	database.CreateExampleData()
 
 	req, _ := http.NewRequest("GET", "/v0/models/children/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
 	req.Header.Set("Content-Type", "application/json")
@@ -204,7 +207,7 @@ func TestUserLogin(t *testing.T) {
 
 func TestModelSearch(t *testing.T) {
 	database.ResetTables()
-	database.CreateExampleModels()
+	database.CreateExampleData()
 
 	//First let's search by model name and summary
 	req1, _ := http.NewRequest("GET", "/v0/models/search/model/summary", nil)
@@ -246,7 +249,7 @@ func TestModelSearch(t *testing.T) {
 
 func TestPutModel(t *testing.T) {
 	database.ResetTables()
-	database.CreateExampleModels()
+	database.CreateExampleData()
 
 	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
 	if err != nil {
@@ -279,7 +282,7 @@ func TestPutModel(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w2.Code)
 
 	// try to update with a model currently not in the database.
-	model4, err := os.ReadFile("../test_files/model4.json")
+	model4, _ := os.ReadFile("../test_files/model4.json")
 	req3Body := bytes.NewBuffer(model4)
 	req3, _ := http.NewRequest("PUT", "/v0/models", req3Body)
 	req3.Header.Set("Content-Type", "application/json")
@@ -292,7 +295,7 @@ func TestPutModel(t *testing.T) {
 
 func TestGetAllCommits(t *testing.T) {
 	database.ResetTables()
-	database.CreateExampleModels()
+	database.CreateExampleData()
 
 	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
 	if err != nil {
@@ -359,7 +362,7 @@ func TestGetAllCommits(t *testing.T) {
 
 func TestGetLatestCommitByUUID(t *testing.T) {
 	database.ResetTables()
-	database.CreateExampleModels()
+	database.CreateExampleData()
 
 	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
 	if err != nil {
@@ -407,7 +410,7 @@ func TestGetLatestCommitByUUID(t *testing.T) {
 // tests getting different versions of models.
 func TestGetVersionOfModel(t *testing.T) {
 	database.ResetTables()
-	database.CreateExampleModels()
+	database.CreateExampleData()
 
 	//tests getting version 0 of a model that has not been updated yet.
 	req, _ := http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/0", nil)

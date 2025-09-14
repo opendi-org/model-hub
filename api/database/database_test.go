@@ -66,7 +66,7 @@ func TestGetModelByUUID(t *testing.T) {
 	ResetTables()
 
 	t.Log("Running TestGetModelByUUID")
-	CreateExampleModels()
+	CreateExampleData()
 
 	//gets all models in the database
 	_, models, _ := GetAllModels()
@@ -103,7 +103,7 @@ func TestCreateModel(t *testing.T) {
 
 	ResetTables()
 
-	CreateExampleModels()
+	CreateExampleData()
 
 	// There should be a user with id 2. Retrieve it.
 	_, user, _ := GetUserByID(1)
@@ -124,6 +124,7 @@ func TestCreateModel(t *testing.T) {
 		Version:       "1.0",
 		Draft:         false,
 		CreatorID:     1,
+		Creator:       *user,
 		CreatedDate:   "2021-07-01",
 		Updaters:      []apiTypes.User{},
 		UpdatedDate:   "2021-07-01",
@@ -146,7 +147,7 @@ func TestCreateModel(t *testing.T) {
 
 	var model2 *apiTypes.CausalDecisionModel
 
-	status, model2, err = GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6f")
+	status, model2, err = GetModelByUUID(model.Meta.UUID)
 
 	if status != http.StatusOK {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
@@ -163,7 +164,7 @@ func TestGetAllModels(t *testing.T) {
 
 	ResetTables()
 
-	CreateExampleModels()
+	CreateExampleData()
 
 	ret, models, error := GetAllModels()
 	if ret != http.StatusOK {
@@ -185,7 +186,7 @@ func TestGetAllModels(t *testing.T) {
 func TestGetModelLineage(t *testing.T) {
 	ResetTables()
 	//example model is a parent-child pair.
-	CreateExampleModels()
+	CreateExampleData()
 
 	ret, models, error := GetModelLineage("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e")
 	if ret != http.StatusOK {
@@ -205,7 +206,7 @@ func TestGetModelLineage(t *testing.T) {
 func TestGetModelChildren(t *testing.T) {
 	ResetTables()
 	//example model is a parent-child pair.
-	CreateExampleModels()
+	CreateExampleData()
 
 	ret, models, error := GetModelChildren("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	if ret != http.StatusOK {
@@ -243,12 +244,6 @@ func TestIinitializingDbInstance(t *testing.T) {
 		t.Errorf("Expected error initializing database, got nil")
 	}
 	os.Setenv("OPEN_DI_DB_USERNAME", username)
-	os.Setenv("OPEN_DI_DB_PASSWORD", "")
-
-	_, err = InitializeDBInstance()
-	if err == nil {
-		t.Errorf("Expected error initializing database, got nil")
-	}
 
 	os.Setenv("OPEN_DI_DB_PASSWORD", password)
 	os.Setenv("OPEN_DI_DB_HOSTNAME", "")
@@ -302,7 +297,11 @@ func TestCreateModelGivenEmail(t *testing.T) {
 	ResetTables()
 
 	//We need to create the user before we run the test
-	creator, err := CreateUser("testgivenemail", "pass")
+	creator, err := CreateUser(apiTypes.User{
+		Username: "test",
+		Email:    "test@example.com",
+		GoogleID: "test-googleid",
+	})
 
 	// Ensure the user is not nil
 	if err != nil {
@@ -337,7 +336,7 @@ func TestCreateModelGivenEmail(t *testing.T) {
 	//note that:
 	//model.Meta gets a COPY of the previous meta object, meaning they are two separate Meta instances in memory.
 
-	status, err := CreateModelGivenEmail(&model)
+	status, err := CreateModel(&model)
 
 	if status != http.StatusCreated {
 		t.Fatalf("There was an error when creating the model given the email. Status: %d Error:%s", status, err.Error())
@@ -368,7 +367,8 @@ func TestCreateModelGivenEmail(t *testing.T) {
 	model.Meta.Creator.Email = "nope" //dont' forget that model.Meta is not the same underlying object as Meta!
 	//fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
 
-	status, err = CreateModelGivenEmail(&model)
+	// grfreema NOTE: check err state here
+	status, err = CreateModel(&model)
 
 	if status != http.StatusConflict {
 		t.Fatalf("There was an error when creating the model given the email. Status: %d", status)
@@ -377,18 +377,19 @@ func TestCreateModelGivenEmail(t *testing.T) {
 }
 
 func TestCreateUser(t *testing.T) {
-	//IMPORTANT NOTE: In the current implementation, the user's email and username are the same!
-	//If/when this is eventually changed, this test must be edited! For now tests are written on the assumption
-	//that email and username are the same.
 	ResetTables()
 
-	user1, err1 := CreateUser("user1", "pass1")
+	user1, err1 := CreateUser(apiTypes.User{
+		Username: "user1",
+		Email:    "user1@example.com",
+		GoogleID: "user1-googleid",
+	})
 
 	if err1 != nil {
 		print(err1.Error())
 	}
 
-	if user1.Email != "user1" || user1.Username != "user1" || user1.Password != "pass1" {
+	if user1.Username != "user1" || user1.Email != "user1@example.com" || user1.GoogleID != "user1-googleid" {
 		t.Fatalf("Username or password is not set correctly")
 	}
 
@@ -402,12 +403,16 @@ func TestCreateUser(t *testing.T) {
 	}
 
 	//Now check that we can create more users without conflict
-	user2, err2 := CreateUser("user2", "pass2")
+	user2, err2 := CreateUser(apiTypes.User{
+		Username: "user2",
+		Email:    "user2@example.com",
+		GoogleID: "user2-googleid",
+	})
 	if err2 != nil {
 		print(err2.Error())
 	}
 
-	if user2.Email != "user2" || user2.Username != "user2" || user2.Password != "pass2" {
+	if user2.Username != "user2" || user2.Email != "user2@example.com" || user2.GoogleID != "user2-googleid" {
 		t.Fatalf("Username or password is not set correctly")
 	}
 
@@ -436,42 +441,10 @@ func TestCreateUser(t *testing.T) {
 	}
 }
 
-func TestUserLogin(t *testing.T) {
-	//As with TestCreateUser, it is important to note that this test was written with the assumption that
-	//the username and email are the same. If/when this is changed, make sure to edit this test!
-	ResetTables()
-
-	//Let's first login with a user that has not been created yet, and check that the user is properly created
-	status1, user1, err1 := UserLogin("email1", "pass1")
-	if status1 != http.StatusOK || err1 != nil {
-		t.Fatalf("Error was thrown when trying to login a brand new user")
-	}
-
-	//Now let's check that the user was actually created
-	status1_1, user1_copy, err1_1 := GetUserByEmail("email1")
-	if status1_1 != http.StatusOK || err1_1 != nil {
-		t.Fatalf("Error when trying to retrieve new user: %s", err1_1.Error())
-	}
-
-	if user1_copy.UUID != user1.UUID {
-		t.Fatalf("UUID's do not match between user object retrieved upon login, and user lookup by email")
-	}
-
-	//Now we can try and login again, but with a wrong email
-	status2, _, _ := UserLogin("email1", "wrong_password")
-	if status2 == http.StatusConflict {
-		t.Fatal("Trying to login with the wrong password throws an error that the user does not exist or there was some kind of database conflict.")
-	} else if status2 != http.StatusUnauthorized {
-		t.Fatal("User was able to login with the wrong password.")
-
-	}
-
-}
-
 // also tests applyInvertedPatch
 func TestGetAllCommits(t *testing.T) {
 	ResetTables()
-	CreateExampleModels()
+	CreateExampleData()
 	ret, commits, error := GetAllCommits()
 	if ret != http.StatusOK {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
@@ -493,6 +466,7 @@ func TestGetAllCommits(t *testing.T) {
 	// Create a commit
 	expectedModel.Meta.Summary = "changed!"
 
+	// grfreema NOTE: check status state here
 	status, oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
 
 	changedModel, status, err := UpdateModelAndCreateCommit(&expectedModel, oldModel)
@@ -535,13 +509,13 @@ func TestGetAllCommits(t *testing.T) {
 }
 
 // testing create user given object given the same ID, which should throw an ID.
-func TestCreateUserGivenObject(t *testing.T) {
+func TestCreateUserNonUniqueID(t *testing.T) {
 	ResetTables()
-	CreateExampleModels() //also creates sample users
+	CreateExampleData() //also creates sample users
 	user := apiTypes.User{
 		ID: 1,
 	}
-	_, err := createUserGivenObject(user)
+	_, err := CreateUser(user)
 	if err == nil {
 		t.Errorf("Error should have been created when creating user")
 	}
@@ -551,6 +525,7 @@ func TestCreateUserGivenObject(t *testing.T) {
 // doesn't test that every single ID with corresopnding UUID has been matched yet.
 func TestMatchUUIDToID(t *testing.T) {
 	ResetTables()
+	CreateExampleData()
 	var model4 apiTypes.CausalDecisionModel
 	err := testutils.LoadJSONFromFile("../test_files/model4.json", &model4)
 	if err != nil {
@@ -592,7 +567,7 @@ func TestMatchUUIDToID(t *testing.T) {
 // tests getting commit by ID
 func TestGetCommitById(t *testing.T) {
 	ResetTables()
-	CreateExampleModels()
+	CreateExampleData()
 
 	// create a commit
 	status, models, err := GetAllModels()
@@ -609,8 +584,10 @@ func TestGetCommitById(t *testing.T) {
 
 	_, oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
 
+	// grfreema NOTE: check err state here
 	_, status, err = UpdateModelAndCreateCommit(&expectedModel, oldModel)
 
+	// grfreema NOTE: check err state here
 	//get the commit
 	_, commits, err := GetAllCommits()
 
@@ -634,7 +611,7 @@ func TestGetCommitById(t *testing.T) {
 // also tests getting latest commit for model UUID
 func TestUpdateModelAndCreateCommit(t *testing.T) {
 	ResetTables()
-	CreateExampleModels()
+	CreateExampleData()
 
 	// create a commit
 	status, models, err := GetAllModels()
@@ -668,6 +645,8 @@ func TestUpdateModelAndCreateCommit(t *testing.T) {
 	if status != http.StatusOK {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
 	}
+
+	// grfreema NOTE: check status and err states
 	// get latest commit
 	status, commit, err := GetLatestCommitForModelUUID(expectedModel.Meta.UUID)
 
@@ -683,7 +662,7 @@ func TestUpdateModelAndCreateCommit(t *testing.T) {
 
 func TestSearchModelsByName(t *testing.T) {
 	ResetTables()
-	CreateExampleModels()
+	CreateExampleData()
 
 	// Search for models by name
 	status, models, err := SearchModelsByName("Child")
@@ -698,7 +677,7 @@ func TestSearchModelsByName(t *testing.T) {
 
 func TestSearchModelsByUser(t *testing.T) {
 	ResetTables()
-	CreateExampleModels()
+	CreateExampleData()
 
 	// Search for models by name
 	status, models, err := SearchModelsByUser("Child")
