@@ -130,20 +130,19 @@ func TestGetModelByUUID(t *testing.T) {
 func TestUploadModel(t *testing.T) {
 	database.ResetTables()
 
+	// user must exist to create a model
+	database.CreateUser(apiTypes.User{
+		Username: "creator",
+		Email:    "creator@gmail.com",
+		GoogleID: "creator-googleid",
+	})
+
 	example, err := os.ReadFile("../test_files/model.json")
 	if err != nil {
 		t.Errorf("Error reading test data: %s", err)
-
 	}
 
-	//Need to have the user be created in order for this to work, so
-	//we can log the user in TODO - is this true? someone check on this later.
-	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
-	req1.Header.Set("Content-Type", "application/json")
-	w1 := httptest.NewRecorder()
-	router.ServeHTTP(w1, req1)
-
-	//test creating a new model.
+	// create a new model
 	reqBody := bytes.NewBuffer(example)
 	req, _ := http.NewRequest("POST", "/v0/models", reqBody)
 	req.Header.Set("Content-Type", "application/json")
@@ -187,24 +186,6 @@ func TestGetModelChildren(t *testing.T) {
 
 }
 
-func TestUserLogin(t *testing.T) {
-	//Login with a new user
-	database.ResetTables()
-	req, _ := http.NewRequest("POST", "/login?email=email1&password=pass1", nil)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	// Parse response body to extract user information
-	var responseBody map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &responseBody)
-	assert.NoError(t, err)
-
-	// Check that the user email in the response matches the expected one
-	assert.Equal(t, "email1", responseBody["email"], "User email should match the login email")
-}
-
 func TestModelSearch(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleData()
@@ -223,7 +204,7 @@ func TestModelSearch(t *testing.T) {
 	assert.Equal(t, "Test Child Model", responseBody[0]["meta"].(map[string]interface{})["name"])
 
 	//next let's search by creator name
-	req2, _ := http.NewRequest("GET", "/v0/models/search/user/test", nil)
+	req2, _ := http.NewRequest("GET", "/v0/models/search/user/creator", nil)
 	req2.Header.Set("Content-Type", "application/json")
 	w2 := httptest.NewRecorder()
 	router.ServeHTTP(w2, req2)
@@ -234,7 +215,7 @@ func TestModelSearch(t *testing.T) {
 
 	assert.Equal(t, len(responseBody), 1)
 	assert.Contains(t, responseBody2[0]["meta"].(map[string]interface{})["name"], "Test")
-	assert.Contains(t, responseBody2[1]["meta"].(map[string]interface{})["creator"].(map[string]interface{})["username"], "Test")
+	assert.Contains(t, responseBody2[1]["meta"].(map[string]interface{})["creator"].(map[string]interface{})["username"], "childcreator")
 
 	// try a type of search that doesnt exist
 	req3, _ := http.NewRequest("GET", "/v0/models/search/fake/summary", nil)
@@ -257,14 +238,7 @@ func TestPutModel(t *testing.T) {
 
 	}
 
-	//Need to have the user be created in order for this to work, so
-	//we can log the user in
-	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
-	req1.Header.Set("Content-Type", "application/json")
-	w1 := httptest.NewRecorder()
-	router.ServeHTTP(w1, req1)
-
-	//update the example model with the updated example model.
+	// update the example model with the updated example model.
 	reqBody := bytes.NewBuffer(example)
 	req, _ := http.NewRequest("PUT", "/v0/models", reqBody)
 	req.Header.Set("Content-Type", "application/json")

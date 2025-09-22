@@ -195,14 +195,14 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 
 	// Bind the JSON payload to the uploaded model struct
 	if err := c.ShouldBindJSON(&uploadedModel); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Call the encapsulated CreateModel method from the database package
 	if status, err := database.CreateModel(&uploadedModel); err != nil {
 		// Return error based on the CreateModel function response
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -501,22 +501,23 @@ func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 func (h *ModelHandler) ModelSearch(c *gin.Context) {
 	searchType := c.Param("type")
 	name := c.Param("name")
-	if searchType == "model" {
+	switch searchType {
+	case "model":
 		status, models, err := database.SearchModelsByName(name)
 		if err != nil {
-			c.JSON(status, gin.H{"Error": err.Error()})
+			c.JSON(status, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(status, models)
-	} else if searchType == "user" {
+	case "user":
 		status, models, err := database.SearchModelsByUser(name)
 		if err != nil {
-			c.JSON(status, gin.H{"Error": err.Error()})
+			c.JSON(status, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(status, models)
-	} else {
-		c.JSON(404, gin.H{"Error": "This type of search does not exist"})
+	default:
+		c.JSON(404, gin.H{"error": "This type of search does not exist"})
 		return
 	}
 }
