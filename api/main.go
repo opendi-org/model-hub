@@ -104,6 +104,8 @@ func main() {
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
 		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
+		models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
+		models.PUT("/privacy/:uuid", modelHandler.PutModelPrivacy)
 	}
 
 	//router group for all endpoints related to models

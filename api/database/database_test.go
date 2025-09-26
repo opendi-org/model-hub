@@ -425,9 +425,9 @@ func TestCreateUser(t *testing.T) {
 		t.Fatalf("No error was thrown when getting user1 by email, but the user retrieved does not match the one created.")
 	}
 
-	//Ensure UUIDs are NOT equal
-	if user1.UUID == user2.UUID {
-		t.Fatalf("User 1's UUID is the same as User 2's - this is extremely unlikely and almost certainly due to a bug.")
+	//Ensure IDs are NOT equal
+	if user1.ID == user2.ID {
+		t.Fatalf("User 1's ID is the same as User 2's - this is extremely unlikely and almost certainly due to a bug.")
 	}
 
 	//Ensure we haven't regressed with User 1

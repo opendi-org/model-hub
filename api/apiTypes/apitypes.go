@@ -22,6 +22,8 @@ type CausalDecisionModel struct {
 	ParentID   *int                 `json:"-"`
 	Parent     *CausalDecisionModel `json:"-"`
 	Diagrams   []Diagram            `gorm:"many2many:cdm_diagrams" json:"diagrams,omitempty"`
+	IsPublic   bool                 `json:"-"`
+	Shares     []Share              `gorm:"serializer:json" json:"-"`
 }
 
 type Meta struct {
@@ -76,7 +78,6 @@ type CausalDependency struct {
 
 type User struct {
 	ID       int    `gorm:"primaryKey" json:"-"`
-	UUID     string `json:"uuid"`
 	Username string `json:"username"`
 	Email    string `gorm:"unique" json:"email"`
 	GoogleID string `gorm:"unique" json:"-"`
@@ -86,10 +87,15 @@ type Commit struct {
 	ID             int       `gorm:"primaryKey" json:"-"`
 	ParentCommitID string    `json:"parentCommitID"`
 	Diff           string    `json:"diff"`
-	UserUUID       string    `json:"useruuid"`
+	UserID         int       `json:"userid"`
 	CDMUUID        string    `json:"cdmuuid"`
 	CreatedAt      time.Time `json:"CreatedAt"`
 	Version        int       `json:"version"`
+}
+
+type Share struct {
+	UserID int    `json:"userID"`
+	Level  string `json:"level"`
 }
 
 // testing functionality for CDM equality with other CDM.
@@ -174,5 +180,5 @@ func (u User) Equals(other User) bool {
 
 // testing functionality for Commit equal with other Commit.
 func (c Commit) Equals(other Commit) bool {
-	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID && c.Diff == other.Diff && c.UserUUID == other.UserUUID
+	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID && c.Diff == other.Diff && c.UserID == other.UserID
 }

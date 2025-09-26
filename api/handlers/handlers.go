@@ -146,7 +146,7 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	}
 
 	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.UUID,
+		"user_id": user.ID,
 		"email":   user.Email,
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	}).SignedString(secret)
@@ -159,6 +159,64 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 		"user":  userInfo,
 		"token": jwtToken,
 	})
+}
+
+// TODO needs to be protected by an auth handler
+// GetModelPrivacy godoc
+// @Summary      Get privacy settings for model
+// @Description  get privacy settings for model
+// @Tags         models
+// @Produce      json
+// @Success      200
+// @Failure      500
+// @Router       /v0/models/privacy/{uuid} [get]
+func (h *ModelHandler) GetModelPrivacy(c *gin.Context) {
+	uuid := c.Param("uuid")
+
+	// Get the model from database
+	status, model, err := database.GetModelByUUID(uuid)
+	if err != nil {
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := gin.H{
+		"isPublic": model.IsPublic,
+		"shares":   model.Shares,
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// TODO needs to be protected by an auth handler
+// GetModelPrivacy godoc
+// @Summary      Get privacy settings for model
+// @Description  get privacy settings for model
+// @Tags         models
+// @Produce      json
+// @Success      200
+// @Failure      500
+// @Router       /v0/models/privacy/{uuid} [put]
+func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
+	uuid := c.Param("uuid")
+
+	var req struct {
+		IsPublic bool             `json:"isPublic"`
+		Shares   []apiTypes.Share `json:"shares"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	status, err := database.UpdateModelPrivacyByUUID(uuid, req.IsPublic, req.Shares)
+	if err != nil {
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{})
 }
 
 // GetModels godoc
@@ -227,7 +285,7 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	status, model, err := database.GetModelByUUID(uuid)
 	if err != nil {
 		// If error, return an appropriate response based on the error
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
