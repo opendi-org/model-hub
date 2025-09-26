@@ -10,9 +10,10 @@
           "meta": {
             "createdDate": "string",
             "creator": {
-              "email": "creator@example.com",
-              "username": "string",
-              "uuid": "user-uuid-creator"
+              "email": "creator@gmail.com",
+              "username": "creator",
+              "uuid": "creator@gmail.com",
+              "googleId": "creator-googleid"
             },
             "documentation": [
               0
@@ -23,9 +24,10 @@
             "updatedDate": "string",
             "updaters": [
               {
-                "email": "creator@example.com",
-                "username": "string",
-                "uuid": "user-uuid-creator"
+                "email": "creator@gmail.com",
+                "username": "creator",
+                "uuid": "creator@gmail.com",
+                "googleId": "creator-googleid"
               }
             ],
             "uuid": "meta1",
@@ -48,9 +50,10 @@
           "meta": {
             "createdDate": "string",
             "creator": {
-              "email": "creator@example.com",
-              "username": "string",
-              "uuid": "user-uuid-creator"
+              "email": "creator@gmail.com",
+              "username": "creator",
+              "uuid": "creator@gmail.com",
+              "googleId": "creator-googleid"
             },
             "documentation": [
               0
@@ -61,9 +64,10 @@
             "updatedDate": "string",
             "updaters": [
               {
-                "email": "creator@example.com",
-                "username": "string",
-                "uuid": "user-uuid-creator"
+                "email": "creator@gmail.com",
+                "username": "creator",
+                "uuid": "creator@gmail.com",
+                "googleId": "creator-googleid"
               }
             ],
             "uuid": "meta2",
@@ -74,9 +78,10 @@
       "meta": {
         "createdDate": "string",
         "creator": {
-          "email": "creator@example.com",
-          "username": "string",
-          "uuid": "user-uuid-creator"
+          "email": "creator@gmail.com",
+          "username": "creator",
+          "uuid": "creator@gmail.com",
+          "googleId": "creator-googleid"
         },
         "documentation": [
           0
@@ -87,9 +92,10 @@
         "updatedDate": "string",
         "updaters": [
           {
-            "email": "creator@example.com",
-            "username": "string",
-            "uuid": "user-uuid-creator"
+            "email": "creator@gmail.com",
+            "username": "creator",
+            "uuid": "creator@gmail.com",
+            "googleId": "creator-googleid"
           }
         ],
         "uuid": "meta3",
@@ -100,9 +106,10 @@
   "meta": {
     "createdDate": "string",
     "creator": {
-      "email": "creator@example.com",
-      "username": "string",
-      "uuid": "user-uuid-creator"
+      "email": "creator@gmail.com",
+      "username": "creator",
+      "uuid": "creator@gmail.com",
+      "googleId": "creator-googleid"
     },
     "documentation": [
       0
@@ -113,9 +120,10 @@
     "updatedDate": "string",
     "updaters": [
       {
-        "email": "creator@example.com",
-        "username": "string",
-        "uuid": "user-uuid-creator"
+        "email": "creator@gmail.com",
+        "username": "creator",
+        "uuid": "creator@gmail.com",
+        "googleId": "creator-googleid"
       }
     ],
     "uuid": "meta9",

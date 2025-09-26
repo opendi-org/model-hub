@@ -12,7 +12,19 @@ import (
 	jsonDiffHelpers "opendi/model-hub/api/jsondiffhelpers"
 	"strconv" //for applying patches generated with jsondiff
 
+	"time"
+
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+
+	// OAuth 2 Imports
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"os"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 //note - we technically don't need these structs for now. However, they could be useful in the future.
@@ -27,22 +39,126 @@ type CommitHandler struct {
 
 // AuthHandler struct for handling user login/auth requests
 type AuthHandler struct {
+	googleConfig *oauth2.Config
 }
 
 // method for getting an instance of ModelHandler
 func NewModelHandler() (*ModelHandler, error) {
-
 	return &ModelHandler{}, nil
 }
 
 // method for getting an instance of CommitHandler
 func NewCommitHandler() (*CommitHandler, error) {
-
 	return &CommitHandler{}, nil
 }
 
 func NewAuthHandler() (*AuthHandler, error) {
-	return &AuthHandler{}, nil
+	return &AuthHandler{
+		googleConfig: &oauth2.Config{
+			ClientID:     os.Getenv("GOOGLE_CLIENT_ID"), // grfreema NOTE: Replace with actual client id and secret
+			ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+			RedirectURL:  "http://localhost:8080/auth/google/callback",
+			Scopes: []string{
+				"https://www.googleapis.com/auth/userinfo.email",
+				"https://www.googleapis.com/auth/userinfo.profile",
+			},
+			Endpoint: google.Endpoint,
+		},
+	}, nil
+}
+
+// GoogleLogin godoc
+// @Summary      Start Google OAuth flow
+// @Description  Redirects user to Google OAuth consent screen
+// @Tags         auth
+// @Success      302
+// @Failure      500
+// @Router       /auth/google/login [get]
+func (h *AuthHandler) GoogleLogin(c *gin.Context) {
+	stateBytes := make([]byte, 16)
+	if _, err := rand.Read(stateBytes); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	state := hex.EncodeToString(stateBytes)
+	c.SetCookie("oauth_state", state, 600, "/", "", false, true) // secure is false here so we can use on localhost
+
+	url := h.googleConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	c.Redirect(http.StatusTemporaryRedirect, url)
+}
+
+// GoogleCallback godoc
+// @Summary      Handle Google OAuth callback
+// @Description  Processes Callback and returns user info
+// @Tags         auth
+// @Param        code   query  string  true  "Authorization code from Google"
+// @Param        state  query  string  true  "Random state token from login"
+// @Success      200 {object} gin.H "Success with body containing user info"
+// @Failure      400 {object} gin.H "Bad Request"
+// @Failure      500 {object} gin.H "Internal Server Error"
+// @Router       /auth/google/callback [get]
+func (h *AuthHandler) GoogleCallback(c *gin.Context) {
+	code := c.Query("code")
+	state := c.Query("state")
+
+	// Make sure state token matches what the login set
+	storedState, err := c.Cookie("oauth_state")
+	c.SetCookie("oauth_state", "", -1, "/", "", false, true)
+	if err != nil || state != storedState {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid state token"})
+		return
+	}
+
+	// Exchange the authorization code for an access token
+	token, err := h.googleConfig.Exchange(context.Background(), code)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Make request to google to get the user info
+	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + token.AccessToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Decode the user info
+	var userInfo map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Find or create user based on the user info
+	user, err := database.FindOrCreateUserFromGoogle(userInfo["name"].(string), userInfo["email"].(string), userInfo["id"].(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Create a token for this user
+	secret, ok := os.LookupEnv("JWT_SECRET")
+	if !ok || secret == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Environment variable JWT_SECRET is not set or empty"})
+		return
+	}
+
+	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": user.UUID,
+		"email":   user.Email,
+		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+	}).SignedString(secret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"user":  userInfo,
+		"token": jwtToken,
+	})
 }
 
 // GetModels godoc
@@ -54,14 +170,12 @@ func NewAuthHandler() (*AuthHandler, error) {
 // @Failure      500
 // @Router       /v0/models/ [get]
 func (h *ModelHandler) GetModels(c *gin.Context) {
-	var models []apiTypes.CausalDecisionModel
 	status, models, err := database.GetAllModels()
-	if models == nil {
+	if err != nil {
 		c.JSON(status, gin.H{"Error": err.Error()})
+		return
 	}
-
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(status, models)
+	c.JSON(status, models)
 }
 
 // UploadModel godoc
@@ -81,19 +195,18 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 
 	// Bind the JSON payload to the uploaded model struct
 	if err := c.ShouldBindJSON(&uploadedModel); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Call the encapsulated CreateModel method from the database package
-	if status, err := database.CreateModelGivenEmail(&uploadedModel); err != nil {
+	if status, err := database.CreateModel(&uploadedModel); err != nil {
 		// Return error based on the CreateModel function response
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Return a successful response if model creation is successful
-	c.Header("Access-Control-Allow-Origin", "*")
 	c.JSON(http.StatusCreated, uploadedModel)
 }
 
@@ -119,8 +232,7 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	}
 
 	// Return the model if found
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(status, model)
+	c.JSON(status, model)
 }
 
 // putModel godoc
@@ -159,8 +271,7 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 		return
 	}
 	// Return a successful response if model put is
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(http.StatusCreated, changedModel)
+	c.JSON(http.StatusCreated, changedModel)
 }
 
 // GetCommits godoc
@@ -173,14 +284,12 @@ func (h *ModelHandler) PutModel(c *gin.Context) {
 // @Router       /v0/commits/ [get]
 func (h *CommitHandler) GetCommits(c *gin.Context) {
 	//TODO remove this API. No real need for it.
-	var models []apiTypes.Commit
 	status, models, err := database.GetAllCommits()
-	if models == nil {
+	if err != nil {
 		c.JSON(status, gin.H{"Error": err.Error()})
+		return
 	}
-
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(status, models)
+	c.JSON(status, models)
 }
 
 func (h *CommitHandler) GetLatestCommitByModelUUID(c *gin.Context) {
@@ -195,8 +304,7 @@ func (h *CommitHandler) GetLatestCommitByModelUUID(c *gin.Context) {
 	}
 
 	// Return the commit if found
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(status, commit)
+	c.JSON(status, commit)
 }
 
 // doesn't do anything to the database, but just returns the version of the model associated with the commit version
@@ -230,8 +338,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 	//get latest commit for model UUID.
 	status, commit, err := database.GetLatestCommitForModelUUID(uuid)
 	if version == 0 && status == http.StatusNotFound {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.IndentedJSON(http.StatusOK, latestVersionOfModel)
+		c.JSON(http.StatusOK, latestVersionOfModel)
 		return
 	}
 	if err != nil {
@@ -300,8 +407,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
 		return
 	}
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(http.StatusOK, finalModel)
+	c.JSON(http.StatusOK, finalModel)
 
 }
 
@@ -339,35 +445,6 @@ func (h *CommitHandler) UploadCommit(c *gin.Context) {
 }
 */
 
-// userLogin godoc
-// @Summary      Login a user
-// @Description  Either login or create a user
-// @Tags         models
-// @Accept       json
-// @Produce      json
-// @Param        user  body  apiTypes.User  true  "User login"
-// @Success      201 {object} apiTypes.User "logged in user"
-// @Failure      400 {object} gin.H "Bad Request"
-// @Failure      500 {object} gin.H "Internal Server Error"
-// @Router       /login [put]
-func (h *AuthHandler) UserLogin(c *gin.Context) {
-	//For now, whenever a user logs in, even if the user doesn't exist we just create a new user and log them in.
-	email := c.Query("email")
-	pass := c.Query("password")
-
-	status, user, err := database.UserLogin(email, pass)
-
-	if err != nil {
-		c.JSON(status, gin.H{"Error": err.Error()})
-		return
-	}
-	user.Password = "secret"
-
-	// Return the user
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(status, user)
-}
-
 // GetModelLineage godoc
 // @Summary      Get model lineage
 // @Description  gets models using its uuid
@@ -386,8 +463,7 @@ func (h *ModelHandler) GetModelLineage(c *gin.Context) {
 		c.JSON(status, gin.H{"Error": err.Error()})
 		return
 	}
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(status, lineage)
+	c.JSON(status, lineage)
 }
 
 // GetModelChildren godoc
@@ -407,8 +483,7 @@ func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 		c.JSON(status, gin.H{"Error": err.Error()})
 		return
 	}
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(status, children)
+	c.JSON(status, children)
 }
 
 // ModelSearch godoc
@@ -426,24 +501,23 @@ func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 func (h *ModelHandler) ModelSearch(c *gin.Context) {
 	searchType := c.Param("type")
 	name := c.Param("name")
-	if searchType == "model" {
+	switch searchType {
+	case "model":
 		status, models, err := database.SearchModelsByName(name)
 		if err != nil {
-			c.JSON(status, gin.H{"Error": err.Error()})
+			c.JSON(status, gin.H{"error": err.Error()})
 			return
 		}
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.IndentedJSON(status, models)
-	} else if searchType == "user" {
+		c.JSON(status, models)
+	case "user":
 		status, models, err := database.SearchModelsByUser(name)
 		if err != nil {
-			c.JSON(status, gin.H{"Error": err.Error()})
+			c.JSON(status, gin.H{"error": err.Error()})
 			return
 		}
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.IndentedJSON(status, models)
-	} else {
-		c.JSON(404, gin.H{"Error": "This type of search does not exist"})
+		c.JSON(status, models)
+	default:
+		c.JSON(404, gin.H{"error": "This type of search does not exist"})
 		return
 	}
 }
@@ -469,6 +543,5 @@ func (h *CommitHandler) GetCommitsByModelUUID(c *gin.Context) {
 	}
 
 	// Return the commits if found
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.IndentedJSON(status, commits)
+	c.JSON(status, commits)
 }

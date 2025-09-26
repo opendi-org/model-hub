@@ -1,11 +1,12 @@
 module opendi/model-hub/api
 
-go 1.23.6
+go 1.24.0
 
 require (
 	github.com/evanphx/json-patch v0.5.2
 	github.com/gin-contrib/cors v1.7.3
 	github.com/gin-gonic/gin v1.10.0
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/joho/godotenv v1.5.1
 	github.com/qri-io/jsonpointer v0.1.1
 	github.com/stretchr/testify v1.9.0
@@ -13,9 +14,11 @@ require (
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.4
 	github.com/wI2L/jsondiff v0.6.1
+	golang.org/x/oauth2 v0.31.0
 )
 
 require (
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect

@@ -64,8 +64,8 @@ func InitializeDBInstance() (int, error) {
 		return 1, fmt.Errorf("environment variable OPEN_DI_DB_USERNAME is not set or empty")
 	}
 	password, ok := os.LookupEnv("OPEN_DI_DB_PASSWORD")
-	if !ok || password == "" {
-		return 1, fmt.Errorf("environment variable OPEN_DI_DB_PASSWORD is not set or empty")
+	if !ok {
+		return 1, fmt.Errorf("environment variable OPEN_DI_DB_PASSWORD is not set")
 	}
 	hostname, ok := os.LookupEnv("OPEN_DI_DB_HOSTNAME")
 	if !ok || hostname == "" {
@@ -129,7 +129,6 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 	}
 
 	return http.StatusOK, models, nil
-
 }
 
 // function for getting all commits in Go struct  - remember, in Go, public methods have to be capitalized
@@ -142,12 +141,19 @@ func GetAllCommits() (int, []apiTypes.Commit, error) {
 	}
 
 	return http.StatusOK, commits, nil
-
 }
 
-// helper function for creating a user given a user object. Doesn't check for if it's possible to create
-func createUserGivenObject(user apiTypes.User) (*apiTypes.User, error) {
-	// Begin transaction.
+func CreateUser(user apiTypes.User) (*apiTypes.User, error) {
+	newUUID, _ := generateUUID()
+	user.UUID = newUUID
+	// Ensure no other user with this email exists
+	var count int64
+	dbInstance.Model(&apiTypes.User{}).Where("email = ?", user.Email).Count(&count)
+	if count > 0 {
+		// If a user with the same email exists, return a conflict error.
+		return nil, fmt.Errorf("a user with email %s already exists", user.Email)
+	}
+
 	transaction := dbInstance.Begin()
 	if transaction.Error != nil {
 		return nil, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
@@ -155,35 +161,50 @@ func createUserGivenObject(user apiTypes.User) (*apiTypes.User, error) {
 
 	if err := transaction.Create(&user).Error; err != nil {
 		transaction.Rollback()
-		return nil, fmt.Errorf("could not create updater: %s", err.Error())
+		return nil, fmt.Errorf("could not create user: %s", err.Error())
 	}
 
 	transaction.Commit()
 	return &user, nil
 }
 
+func FindOrCreateUserFromGoogle(name, email, googleID string) (*apiTypes.User, error) {
+	var user apiTypes.User
+	var count int64
+	dbInstance.Model(&apiTypes.User{}).Where("google_id = ?", googleID).Count(&count)
+	if count == 0 {
+		newUser := apiTypes.User{
+			Username: name,
+			Email:    email,
+			GoogleID: googleID,
+		}
+		return CreateUser(newUser)
+	}
+	return &user, nil
+}
+
 // Example method that creates sample models in the database
 // creates 2 models, parent and child.
 // also creates creators for those models
-func CreateExampleModels() {
+func CreateExampleData() {
 	creator := apiTypes.User{
 		ID:       1,
-		UUID:     "user-uuid-creator",
-		Username: "Test Creator",
-		Email:    "creator@example.com",
-		Password: "p",
+		UUID:     "creator-uuid",
+		Username: "creator",
+		Email:    "creator@gmail.com",
+		GoogleID: "creator-googleid",
 	}
 
-	createUserGivenObject(creator)
-	/*
-		updater := apiTypes.User{
-			ID:       2,
-			UUID:     "user-uuid-updater",
-			Username: "Test Updater",
-			Email:    "updater@example.com",
-			Password: "q",
-		}
-	*/
+	childCreator := apiTypes.User{
+		ID:       2,
+		UUID:     "childcreator-uuid",
+		Username: "childcreator",
+		Email:    "childcreator@gmail.com",
+		GoogleID: "childcreator-googleid",
+	}
+
+	CreateUser(creator)
+	CreateUser(childCreator)
 
 	meta := apiTypes.Meta{
 		ID:            1,
@@ -213,31 +234,6 @@ func CreateExampleModels() {
 		Diagrams:  nil,
 	}
 
-	if err := dbInstance.Create(&model).Error; err != nil {
-		fmt.Println("Error creating model: ", err)
-	}
-
-	// Also create a child model
-	childCreator := apiTypes.User{
-		ID:       3,
-		UUID:     "user-uuid-child-creator",
-		Username: "Test Child Creator",
-		Email:    "mail.com",
-		Password: "p",
-	}
-
-	createUserGivenObject(childCreator)
-
-	/*
-		childUpdater := apiTypes.User{
-			ID:       4,
-			UUID:     "user-uuid-child-updater",
-			Username: "Test Child Updater",
-			Email:    "mail.com",
-			Password: "q",
-		}
-	*/
-
 	childMeta := apiTypes.Meta{
 		ID:            2,
 		CreatedAt:     time.Now(),
@@ -266,6 +262,10 @@ func CreateExampleModels() {
 		ParentID:   &model.ID,
 		Parent:     &model,
 		Diagrams:   nil,
+	}
+
+	if err := dbInstance.Create(&model).Error; err != nil {
+		fmt.Println("Error creating model: ", err)
 	}
 
 	if err := dbInstance.Create(&childModel).Error; err != nil {
@@ -532,7 +532,32 @@ func generateUUID() (string, error) {
 
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
 func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
-	// No need to ensure no other model with the same UUID exists. CreateModelGivenEmail creates a unique UUID for us.
+	var count int64
+	//keep generating UUIDs until a unique one is found
+	for {
+		// Generate a UUID for the model.
+		uuid, err := generateUUID()
+		if err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("could not generate UUID: %s", err.Error())
+		}
+		uploadedModel.Meta.UUID = uuid
+
+		// Ensure no other model with the same UUID exists.
+		dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
+		if count == 0 {
+			break
+		}
+	}
+
+	email := uploadedModel.Meta.Creator.Email
+
+	//string is not copied
+	status, user, _ := GetUserByEmail(email)
+	if status != http.StatusOK {
+		return http.StatusConflict, fmt.Errorf("could not find creator: %s", email)
+	}
+	uploadedModel.Meta.Creator = *user
+	uploadedModel.Meta.CreatorID = user.ID
 
 	// Begin transaction.
 	transaction := dbInstance.Begin()
@@ -566,62 +591,6 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	}
 
 	return http.StatusCreated, nil
-}
-
-// Creates model in database given emails of creator
-// this method expects a model with the Creator object filled in with a non-null Email.
-// the updaters functionality is not done yet.
-func CreateModelGivenEmail(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
-
-	var count int64
-	//keep generating UUIDs until a unique one is found
-	for {
-		// Generate a UUID for the model.
-		uuid, err := generateUUID()
-		if err != nil {
-			return http.StatusInternalServerError, fmt.Errorf("could not generate UUID: %s", err.Error())
-		}
-		uploadedModel.Meta.UUID = uuid
-
-		// Ensure no other model with the same UUID exists.
-		dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
-		if count == 0 {
-			break
-		}
-
-	}
-
-	/*
-		// Try to retrieve updater id information from the meta, then find an updater with that id in the database.
-		for i, updater := range uploadedModel.Meta.Updaters {
-			var countUpdater int64
-			transaction.Model(&apiTypes.User{}).Where("uuid = ?", updater.UUID).Count(&countUpdater)
-			if countUpdater == 0 {
-				// Create the updater in the database if it does not exist.
-				if err := transaction.Create(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
-					transaction.Rollback()
-					return http.StatusInternalServerError, fmt.Errorf("could not create updater: %s", err.Error())
-				}
-			} else {
-				// Find the updater in the database using the uuid
-				if err := transaction.Where("uuid = ?", updater.UUID).First(&uploadedModel.Meta.Updaters[i]).Error; err != nil {
-					transaction.Rollback()
-					return http.StatusInternalServerError, fmt.Errorf("could not find updater: %s", err.Error())
-				}
-			}
-		}
-	*/
-
-	// this method expects a model with the Creator object filled in with a non-null Email.
-	email := uploadedModel.Meta.Creator.Email
-	//string is not copied
-	status, user, _ := GetUserByEmail(email)
-	if status != http.StatusOK {
-		return http.StatusConflict, fmt.Errorf("could not find creator: %s", email)
-	}
-	uploadedModel.Meta.Creator = *user
-	uploadedModel.Meta.CreatorID = user.ID
-	return CreateModel(uploadedModel)
 }
 
 // GetModelByUUID encapsulates the GORM functionality for getting a model by its UUID
@@ -915,61 +884,6 @@ func GetUserByEmail(email string) (int, *apiTypes.User, error) {
 	}
 
 	return http.StatusOK, &user, nil
-}
-
-func CreateUser(email string, password string) (*apiTypes.User, error) {
-	var newuser apiTypes.User
-	// if you have an int field marked as a primary key with autoIncrement in GORM and it is left as 0 (its zero value),
-	// GORM will interpret it as "not explicitly set" and will allow the database to generate an auto-incremented value for it
-	newuuid, _ := generateUUID()
-	newuser.Username = email
-	newuser.Email = email
-	newuser.Password = password
-	//i don't see why user has to have a UUID
-	newuser.UUID = newuuid
-	// Ensure no other user with this email exists
-	var count int64
-	dbInstance.Model(&apiTypes.User{}).Where("email = ?", email).Count(&count)
-	if count > 0 {
-		// If a user with the same email exists, return a conflict error.
-		return nil, fmt.Errorf("a user with email %s already exists", email)
-	}
-
-	// Begin transaction.
-	transaction := dbInstance.Begin()
-	if transaction.Error != nil {
-		return nil, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
-	}
-
-	if err := transaction.Create(&newuser).Error; err != nil {
-		transaction.Rollback()
-		return nil, fmt.Errorf("could not create updater: %s", err.Error())
-	}
-
-	transaction.Commit()
-
-	return &newuser, nil
-}
-
-// if user doesn't exist, we create the user with the given email and password. TODO change this .
-func UserLogin(email string, password string) (int, *apiTypes.User, error) {
-
-	status, user, _ := GetUserByEmail(email)
-
-	if status != 200 {
-		//For now, let's just create a new user
-		newuser, err := CreateUser(email, password)
-		if err != nil {
-			return http.StatusConflict, nil, fmt.Errorf("user does not exist and could not create new user")
-		}
-		return http.StatusOK, newuser, nil
-	} else {
-		if user.Password != password {
-			return http.StatusUnauthorized, nil, fmt.Errorf("password is incorrect")
-		}
-	}
-
-	return http.StatusOK, user, nil
 }
 
 // / GetModelLineage returns the ancestry of a model given its UUID.
