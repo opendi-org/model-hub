@@ -105,25 +105,7 @@ export default function Navbar() {
         }
     }
 
-    function SigninButton() {
-        if (!sessionStorage.getItem('username')) {
-            return <Button
-                            color="inherit"
-                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
-                        >
-                            Sign Up
-                        </Button>
-        }
-        else {
-            return <Button
-                            color="inherit"
-                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
-                            component={NavLink} to="/user"
-                        >
-                            Welcome {sessionStorage.getItem('username')}
-                        </Button>
-        }
-    }
+    
     function SignoutButton() {
         if (!sessionStorage.getItem('username')) {
             return null
