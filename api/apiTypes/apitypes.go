@@ -24,6 +24,7 @@ type CausalDecisionModel struct {
 	Diagrams   []Diagram            `gorm:"many2many:cdm_diagrams" json:"diagrams,omitempty"`
 	IsPublic   bool                 `json:"-"`
 	Shares     []Share              `gorm:"serializer:json" json:"-"`
+	OwnerID    int                  `json:"-"`
 }
 
 type Meta struct {
@@ -96,6 +97,14 @@ type Commit struct {
 type Share struct {
 	UserID int    `json:"userID"`
 	Level  string `json:"level"`
+}
+
+type Transfer struct {
+	ID         int       `gorm:"primaryKey" json:"-"`
+	CDMUUID    string    `json:"cdmUUID"`
+	ToUserID   int       `json:"toUserID"`
+	FromUserID int       `json:"fromUserID"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 // testing functionality for CDM equality with other CDM.

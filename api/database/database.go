@@ -273,35 +273,54 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 	return http.StatusOK, children, nil
 }
 
-func UpdateModelPrivacyByUUID(uuid string, isPublic bool, shares []apiTypes.Share) (int, error) {
-	status, model, err := GetModelByUUID(uuid)
-	if err != nil {
-		return status, err
-	}
+func UpdateModelPrivacyByUUID(uuid string, isPublic bool, shares []apiTypes.Share) error {
+	transaction := dbInstance.Begin()
 
-	for _, share := range shares {
-		status, _, err := GetUserByID(share.UserID)
-		if err != nil {
-			return status, err
-		}
-		if (share.Level != "read" && share.Level != "write") || (isPublic && share.Level == "read") {
-			return http.StatusBadRequest, fmt.Errorf("invalid share level for userID: %d", share.UserID)
-		}
+	var model apiTypes.CausalDecisionModel
+	if err := transaction.Where("uuid = ?", uuid).First(&model).Error; err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("model with uuid %s not found", uuid)
 	}
 
 	model.IsPublic = isPublic
 	model.Shares = shares
-
-	transaction := dbInstance.Begin()
 	if err := transaction.Save(&model).Error; err != nil {
 		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not update model shares: %s", err.Error())
+		return fmt.Errorf("could not update model privacy: %s", err.Error())
 	}
 	if err := transaction.Commit().Error; err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
+		return fmt.Errorf("could not commit transaction: %s", err.Error())
 	}
+	return nil
+}
 
-	return http.StatusOK, nil
+func GetTransferByModelUUID(uuid string) (*apiTypes.Transfer, error) {
+	var transfer apiTypes.Transfer
+	if err := dbInstance.Where("cdmUUID = ?", uuid).First(&transfer).Error; err != nil {
+		return nil, fmt.Errorf("transfer on uuid %s not found", uuid)
+	}
+	return &transfer, nil
+}
+
+func CreateTransfer(transfer *apiTypes.Transfer) error {
+	if err := dbInstance.Create(transfer).Error; err != nil {
+		return fmt.Errorf("failed to create transfer: %s", err)
+	}
+	return nil
+}
+
+func DeleteTransfer(transfer *apiTypes.Transfer, accept bool) error {
+	// if accepting, change the model owner
+	if accept {
+		if err := dbInstance.Model(&apiTypes.CausalDecisionModel{}).Where("uuid = ?", transfer.CDMUUID).Update("owner_id", transfer.ToUserID).Error; err != nil {
+			return fmt.Errorf("failed to update model owner: %s", err)
+		}
+	}
+	// delete the transfer request
+	if err := dbInstance.Delete(&apiTypes.Transfer{}, transfer.ID).Error; err != nil {
+		return fmt.Errorf("failed to delete transfer: %s", err)
+	}
+	return nil
 }
 
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
@@ -989,6 +1008,7 @@ func CreateExampleData() {
 		Meta:      meta,
 		Parent:    nil,
 		Diagrams:  nil,
+		OwnerID:   creator.ID,
 	}
 
 	childMeta := apiTypes.Meta{
@@ -1019,6 +1039,7 @@ func CreateExampleData() {
 		ParentID:   &model.ID,
 		Parent:     &model,
 		Diagrams:   nil,
+		OwnerID:    childCreator.ID,
 	}
 
 	if err := dbInstance.Create(&model).Error; err != nil {
