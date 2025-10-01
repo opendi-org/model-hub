@@ -189,7 +189,6 @@ export default function Navbar() {
                         <Button color="inherit">About</Button>
                         <LoginButton/>
                         <SignoutButton/>
-                        <SigninButton/>
                     </Box>
                 </Toolbar>
             </AppBar>
