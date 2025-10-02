@@ -32,6 +32,8 @@ func CreateTablesIfNotCreated() error {
 		&apiTypes.DiaElement{},
 		&apiTypes.CausalDependency{},
 		&apiTypes.Commit{},
+		&apiTypes.User{},
+		&apiTypes.Transfer{},
 	)
 	return err
 
@@ -276,10 +278,9 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 func UpdateModelPrivacyByUUID(uuid string, isPublic bool, shares []apiTypes.Share) error {
 	transaction := dbInstance.Begin()
 
-	var model apiTypes.CausalDecisionModel
-	if err := transaction.Where("uuid = ?", uuid).First(&model).Error; err != nil {
-		transaction.Rollback()
-		return fmt.Errorf("model with uuid %s not found", uuid)
+	_, model, err := GetModelByUUID(uuid)
+	if err != nil {
+		return err
 	}
 
 	model.IsPublic = isPublic
@@ -296,7 +297,7 @@ func UpdateModelPrivacyByUUID(uuid string, isPublic bool, shares []apiTypes.Shar
 
 func GetTransferByModelUUID(uuid string) (*apiTypes.Transfer, error) {
 	var transfer apiTypes.Transfer
-	if err := dbInstance.Where("cdmUUID = ?", uuid).First(&transfer).Error; err != nil {
+	if err := dbInstance.Where("cdm_uuid = ?", uuid).First(&transfer).Error; err != nil {
 		return nil, fmt.Errorf("transfer on uuid %s not found", uuid)
 	}
 	return &transfer, nil
@@ -312,8 +313,18 @@ func CreateTransfer(transfer *apiTypes.Transfer) error {
 func DeleteTransfer(transfer *apiTypes.Transfer, accept bool) error {
 	// if accepting, change the model owner
 	if accept {
-		if err := dbInstance.Model(&apiTypes.CausalDecisionModel{}).Where("uuid = ?", transfer.CDMUUID).Update("owner_id", transfer.ToUserID).Error; err != nil {
-			return fmt.Errorf("failed to update model owner: %s", err)
+		_, model, err := GetModelByUUID(transfer.CDMUUID)
+		if err != nil {
+			return err
+		}
+		transaction := dbInstance.Begin()
+		model.OwnerID = transfer.ToUserID
+		if err := transaction.Save(&model).Error; err != nil {
+			transaction.Rollback()
+			return fmt.Errorf("could not update model owner: %s", err.Error())
+		}
+		if err := transaction.Commit().Error; err != nil {
+			return fmt.Errorf("could not commit transaction: %s", err.Error())
 		}
 	}
 	// delete the transfer request
@@ -692,9 +703,8 @@ func CreateUser(user apiTypes.User) (*apiTypes.User, error) {
 
 func FindOrCreateUserFromGoogle(name, email, googleID string) (*apiTypes.User, error) {
 	var user apiTypes.User
-	var count int64
-	dbInstance.Model(&apiTypes.User{}).Where("google_id = ?", googleID).Count(&count)
-	if count == 0 {
+	if err := dbInstance.Where("google_id = ?", googleID).First(&user).Error; err == gorm.ErrRecordNotFound {
+		// didn't find an existing user, make a new one
 		newUser := apiTypes.User{
 			Username: name,
 			Email:    email,
@@ -979,8 +989,16 @@ func CreateExampleData() {
 		GoogleID: "childcreator-googleid",
 	}
 
+	alternate := apiTypes.User{
+		ID:       3,
+		Username: "alternate",
+		Email:    "alternate@gmail.com",
+		GoogleID: "alternate-googleid",
+	}
+
 	CreateUser(creator)
 	CreateUser(childCreator)
+	CreateUser(alternate)
 
 	meta := apiTypes.Meta{
 		ID:            1,

@@ -62,7 +62,11 @@ func main() {
 	//initialize handler
 	modelHandler, _ := handlers.NewModelHandler()
 
-	authHandler, _ := handlers.NewAuthHandler()
+	// grfreema NOTE: Replace with actual client id and secret
+	authHandler, _ := handlers.NewAuthHandler(
+		os.Getenv("GOOGLE_CLIENT_ID"),
+		os.Getenv("GOOGLE_CLIENT_SECRET"),
+	)
 
 	commitHandler, err := handlers.NewCommitHandler()
 

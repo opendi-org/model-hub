@@ -54,11 +54,12 @@ func NewCommitHandler() (*CommitHandler, error) {
 	return &CommitHandler{}, nil
 }
 
-func NewAuthHandler() (*AuthHandler, error) {
+// method for getting an instance of AuthHandler
+func NewAuthHandler(id, secret string) (*AuthHandler, error) {
 	return &AuthHandler{
 		googleConfig: &oauth2.Config{
-			ClientID:     os.Getenv("GOOGLE_CLIENT_ID"), // grfreema NOTE: Replace with actual client id and secret
-			ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+			ClientID:     id,
+			ClientSecret: secret,
 			RedirectURL:  "http://localhost:8080/auth/google/callback",
 			Scopes: []string{
 				"https://www.googleapis.com/auth/userinfo.email",
@@ -389,7 +390,6 @@ func (h *ModelHandler) GetTransfer(c *gin.Context) {
 	c.JSON(http.StatusOK, transfer)
 }
 
-// TODO needs to be protected by an auth handler
 // PostTransfer godoc
 // @Summary      Create ownership transfer request for model
 // @Description  create ownership transfer request for model
@@ -458,7 +458,6 @@ func (h *ModelHandler) PostTransfer(c *gin.Context) {
 	c.JSON(http.StatusOK, transfer)
 }
 
-// TODO needs to be protected by an auth handler
 // DeleteTransfer godoc
 // @Summary      Accept/decline ownership transfer request for model
 // @Description  accept/decline ownership transfer request for model
