@@ -15,7 +15,10 @@ import MenuItem from '@mui/material/MenuItem';
 import Menu from '@mui/material/Menu';
 import SearchIcon from '@mui/icons-material/Search';
 import Button from '@mui/material/Button';
-import API_URL from "../config";
+import IconButton from '@mui/material/IconButton';
+import Avatar from '@mui/material/Avatar';
+import Divider from '@mui/material/Divider';
+import { useUser } from '../context/UserContext';
 
 const Search = styled('div')(({ theme }) => ({
     position: 'relative',
@@ -32,7 +35,6 @@ const Search = styled('div')(({ theme }) => ({
         marginLeft: theme.spacing(3),
         width: 'auto',
     },
-    
 }));
 
 const SearchIconWrapper = styled('div')(({ theme }) => ({
@@ -49,7 +51,6 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
     color: 'inherit',
     '& .MuiInputBase-input': {
         padding: theme.spacing(1, 1, 1, 0),
-        // vertical padding + font size from searchIcon
         paddingLeft: `calc(1em + ${theme.spacing(4)})`,
         transition: theme.transitions.create('width'),
         width: '100%',
@@ -60,70 +61,21 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
 }));
 
 export default function Navbar() {
+    const { user, logout } = useUser(); // NEW - use context instead of sessionStorage
     const [anchorEl, setAnchorEl] = React.useState(null);
-    const [setMobileMoreAnchorEl] = React.useState(null);
 
-    const isMenuOpen = Boolean(anchorEl);
-
-    const handleMobileMenuClose = () => {
-        setMobileMoreAnchorEl(null);
+    const handleMenuOpen = (event) => {
+        setAnchorEl(event.currentTarget);
     };
 
     const handleMenuClose = () => {
         setAnchorEl(null);
-        handleMobileMenuClose();
     };
 
-    const menuId = 'primary-search-account-menu';
-    const renderMenu = (
-        <Menu
-            anchorEl={anchorEl}
-            anchorOrigin={{
-                vertical: 'top',
-                horizontal: 'right',
-            }}
-            id={menuId}
-            keepMounted
-            transformOrigin={{
-                vertical: 'top',
-                horizontal: 'right',
-            }}
-            open={isMenuOpen}
-            onClose={handleMenuClose}
-        >
-            <MenuItem onClick={handleMenuClose}>Profile</MenuItem>
-            <MenuItem onClick={handleMenuClose}>My account</MenuItem>
-        </Menu>
-    );
-
-    function LoginButton() {
-        if (!sessionStorage.getItem('username')) {
-            return <Button color="inherit" component={NavLink} to="/login">Login</Button>
-        }
-        else {
-            return null
-        }
-    }
-
-    
-    function SignoutButton() {
-        if (!sessionStorage.getItem('username')) {
-            return null
-        }
-        else {
-            return <Button
-                            color="inherit"
-                            sx={{ backgroundColor: '#CAE6F1', padding: '8px 16px' }}
-                            onClick={() => {
-                                sessionStorage.removeItem('username');
-                                sessionStorage.removeItem('email');
-                                window.location.reload();
-                              }}
-                        >
-                            Logout
-                        </Button>
-        }
-    }
+    const handleLogout = () => {
+        logout();
+        handleMenuClose();
+    };
 
     return (
         <Box sx={{ flexGrow: 1 }}>
@@ -141,7 +93,7 @@ export default function Navbar() {
                         noWrap
                         component={NavLink}
                         to="/"
-                        sx={{ display: { xs: 'none', sm: 'block' }, textDecoration: 'none', color: 'inherit', }}
+                        sx={{ display: { xs: 'none', sm: 'block' }, textDecoration: 'none', color: 'inherit' }}
                     >
                         OpenDI
                     </Typography>
@@ -164,17 +116,55 @@ export default function Navbar() {
                     <Box sx={{ flexGrow: 1 }} />
 
                     <Box sx={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <Button color="inherit" component={NavLink} to ="/search">Search</Button>
+                        <Button color="inherit" component={NavLink} to="/search">Search</Button>
                         <Button color="inherit" component={NavLink} to="/model">Download</Button>
                         <Button color="inherit" component={NavLink} to="/UploadPage">Upload</Button>
                         <Button color="inherit">Popular</Button>
                         <Button color="inherit">About</Button>
-                        <LoginButton/>
-                        <SignoutButton/>
+                        
+                        {/* NEW - conditional rendering based on user context */}
+                        {user ? (
+                            <>
+                                <IconButton onClick={handleMenuOpen} sx={{ p: 0, ml: 1 }}>
+                                    <Avatar 
+                                        alt={user.username} 
+                                        src={user.picture}
+                                        sx={{ width: 32, height: 32 }}
+                                    />
+                                </IconButton>
+                                <Menu
+                                    anchorEl={anchorEl}
+                                    open={Boolean(anchorEl)}
+                                    onClose={handleMenuClose}
+                                    anchorOrigin={{
+                                        vertical: 'bottom',
+                                        horizontal: 'right',
+                                    }}
+                                    transformOrigin={{
+                                        vertical: 'top',
+                                        horizontal: 'right',
+                                    }}
+                                >
+                                    <MenuItem disabled>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {user.email}
+                                        </Typography>
+                                    </MenuItem>
+                                    <MenuItem component={NavLink} to="/user" onClick={handleMenuClose}>
+                                        Profile
+                                    </MenuItem>
+                                    <Divider />
+                                    <MenuItem onClick={handleLogout}>Logout</MenuItem>
+                                </Menu>
+                            </>
+                        ) : (
+                            <Button color="inherit" component={NavLink} to="/login">
+                                Login
+                            </Button>
+                        )}
                     </Box>
                 </Toolbar>
             </AppBar>
-            {renderMenu}
         </Box>
     );
 }
