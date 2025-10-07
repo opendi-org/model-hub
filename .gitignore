@@ -37,7 +37,8 @@ go.mod
 
 # Test cache
 *.test
-/cover.out
+coverage.out
+coverage.html
 
 # Ignoring config.js
 api/docs/docs.go

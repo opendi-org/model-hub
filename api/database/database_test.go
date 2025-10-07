@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestMain is the entry point for the test suite. It sets up the environment and runs all tests.
@@ -425,9 +426,9 @@ func TestCreateUser(t *testing.T) {
 		t.Fatalf("No error was thrown when getting user1 by email, but the user retrieved does not match the one created.")
 	}
 
-	//Ensure UUIDs are NOT equal
-	if user1.UUID == user2.UUID {
-		t.Fatalf("User 1's UUID is the same as User 2's - this is extremely unlikely and almost certainly due to a bug.")
+	//Ensure IDs are NOT equal
+	if user1.ID == user2.ID {
+		t.Fatalf("User 1's ID is the same as User 2's - this is extremely unlikely and almost certainly due to a bug.")
 	}
 
 	//Ensure we haven't regressed with User 1
@@ -520,6 +521,47 @@ func TestCreateUserNonUniqueID(t *testing.T) {
 		t.Errorf("Error should have been created when creating user")
 	}
 
+}
+
+func TestFindOrCreateUserFromGoogleExisting(t *testing.T) {
+	ResetTables()
+	CreateExampleData()
+
+	user, err := FindOrCreateUserFromGoogle(
+		"creator",
+		"creator@gmail.com",
+		"creator-googleid",
+	)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+	assert.Equal(t, 1, user.ID)
+	assert.Equal(t, "creator", user.Username)
+	assert.Equal(t, "creator@gmail.com", user.Email)
+	assert.Equal(t, "creator-googleid", user.GoogleID)
+}
+
+func TestFindOrCreateUserFromGoogleNew(t *testing.T) {
+	ResetTables()
+	CreateExampleData()
+
+	user, err := FindOrCreateUserFromGoogle(
+		"newuser",
+		"newuser@gmail.com",
+		"newuser-googleid",
+	)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+	assert.Equal(t, "newuser", user.Username)
+	assert.Equal(t, "newuser@gmail.com", user.Email)
+	assert.Equal(t, "newuser-googleid", user.GoogleID)
+
+	// make sure it was created in the database
+	var dbUser apiTypes.User
+	err = dbInstance.Where("google_id = ?", "newuser-googleid").First(&dbUser).Error
+	assert.NoError(t, err)
+	assert.Equal(t, user.ID, dbUser.ID)
 }
 
 // doesn't test that every single ID with corresopnding UUID has been matched yet.
@@ -688,4 +730,127 @@ func TestSearchModelsByUser(t *testing.T) {
 		t.Errorf("Expected 1 model, got %d", len(models))
 	}
 
+}
+
+func TestUpdateModelPrivacyByUUID(t *testing.T) {
+	ResetTables()
+	CreateExampleData()
+
+	shares := []apiTypes.Share{
+		{
+			UserID: 2,
+			Level:  "write",
+		},
+	}
+
+	err := UpdateModelPrivacyByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", true, shares)
+	assert.NoError(t, err)
+
+	// make sure the model was updated
+	_, model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.NoError(t, err)
+	assert.Equal(t, true, model.IsPublic)
+	assert.Equal(t, 1, len(model.Shares))
+	assert.Equal(t, 2, model.Shares[0].UserID)
+	assert.Equal(t, "write", model.Shares[0].Level)
+}
+
+func TestUpdateModelPrivacyByUUIDBadUUID(t *testing.T) {
+	ResetTables()
+	CreateExampleData()
+
+	shares := []apiTypes.Share{}
+
+	err := UpdateModelPrivacyByUUID("baduuid", false, shares)
+	assert.Error(t, err)
+}
+
+func TestCreateAndGetTransfer(t *testing.T) {
+	ResetTables()
+	CreateExampleData()
+
+	transfer := &apiTypes.Transfer{
+		CDMUUID:    "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+		FromUserID: 1,
+		ToUserID:   2,
+		CreatedAt:  time.Now(),
+	}
+
+	// create transfer
+	err := CreateTransfer(transfer)
+	assert.NoError(t, err)
+
+	// make sure the transfer was created
+	retrievedTransfer, err := GetTransferByModelUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.NoError(t, err)
+	assert.Equal(t, transfer.CDMUUID, retrievedTransfer.CDMUUID)
+	assert.Equal(t, transfer.FromUserID, retrievedTransfer.FromUserID)
+	assert.Equal(t, transfer.ToUserID, retrievedTransfer.ToUserID)
+}
+
+func TestGetTransferByModelUUIDNotFound(t *testing.T) {
+	ResetTables()
+	CreateExampleData()
+
+	transfer, err := GetTransferByModelUUID("baduuid")
+	assert.Error(t, err)
+	assert.Nil(t, transfer)
+}
+
+func TestDeleteTransferAccept(t *testing.T) {
+	ResetTables()
+	CreateExampleData()
+
+	// create a transfer
+	transfer := &apiTypes.Transfer{
+		CDMUUID:    "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+		FromUserID: 1,
+		ToUserID:   2,
+		CreatedAt:  time.Now(),
+	}
+	err := CreateTransfer(transfer)
+	assert.NoError(t, err)
+
+	// accept the transfer
+	err = DeleteTransfer(transfer, true)
+	assert.NoError(t, err)
+
+	// ownership should have changed
+	_, model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, model.OwnerID)
+
+	// transfer should have been deleted
+	deletedTransfer, err := GetTransferByModelUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.Error(t, err)
+	assert.Nil(t, deletedTransfer)
+}
+
+func TestDeleteTransferDecline(t *testing.T) {
+	ResetTables()
+	CreateExampleData()
+
+	// create a transfer
+	transfer := &apiTypes.Transfer{
+		CDMUUID:    "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+		FromUserID: 1,
+		ToUserID:   2,
+		CreatedAt:  time.Now(),
+	}
+	err := CreateTransfer(transfer)
+	assert.NoError(t, err)
+
+	// decline the transfer
+	err = DeleteTransfer(transfer, false)
+	assert.NoError(t, err)
+
+	// ownership should not have changed
+	_, model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, model.OwnerID)
+
+	// transfer should have been deleted
+	deletedTransfer, err := GetTransferByModelUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.Error(t, err)
+	assert.Nil(t, deletedTransfer)
 }

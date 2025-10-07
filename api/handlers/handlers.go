@@ -6,11 +6,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
 	jsonDiffHelpers "opendi/model-hub/api/jsondiffhelpers"
 	"strconv" //for applying patches generated with jsondiff
+	"strings"
 
 	"time"
 
@@ -52,11 +54,12 @@ func NewCommitHandler() (*CommitHandler, error) {
 	return &CommitHandler{}, nil
 }
 
-func NewAuthHandler() (*AuthHandler, error) {
+// method for getting an instance of AuthHandler
+func NewAuthHandler(id, secret string) (*AuthHandler, error) {
 	return &AuthHandler{
 		googleConfig: &oauth2.Config{
-			ClientID:     os.Getenv("GOOGLE_CLIENT_ID"), // grfreema NOTE: Replace with actual client id and secret
-			ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+			ClientID:     id,
+			ClientSecret: secret,
 			RedirectURL:  "http://localhost:8080/auth/google/callback",
 			Scopes: []string{
 				"https://www.googleapis.com/auth/userinfo.email",
@@ -65,6 +68,88 @@ func NewAuthHandler() (*AuthHandler, error) {
 			Endpoint: google.Endpoint,
 		},
 	}, nil
+}
+
+func getUserIDFromToken(c *gin.Context) (int, error) {
+	// get authorization header and extract token
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		return 0, fmt.Errorf("authorization header required")
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		return 0, fmt.Errorf("invalid authorization format")
+	}
+
+	// get the secret from environment
+	secret, ok := os.LookupEnv("JWT_SECRET")
+	if !ok || secret == "" {
+		return 0, fmt.Errorf("environment variable JWT_SECRET is not set or empty")
+	}
+
+	// parse token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(secret), nil
+	})
+	if err != nil || !token.Valid {
+		return 0, fmt.Errorf("invalid or expired token")
+	}
+
+	// extract claims from token
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, fmt.Errorf("invalid or expired token")
+	}
+
+	// get and return the userID from the token
+	userID, ok := claims["user_id"].(float64)
+	if !ok {
+		return 0, fmt.Errorf("user_id not found in token")
+	}
+	return int(userID), nil
+}
+
+// @Router /auth/testlogin [get]
+func (h *AuthHandler) TestLogin(c *gin.Context) {
+	id := c.Query("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id parameter is required"})
+		return
+	}
+
+	userID, err := strconv.Atoi(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		return
+	}
+
+	// Get the user from database
+	_, user, err := database.GetUserByID(userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// create a token for this user
+	secret, ok := os.LookupEnv("JWT_SECRET")
+	if !ok || secret == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "environment variable JWT_SECRET is not set or empty"})
+		return
+	}
+	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": user.ID,
+		"email":   user.Email,
+		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+	}).SignedString([]byte(secret))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"user":  user,
+		"token": jwtToken,
+	})
 }
 
 // GoogleLogin godoc
@@ -101,22 +186,22 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
 
-	// Make sure state token matches what the login set
+	// make sure state token matches what the login set
 	storedState, err := c.Cookie("oauth_state")
 	c.SetCookie("oauth_state", "", -1, "/", "", false, true)
 	if err != nil || state != storedState {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid state token"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state token"})
 		return
 	}
 
-	// Exchange the authorization code for an access token
+	// exchange the authorization code for an access token
 	token, err := h.googleConfig.Exchange(context.Background(), code)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Make request to google to get the user info
+	// make request to google to get the user info
 	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + token.AccessToken)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -124,41 +209,307 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	// Decode the user info
+	// decode the user info
 	var userInfo map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Find or create user based on the user info
+	// find or create user based on the user info
 	user, err := database.FindOrCreateUserFromGoogle(userInfo["name"].(string), userInfo["email"].(string), userInfo["id"].(string))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Create a token for this user
+	// create a token for this user
 	secret, ok := os.LookupEnv("JWT_SECRET")
 	if !ok || secret == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Environment variable JWT_SECRET is not set or empty"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "environment variable JWT_SECRET is not set or empty"})
 		return
 	}
-
 	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.UUID,
+		"user_id": user.ID,
 		"email":   user.Email,
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
-	}).SignedString(secret)
+	}).SignedString([]byte(secret))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"user":  userInfo,
+		"user":  user,
 		"token": jwtToken,
 	})
+}
+
+// GetModelPrivacy godoc
+// @Summary      Get privacy settings for model
+// @Description  get privacy settings for model
+// @Tags         models
+// @Produce      json
+// @Success      200
+// @Failure      401
+// @Failure      403
+// @Failure      500
+// @Router       /v0/models/privacy/{uuid} [get]
+func (h *ModelHandler) GetModelPrivacy(c *gin.Context) {
+	uuid := c.Param("uuid")
+
+	// make sure the user has authorization
+	actingUserID, err := getUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the model from database
+	_, model, err := database.GetModelByUUID(uuid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// make sure the user can do this action
+	if model.OwnerID != actingUserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
+
+	resp := gin.H{
+		"isPublic": model.IsPublic,
+		"shares":   model.Shares,
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// PutModelPrivacy godoc
+// @Summary      Get privacy settings for model
+// @Description  get privacy settings for model
+// @Tags         models
+// @Produce      json
+// @Success      200
+// @Failure      400
+// @Failure      401
+// @Failure      403
+// @Failure      404
+// @Failure      500
+// @Router       /v0/models/privacy/{uuid} [put]
+func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
+	uuid := c.Param("uuid")
+
+	// make sure the user has authorization
+	actingUserID, err := getUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// make sure the model exists
+	_, model, err := database.GetModelByUUID(uuid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// make sure the user can do this action
+	if model.OwnerID != actingUserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
+
+	// bind the json to a struct for shares
+	var req struct {
+		IsPublic bool             `json:"isPublic"`
+		Shares   []apiTypes.Share `json:"shares"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// make sure the shares object is valid
+	for _, share := range req.Shares {
+		_, _, err := database.GetUserByID(share.UserID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		if (share.Level != "read" && share.Level != "write") || (req.IsPublic && share.Level == "read") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid share level for userID: %d", share.UserID)})
+			return
+		}
+	}
+
+	// now update the model's privacy settings
+	err = database.UpdateModelPrivacyByUUID(uuid, req.IsPublic, req.Shares)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{})
+}
+
+// GetTransfer godoc
+// @Summary      Get ownership transfer request for model
+// @Description  get ownership transfer request for model
+// @Tags         models
+// @Produce      json
+// @Success      200
+// @Failure      401
+// @Failure      403
+// @Failure      404
+// @Router       /v0/models/transfer/{uuid} [get]
+func (h *ModelHandler) GetTransfer(c *gin.Context) {
+	uuid := c.Param("uuid")
+
+	// make sure the user has authorization
+	actingUserID, err := getUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// get the transfer
+	transfer, err := database.GetTransferByModelUUID(uuid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// make sure the user can do this action
+	if transfer.FromUserID != actingUserID && transfer.ToUserID != actingUserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
+
+	c.JSON(http.StatusOK, transfer)
+}
+
+// PostTransfer godoc
+// @Summary      Create ownership transfer request for model
+// @Description  create ownership transfer request for model
+// @Tags         models
+// @Produce      json
+// @Success      200
+// @Failure      400
+// @Failure      403
+// @Failure      404
+// @Failure      500
+// @Router       /v0/models/transfer/{uuid} [post]
+func (h *ModelHandler) PostTransfer(c *gin.Context) {
+	uuid := c.Param("uuid")
+	owner := c.Query("owner")
+
+	// make sure the user has authorization
+	actingUserID, err := getUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// make sure the owner ID is valid
+	if owner == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "owner parameter is required"})
+		return
+	}
+	toUserID, err := strconv.Atoi(owner)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid owner ID"})
+		return
+	}
+
+	// make sure the model exists
+	status, model, err := database.GetModelByUUID(uuid)
+	if err != nil {
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	// make sure the requesting user owns the model
+	if model.OwnerID != actingUserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
+
+	// make sure an existing transfer does not exist
+	existingTransfer, err := database.GetTransferByModelUUID(uuid)
+	if err == nil && existingTransfer != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "transfer request already exists for this model"})
+		return
+	}
+
+	// create the transfer
+	transfer := &apiTypes.Transfer{
+		CDMUUID:    uuid,
+		ToUserID:   toUserID,
+		FromUserID: actingUserID,
+		CreatedAt:  time.Now(),
+	}
+	if err := database.CreateTransfer(transfer); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, transfer)
+}
+
+// DeleteTransfer godoc
+// @Summary      Accept/decline ownership transfer request for model
+// @Description  accept/decline ownership transfer request for model
+// @Tags         models
+// @Success      200
+// @Failure      400
+// @Failure      403
+// @Failure      404
+// @Failure      500
+// @Router       /v0/models/transfer/{uuid} [delete]
+func (h *ModelHandler) DeleteTransfer(c *gin.Context) {
+	uuid := c.Param("uuid")
+	accept := c.Query("accept")
+
+	// make sure the user has authorization
+	actingUserID, err := getUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// make sure the accept parameter is valid
+	if accept == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "accept parameter is required"})
+		return
+	}
+	acceptBool, err := strconv.ParseBool(accept)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "accept parameter must be true or false"})
+		return
+	}
+
+	// make sure the transfer exists
+	transfer, err := database.GetTransferByModelUUID(uuid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// make sure the acting user can actually accept this transfer
+	if transfer.ToUserID != actingUserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
+
+	// delete the transfer
+	if err := database.DeleteTransfer(transfer, acceptBool); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusOK)
 }
 
 // GetModels godoc
@@ -227,7 +578,7 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	status, model, err := database.GetModelByUUID(uuid)
 	if err != nil {
 		// If error, return an appropriate response based on the error
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 

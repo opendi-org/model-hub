@@ -62,7 +62,11 @@ func main() {
 	//initialize handler
 	modelHandler, _ := handlers.NewModelHandler()
 
-	authHandler, _ := handlers.NewAuthHandler()
+	// grfreema NOTE: Replace with actual client id and secret
+	authHandler, _ := handlers.NewAuthHandler(
+		os.Getenv("GOOGLE_CLIENT_ID"),
+		os.Getenv("GOOGLE_CLIENT_SECRET"),
+	)
 
 	commitHandler, err := handlers.NewCommitHandler()
 
@@ -104,6 +108,11 @@ func main() {
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
 		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
+		models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
+		models.PUT("/privacy/:uuid", modelHandler.PutModelPrivacy)
+		models.GET("/transfer/:uuid", modelHandler.GetTransfer)
+		models.POST("/transfer/:uuid", modelHandler.PostTransfer)
+		models.DELETE("/transfer/:uuid", modelHandler.DeleteTransfer)
 	}
 
 	//router group for all endpoints related to models
@@ -119,6 +128,9 @@ func main() {
 	{
 		auth.GET("/google/login", authHandler.GoogleLogin)
 		auth.GET("/google/callback", authHandler.GoogleCallback)
+		if os.Getenv("DEV_MODE") == "true" {
+			auth.GET("/testlogin", authHandler.TestLogin)
+		}
 	}
 
 	// Get the address and port from environment variables

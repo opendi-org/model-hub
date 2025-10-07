@@ -32,6 +32,8 @@ func CreateTablesIfNotCreated() error {
 		&apiTypes.DiaElement{},
 		&apiTypes.CausalDependency{},
 		&apiTypes.Commit{},
+		&apiTypes.User{},
+		&apiTypes.Transfer{},
 	)
 	return err
 
@@ -131,6 +133,449 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 	return http.StatusOK, models, nil
 }
 
+// GetModelByUUID encapsulates the GORM functionality for getting a model by its UUID
+func GetModelByUUID(uuid string) (int, *apiTypes.CausalDecisionModel, error) {
+	var meta apiTypes.Meta
+
+	// Find the meta record with the given UUID.
+	if err := dbInstance.Where("uuid = ?", uuid).First(&meta).Error; err != nil {
+		return http.StatusNotFound, nil, fmt.Errorf("meta with uuid %s not found", uuid)
+	}
+
+	var model apiTypes.CausalDecisionModel
+
+	// Find the model that has the found meta record, preloading associated fields.
+	if err := dbInstance.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Preload("Diagrams.Meta.Creator").
+		Preload("Diagrams.Meta.Updaters").
+		Preload("Diagrams.Elements.Meta.Creator").
+		Preload("Diagrams.Elements.Meta.Updaters").
+		Preload("Diagrams.Dependencies.Meta.Creator").
+		Preload("Diagrams.Dependencies.Meta.Updaters").
+		Where("meta_id = ?", meta.ID).
+		First(&model).Error; err != nil {
+		return http.StatusNotFound, nil, fmt.Errorf("this meta is not associated with a model")
+	}
+
+	return http.StatusOK, &model, nil
+}
+
+func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error) {
+	var models []apiTypes.CausalDecisionModel
+
+	// Use GORM's query builder to work with Full-Text Search
+	if err := dbInstance.
+		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
+		Where("MATCH(meta.name, meta.summary) AGAINST(? IN NATURAL LANGUAGE MODE)", name).
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Find(&models).Error; err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	return http.StatusOK, models, nil
+}
+
+func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, error) {
+	var models []apiTypes.CausalDecisionModel
+
+	if err := dbInstance.
+		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
+		Joins("JOIN users ON meta.creator_id = users.id").
+		Where("users.username LIKE ?", "%"+username+"%").
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Find(&models).Error; err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	return http.StatusOK, models, nil
+}
+
+// / GetModelLineage returns the ancestry of a model given its UUID.
+// It retrieves the model and its ancestors in reverse order, starting from the most recent ancestor.
+func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
+	status, modelPtr, err := GetModelByUUID(uuid)
+
+	if err != nil {
+		return status, nil, err
+	}
+
+	model := *modelPtr
+
+	var lineage []apiTypes.CausalDecisionModel
+
+	for model.ParentUUID != "" {
+		_, parentPtr, err := GetModelByUUID(model.ParentUUID)
+
+		if err != nil {
+			break
+		}
+
+		parent := *parentPtr
+		lineage = append(lineage, parent)
+		model = parent
+	}
+
+	// Reverse the lineage so that the earliest ancestor is first.
+	for i, j := 0, len(lineage)-1; i < j; i, j = i+1, j-1 {
+		lineage[i], lineage[j] = lineage[j], lineage[i]
+	}
+
+	return http.StatusOK, lineage, nil
+}
+
+// get the children of this model.
+func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
+	var children []apiTypes.CausalDecisionModel
+	if err := dbInstance.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Preload("Diagrams.Meta.Creator").
+		Preload("Diagrams.Meta.Updaters").
+		Preload("Diagrams.Elements.Meta.Creator").
+		Preload("Diagrams.Elements.Meta.Updaters").
+		Preload("Diagrams.Dependencies.Meta.Creator").
+		Preload("Diagrams.Dependencies.Meta.Updaters").
+		Where("parent_uuid = ?", uuid).
+		Find(&children).Error; err != nil {
+		return http.StatusNotFound, nil, err
+	}
+
+	return http.StatusOK, children, nil
+}
+
+func UpdateModelPrivacyByUUID(uuid string, isPublic bool, shares []apiTypes.Share) error {
+	transaction := dbInstance.Begin()
+
+	_, model, err := GetModelByUUID(uuid)
+	if err != nil {
+		return err
+	}
+
+	model.IsPublic = isPublic
+	model.Shares = shares
+	if err := transaction.Save(&model).Error; err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("could not update model privacy: %s", err.Error())
+	}
+	if err := transaction.Commit().Error; err != nil {
+		return fmt.Errorf("could not commit transaction: %s", err.Error())
+	}
+	return nil
+}
+
+func GetTransferByModelUUID(uuid string) (*apiTypes.Transfer, error) {
+	var transfer apiTypes.Transfer
+	if err := dbInstance.Where("cdm_uuid = ?", uuid).First(&transfer).Error; err != nil {
+		return nil, fmt.Errorf("transfer on uuid %s not found", uuid)
+	}
+	return &transfer, nil
+}
+
+func CreateTransfer(transfer *apiTypes.Transfer) error {
+	if err := dbInstance.Create(transfer).Error; err != nil {
+		return fmt.Errorf("failed to create transfer: %s", err)
+	}
+	return nil
+}
+
+func DeleteTransfer(transfer *apiTypes.Transfer, accept bool) error {
+	// if accepting, change the model owner
+	if accept {
+		_, model, err := GetModelByUUID(transfer.CDMUUID)
+		if err != nil {
+			return err
+		}
+		transaction := dbInstance.Begin()
+		model.OwnerID = transfer.ToUserID
+		if err := transaction.Save(&model).Error; err != nil {
+			transaction.Rollback()
+			return fmt.Errorf("could not update model owner: %s", err.Error())
+		}
+		if err := transaction.Commit().Error; err != nil {
+			return fmt.Errorf("could not commit transaction: %s", err.Error())
+		}
+	}
+	// delete the transfer request
+	if err := dbInstance.Delete(&apiTypes.Transfer{}, transfer.ID).Error; err != nil {
+		return fmt.Errorf("failed to delete transfer: %s", err)
+	}
+	return nil
+}
+
+// CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
+func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
+	var count int64
+	//keep generating UUIDs until a unique one is found
+	for {
+		// Generate a UUID for the model.
+		uuid, err := generateUUID()
+		if err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("could not generate UUID: %s", err.Error())
+		}
+		uploadedModel.Meta.UUID = uuid
+
+		// Ensure no other model with the same UUID exists.
+		dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
+		if count == 0 {
+			break
+		}
+	}
+
+	email := uploadedModel.Meta.Creator.Email
+
+	//string is not copied
+	status, user, _ := GetUserByEmail(email)
+	if status != http.StatusOK {
+		return http.StatusConflict, fmt.Errorf("could not find creator: %s", email)
+	}
+	uploadedModel.Meta.Creator = *user
+	uploadedModel.Meta.CreatorID = user.ID
+
+	// Begin transaction.
+	transaction := dbInstance.Begin()
+	if transaction.Error != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	}
+
+	// Match all UUIDs in the model to existing database IDs where possible
+	// This will ensure that we are not duplicating pre-existing components
+	// but rather reusing them.
+	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, err
+	}
+
+	// Create meta in transaction; error out on failure.
+	if err := transaction.Create(&uploadedModel.Meta).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not create model meta: %s", err.Error())
+	}
+
+	// Create the model in transaction; error out on failure.
+	if err := transaction.Create(&uploadedModel).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not create model: %s", err.Error())
+	}
+
+	// Commit the transaction; error out if commit fails.
+	if err := transaction.Commit().Error; err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
+	}
+
+	return http.StatusCreated, nil
+}
+
+// UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction. This is a helper method for a PUT to a model.
+//
+//	Currently, for diagrams associated with the model, it creates diagrams that are not already in the database.
+//
+// however, for exisitng diagrams, it doesn't change them.
+func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
+	// Begin transaction.
+	transaction := dbInstance.Begin()
+	if transaction.Error != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	}
+
+	// Match all UUIDs in the uploaded model to existing database IDs
+	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, err
+	}
+
+	// First, get the existing model with all associations to properly handle removals
+	var existingModel apiTypes.CausalDecisionModel
+	if err := transaction.
+		Preload("Meta").
+		Preload("Meta.Updaters").
+		Preload("Diagrams").
+		Where("meta_id = ?", uploadedModel.Meta.ID).
+		First(&existingModel).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusNotFound, fmt.Errorf("model with UUID %s not found", uploadedModel.Meta.UUID)
+	}
+
+	// Clear model diagrams association
+	if err := transaction.Model(&existingModel).Association("Diagrams").Clear(); err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not clear model diagrams: %s", err.Error())
+	}
+
+	// Clear meta updaters association
+	if err := transaction.Model(&existingModel.Meta).Association("Updaters").Clear(); err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not clear meta updaters: %s", err.Error())
+	}
+
+	// Before updating the model, we need to make sure the model isn't going to mess with any of
+	// the existing associations inside it's components (for example putting to models shouldn'
+	// modify parts of a diagram or parts of a user, but rather just modify what diagrams or
+	// users are associated with the model itself)
+	// UUIDs have already been matched to IDs, so we can just use the IDs to find the existing associations
+
+	// Iterate through all the diagrams with nonzero IDs and reset them to the way they exist in the database
+	// to ensure no discrepancies between them as they exist in the database and them as they exist in the model
+	for i := range uploadedModel.Diagrams {
+		if uploadedModel.Diagrams[i].ID != 0 {
+			var existingDiagram apiTypes.Diagram
+			// Do nothing on error, and treat it as a new diagram (don't set it to the existing diagram)
+			if err := transaction.Where("id = ?", uploadedModel.Diagrams[i].ID).First(&existingDiagram).Error; err == nil {
+				uploadedModel.Diagrams[i] = existingDiagram
+			}
+		}
+	}
+
+	// Iterate through all the updaters with nonzero IDs and reset them to the way they exist in the database
+	// to ensure no discrepancies between them as they exist in the database and them as they exist in the model
+	for i := range uploadedModel.Meta.Updaters {
+		if uploadedModel.Meta.Updaters[i].ID != 0 {
+			var existingUpdater apiTypes.User
+			// Do nothing on error, and treat it as a new updater (don't set it to the existing updater)
+			if err := transaction.Where("id = ?", uploadedModel.Meta.Updaters[i].ID).First(&existingUpdater).Error; err == nil {
+				uploadedModel.Meta.Updaters[i] = existingUpdater
+			}
+		}
+	}
+
+	// Update the model meta
+	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
+	}
+
+	// Update the model
+	if err := transaction.Save(&uploadedModel).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
+	}
+
+	// Commit the transaction
+	if err := transaction.Commit().Error; err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
+	}
+
+	return http.StatusCreated, nil
+}
+
+// Database method for PUT to a model.
+func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, oldModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalDecisionModel, int, error) {
+
+	// Update the model before creating the commit so that on a bad
+	// put, we don't have to roll back the commit.
+	if status, err := UpdateModel(uploadedModel); err != nil {
+		//TODO fix this so that if we get an error here, we roll back the update
+		// Return error based on the UpdateModel function response
+		return nil, status, err
+	}
+
+	status, changedModel, err := GetModelByUUID(uploadedModel.Meta.UUID)
+	if err != nil {
+		return nil, status, err
+	}
+
+	//TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
+
+	//there's this edge case with jsondiff for raw JSOn files. Hopefully, we don't have to worry aobut this.
+	//Let's say that the raw JSON of the original JSON file doesn't contain default values.
+	//If we take the raw JSOn, translate it into a Go struct (which definition has default values), change some values (and convert the new struct back to JSON),
+	// and then perform a JSON diff between the original JSON and the new JSON,
+	//then the diff will think that the default values are part of the JSON files.
+
+	//this means that if we actually try to apply the diff on the raw JSON, we will get an error because the default values are not in the raw JSON file.
+
+	//so this shows how changing Go structs and then applying the JSON on their raw JSON forms can be a problem. (The standard way is to apply changes to the raw JSON forms instead)
+	//However, this is not a problem for our purposes, because we only will aplpy the diff when we convert Go structs to raw JSON - not getting raw JSON from somewhere else.
+
+	//get the changed model bytes.
+	changedModelBytes, err := json.Marshal(changedModel)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	//fmt.Printf("Changed model: %s\n", string(changedModelBytes))
+	//get the bytes of the old model
+	oldmodelBytes, err := json.Marshal(oldModel)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	//fmt.Println(string(oldmodelBytes))
+
+	//NOTE the RFC 6902 spec for JSON diffs  will not work with any JSON keys that are of value "-"
+	//get the diff between the old and new JSON.
+	diff, err := jsondiff.CompareJSON(oldmodelBytes, changedModelBytes, jsondiff.Invertible())
+
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	//time to create the commit object for GORM to save to our database.
+	var commit apiTypes.Commit
+
+	commit.CDMUUID = uploadedModel.Meta.UUID
+
+	if diff.String() == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("no changes made to model")
+	}
+	// Marshal the diff to JSON, so we can convert it to a string to store in the database.
+	jsonData, err := json.Marshal(diff)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	commit.Diff = string(jsonData)
+	commit.UserID = uploadedModel.Meta.Creator.ID
+
+	status, parent, err := GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
+
+	//if there's no latest commit for this model, this must be the first.
+	if status == http.StatusNotFound {
+		commit.ParentCommitID = ""
+		commit.Version = 1
+	} else if status == http.StatusInternalServerError {
+		return nil, status, err
+
+	} else {
+		commit.ParentCommitID = fmt.Sprintf("%d", parent.ID)
+		commit.Version = parent.Version + 1
+	}
+	//finally, create the commit that we made.
+	if status, err := CreateCommit(&commit); err != nil {
+		return nil, status, err
+	}
+	return changedModel, http.StatusOK, nil
+}
+
 // function for getting all commits in Go struct  - remember, in Go, public methods have to be capitalized
 func GetAllCommits() (int, []apiTypes.Commit, error) {
 	var commits []apiTypes.Commit
@@ -143,9 +588,97 @@ func GetAllCommits() (int, []apiTypes.Commit, error) {
 	return http.StatusOK, commits, nil
 }
 
+// gets commit by primary key id
+func GetCommitByID(id int) (int, *apiTypes.Commit, error) {
+	var commit apiTypes.Commit
+	err := dbInstance.Where("id = ?", id).First(&commit).Error
+	if err != nil {
+		return http.StatusNotFound, nil, err
+	}
+	return http.StatusOK, &commit, nil
+}
+
+// GetCommitsByModelUUID returns all commits for a model UUID, ordered by version
+func GetCommitsByModelUUID(uuid string) (int, []apiTypes.Commit, error) {
+	var commits []apiTypes.Commit
+	err := dbInstance.Where("cdm_uuid = ?", uuid).
+		Order("version DESC").
+		Find(&commits).Error
+
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	if len(commits) == 0 {
+		return http.StatusNotFound, nil, fmt.Errorf("no commits found for model with UUID %s", uuid)
+	}
+
+	return http.StatusOK, commits, nil
+}
+
+// get the latest commit for a model with the given UUID
+func GetLatestCommitForModelUUID(uuid string) (int, *apiTypes.Commit, error) {
+	var commit apiTypes.Commit
+	err := dbInstance.Where("cdm_uuid = ?", uuid).
+		Order("created_at DESC").
+		First(&commit).Error
+
+	if err == gorm.ErrRecordNotFound {
+		return http.StatusNotFound, nil, err
+	}
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusOK, &commit, nil
+}
+
+// CreateCommit encapsulates the GORM functionality for creating a commit in a transaction
+func CreateCommit(uploadedCommit *apiTypes.Commit) (int, error) {
+
+	// Begin transaction.
+	transaction := dbInstance.Begin()
+	if transaction.Error != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	}
+
+	// Create the commit in transaction; error out on failure.
+	if err := transaction.Create(&uploadedCommit).Error; err != nil {
+		transaction.Rollback()
+		return http.StatusInternalServerError, fmt.Errorf("could not create commit: %s", err.Error())
+	}
+
+	// Commit the transaction; error out if commit fails.
+	if err := transaction.Commit().Error; err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
+	}
+
+	return http.StatusCreated, nil
+}
+
+// GetUserByID encapsulates the GORM functionality for getting a user by their ID
+func GetUserByID(id int) (int, *apiTypes.User, error) {
+	var user apiTypes.User
+
+	// Find the user record with the given ID.
+	if err := dbInstance.Where("id = ?", id).First(&user).Error; err != nil {
+		return http.StatusNotFound, nil, fmt.Errorf("user with id %d not found", id)
+	}
+
+	return http.StatusOK, &user, nil
+}
+
+func GetUserByEmail(email string) (int, *apiTypes.User, error) {
+	var user apiTypes.User
+
+	// Find the user record with the given ID.
+	if err := dbInstance.Where("email = ?", email).First(&user).Error; err != nil {
+		return http.StatusNotFound, nil, fmt.Errorf("user with email %s not found", email)
+	}
+
+	return http.StatusOK, &user, nil
+}
+
 func CreateUser(user apiTypes.User) (*apiTypes.User, error) {
-	newUUID, _ := generateUUID()
-	user.UUID = newUUID
 	// Ensure no other user with this email exists
 	var count int64
 	dbInstance.Model(&apiTypes.User{}).Where("email = ?", user.Email).Count(&count)
@@ -170,9 +703,8 @@ func CreateUser(user apiTypes.User) (*apiTypes.User, error) {
 
 func FindOrCreateUserFromGoogle(name, email, googleID string) (*apiTypes.User, error) {
 	var user apiTypes.User
-	var count int64
-	dbInstance.Model(&apiTypes.User{}).Where("google_id = ?", googleID).Count(&count)
-	if count == 0 {
+	if err := dbInstance.Where("google_id = ?", googleID).First(&user).Error; err == gorm.ErrRecordNotFound {
+		// didn't find an existing user, make a new one
 		newUser := apiTypes.User{
 			Username: name,
 			Email:    email,
@@ -181,97 +713,6 @@ func FindOrCreateUserFromGoogle(name, email, googleID string) (*apiTypes.User, e
 		return CreateUser(newUser)
 	}
 	return &user, nil
-}
-
-// Example method that creates sample models in the database
-// creates 2 models, parent and child.
-// also creates creators for those models
-func CreateExampleData() {
-	creator := apiTypes.User{
-		ID:       1,
-		UUID:     "creator-uuid",
-		Username: "creator",
-		Email:    "creator@gmail.com",
-		GoogleID: "creator-googleid",
-	}
-
-	childCreator := apiTypes.User{
-		ID:       2,
-		UUID:     "childcreator-uuid",
-		Username: "childcreator",
-		Email:    "childcreator@gmail.com",
-		GoogleID: "childcreator-googleid",
-	}
-
-	CreateUser(creator)
-	CreateUser(childCreator)
-
-	meta := apiTypes.Meta{
-		ID:            1,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
-		Name:          "Test Model",
-		Summary:       "This is a test model",
-		Documentation: nil,
-		Version:       "1.0",
-		Draft:         false,
-		CreatorID:     creator.ID,
-		Creator:       creator,
-		CreatedDate:   "2021-07-01",
-		Updaters:      []apiTypes.User{},
-		UpdatedDate:   "2021-07-01",
-	}
-
-	model := apiTypes.CausalDecisionModel{
-		ID:        1,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Schema:    "Test Schema",
-		MetaID:    1,
-		Meta:      meta,
-		Parent:    nil,
-		Diagrams:  nil,
-	}
-
-	childMeta := apiTypes.Meta{
-		ID:            2,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e",
-		Name:          "Test Child Model",
-		Summary:       "This is a test child model, which I want to search for based only on the summary. The summary is very important.",
-		Documentation: nil,
-		Version:       "1.0",
-		Draft:         false,
-		CreatorID:     childCreator.ID,
-		Creator:       childCreator,
-		CreatedDate:   "2021-07-01",
-		Updaters:      []apiTypes.User{},
-		UpdatedDate:   "2021-07-01",
-	}
-
-	childModel := apiTypes.CausalDecisionModel{
-		ID:         2,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-		Schema:     "Test Child Schema",
-		MetaID:     2,
-		Meta:       childMeta,
-		ParentUUID: model.Meta.UUID,
-		ParentID:   &model.ID,
-		Parent:     &model,
-		Diagrams:   nil,
-	}
-
-	if err := dbInstance.Create(&model).Error; err != nil {
-		fmt.Println("Error creating model: ", err)
-	}
-
-	if err := dbInstance.Create(&childModel).Error; err != nil {
-		fmt.Println("Error creating child model: ", err)
-	}
-
 }
 
 //an example  of what this can do is it can allow upload model to upload a model with a diagram that already existed in the database
@@ -530,482 +971,101 @@ func generateUUID() (string, error) {
 	return uuidStr, nil
 }
 
-// CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
-func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
-	var count int64
-	//keep generating UUIDs until a unique one is found
-	for {
-		// Generate a UUID for the model.
-		uuid, err := generateUUID()
-		if err != nil {
-			return http.StatusInternalServerError, fmt.Errorf("could not generate UUID: %s", err.Error())
-		}
-		uploadedModel.Meta.UUID = uuid
-
-		// Ensure no other model with the same UUID exists.
-		dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
-		if count == 0 {
-			break
-		}
+// Example method that creates sample models in the database
+// creates 2 models, parent and child.
+// also creates creators for those models
+func CreateExampleData() {
+	creator := apiTypes.User{
+		ID:       1,
+		Username: "creator",
+		Email:    "creator@gmail.com",
+		GoogleID: "creator-googleid",
 	}
 
-	email := uploadedModel.Meta.Creator.Email
-
-	//string is not copied
-	status, user, _ := GetUserByEmail(email)
-	if status != http.StatusOK {
-		return http.StatusConflict, fmt.Errorf("could not find creator: %s", email)
-	}
-	uploadedModel.Meta.Creator = *user
-	uploadedModel.Meta.CreatorID = user.ID
-
-	// Begin transaction.
-	transaction := dbInstance.Begin()
-	if transaction.Error != nil {
-		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+	childCreator := apiTypes.User{
+		ID:       2,
+		Username: "childcreator",
+		Email:    "childcreator@gmail.com",
+		GoogleID: "childcreator-googleid",
 	}
 
-	// Match all UUIDs in the model to existing database IDs where possible
-	// This will ensure that we are not duplicating pre-existing components
-	// but rather reusing them.
-	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, err
+	alternate := apiTypes.User{
+		ID:       3,
+		Username: "alternate",
+		Email:    "alternate@gmail.com",
+		GoogleID: "alternate-googleid",
 	}
 
-	// Create meta in transaction; error out on failure.
-	if err := transaction.Create(&uploadedModel.Meta).Error; err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not create model meta: %s", err.Error())
+	CreateUser(creator)
+	CreateUser(childCreator)
+	CreateUser(alternate)
+
+	meta := apiTypes.Meta{
+		ID:            1,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+		Name:          "Test Model",
+		Summary:       "This is a test model",
+		Documentation: nil,
+		Version:       "1.0",
+		Draft:         false,
+		CreatorID:     creator.ID,
+		Creator:       creator,
+		CreatedDate:   "2021-07-01",
+		Updaters:      []apiTypes.User{},
+		UpdatedDate:   "2021-07-01",
 	}
 
-	// Create the model in transaction; error out on failure.
-	if err := transaction.Create(&uploadedModel).Error; err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not create model: %s", err.Error())
+	model := apiTypes.CausalDecisionModel{
+		ID:        1,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Schema:    "Test Schema",
+		MetaID:    1,
+		Meta:      meta,
+		Parent:    nil,
+		Diagrams:  nil,
+		OwnerID:   creator.ID,
 	}
 
-	// Commit the transaction; error out if commit fails.
-	if err := transaction.Commit().Error; err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
+	childMeta := apiTypes.Meta{
+		ID:            2,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e",
+		Name:          "Test Child Model",
+		Summary:       "This is a test child model, which I want to search for based only on the summary. The summary is very important.",
+		Documentation: nil,
+		Version:       "1.0",
+		Draft:         false,
+		CreatorID:     childCreator.ID,
+		Creator:       childCreator,
+		CreatedDate:   "2021-07-01",
+		Updaters:      []apiTypes.User{},
+		UpdatedDate:   "2021-07-01",
 	}
 
-	return http.StatusCreated, nil
-}
-
-// GetModelByUUID encapsulates the GORM functionality for getting a model by its UUID
-func GetModelByUUID(uuid string) (int, *apiTypes.CausalDecisionModel, error) {
-	var meta apiTypes.Meta
-
-	// Find the meta record with the given UUID.
-	if err := dbInstance.Where("uuid = ?", uuid).First(&meta).Error; err != nil {
-		return http.StatusNotFound, nil, fmt.Errorf("meta with uuid %s not found", uuid)
+	childModel := apiTypes.CausalDecisionModel{
+		ID:         2,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+		Schema:     "Test Child Schema",
+		MetaID:     2,
+		Meta:       childMeta,
+		ParentUUID: model.Meta.UUID,
+		ParentID:   &model.ID,
+		Parent:     &model,
+		Diagrams:   nil,
+		OwnerID:    childCreator.ID,
 	}
 
-	var model apiTypes.CausalDecisionModel
-
-	// Find the model that has the found meta record, preloading associated fields.
-	if err := dbInstance.
-		Preload("Meta").
-		Preload("Diagrams").
-		Preload("Diagrams.Meta").
-		Preload("Diagrams.Elements").
-		Preload("Diagrams.Dependencies").
-		Preload("Diagrams.Elements.Meta").
-		Preload("Diagrams.Dependencies.Meta").
-		Preload("Meta.Creator").
-		Preload("Meta.Updaters").
-		Preload("Diagrams.Meta.Creator").
-		Preload("Diagrams.Meta.Updaters").
-		Preload("Diagrams.Elements.Meta.Creator").
-		Preload("Diagrams.Elements.Meta.Updaters").
-		Preload("Diagrams.Dependencies.Meta.Creator").
-		Preload("Diagrams.Dependencies.Meta.Updaters").
-		Where("meta_id = ?", meta.ID).
-		First(&model).Error; err != nil {
-		return http.StatusNotFound, nil, fmt.Errorf("this meta is not associated with a model")
+	if err := dbInstance.Create(&model).Error; err != nil {
+		fmt.Println("Error creating model: ", err)
 	}
 
-	return http.StatusOK, &model, nil
-}
-
-// GetUserByID encapsulates the GORM functionality for getting a user by their ID
-func GetUserByID(id int) (int, *apiTypes.User, error) {
-	var user apiTypes.User
-
-	// Find the user record with the given ID.
-	if err := dbInstance.Where("id = ?", id).First(&user).Error; err != nil {
-		return http.StatusNotFound, nil, fmt.Errorf("user with id %d not found", id)
+	if err := dbInstance.Create(&childModel).Error; err != nil {
+		fmt.Println("Error creating child model: ", err)
 	}
 
-	return http.StatusOK, &user, nil
-}
-
-// get the latest commit for a model with the given UUID
-func GetLatestCommitForModelUUID(uuid string) (int, *apiTypes.Commit, error) {
-	var commit apiTypes.Commit
-	err := dbInstance.Where("cdm_uuid = ?", uuid).
-		Order("created_at DESC").
-		First(&commit).Error
-
-	if err == gorm.ErrRecordNotFound {
-		return http.StatusNotFound, nil, err
-	}
-	if err != nil {
-		return http.StatusInternalServerError, nil, err
-	}
-	return http.StatusOK, &commit, nil
-}
-
-// gets commit by primary key id
-func GetCommitByID(id int) (int, *apiTypes.Commit, error) {
-	var commit apiTypes.Commit
-	err := dbInstance.Where("id = ?", id).First(&commit).Error
-	if err != nil {
-		return http.StatusNotFound, nil, err
-	}
-	return http.StatusOK, &commit, nil
-}
-
-// UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction. This is a helper method for a PUT to a model.
-//
-//	Currently, for diagrams associated with the model, it creates diagrams that are not already in the database.
-//
-// however, for exisitng diagrams, it doesn't change them.
-func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
-	// Begin transaction.
-	transaction := dbInstance.Begin()
-	if transaction.Error != nil {
-		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
-	}
-
-	// Match all UUIDs in the uploaded model to existing database IDs
-	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, err
-	}
-
-	// First, get the existing model with all associations to properly handle removals
-	var existingModel apiTypes.CausalDecisionModel
-	if err := transaction.
-		Preload("Meta").
-		Preload("Meta.Updaters").
-		Preload("Diagrams").
-		Where("meta_id = ?", uploadedModel.Meta.ID).
-		First(&existingModel).Error; err != nil {
-		transaction.Rollback()
-		return http.StatusNotFound, fmt.Errorf("model with UUID %s not found", uploadedModel.Meta.UUID)
-	}
-
-	// Clear model diagrams association
-	if err := transaction.Model(&existingModel).Association("Diagrams").Clear(); err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not clear model diagrams: %s", err.Error())
-	}
-
-	// Clear meta updaters association
-	if err := transaction.Model(&existingModel.Meta).Association("Updaters").Clear(); err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not clear meta updaters: %s", err.Error())
-	}
-
-	// Before updating the model, we need to make sure the model isn't going to mess with any of
-	// the existing associations inside it's components (for example putting to models shouldn'
-	// modify parts of a diagram or parts of a user, but rather just modify what diagrams or
-	// users are associated with the model itself)
-	// UUIDs have already been matched to IDs, so we can just use the IDs to find the existing associations
-
-	// Iterate through all the diagrams with nonzero IDs and reset them to the way they exist in the database
-	// to ensure no discrepancies between them as they exist in the database and them as they exist in the model
-	for i := range uploadedModel.Diagrams {
-		if uploadedModel.Diagrams[i].ID != 0 {
-			var existingDiagram apiTypes.Diagram
-			// Do nothing on error, and treat it as a new diagram (don't set it to the existing diagram)
-			if err := transaction.Where("id = ?", uploadedModel.Diagrams[i].ID).First(&existingDiagram).Error; err == nil {
-				uploadedModel.Diagrams[i] = existingDiagram
-			}
-		}
-	}
-
-	// Iterate through all the updaters with nonzero IDs and reset them to the way they exist in the database
-	// to ensure no discrepancies between them as they exist in the database and them as they exist in the model
-	for i := range uploadedModel.Meta.Updaters {
-		if uploadedModel.Meta.Updaters[i].ID != 0 {
-			var existingUpdater apiTypes.User
-			// Do nothing on error, and treat it as a new updater (don't set it to the existing updater)
-			if err := transaction.Where("id = ?", uploadedModel.Meta.Updaters[i].ID).First(&existingUpdater).Error; err == nil {
-				uploadedModel.Meta.Updaters[i] = existingUpdater
-			}
-		}
-	}
-
-	// Update the model meta
-	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
-	}
-
-	// Update the model
-	if err := transaction.Save(&uploadedModel.Meta).Error; err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
-	}
-
-	// Update the model
-	if err := transaction.Save(&uploadedModel).Error; err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not update model: %s", err.Error())
-	}
-
-	// Commit the transaction
-	if err := transaction.Commit().Error; err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
-	}
-
-	return http.StatusCreated, nil
-}
-
-// Database method for PUT to a model.
-func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, oldModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalDecisionModel, int, error) {
-
-	// Update the model before creating the commit so that on a bad
-	// put, we don't have to roll back the commit.
-	if status, err := UpdateModel(uploadedModel); err != nil {
-		//TODO fix this so that if we get an error here, we roll back the update
-		// Return error based on the UpdateModel function response
-		return nil, status, err
-	}
-
-	status, changedModel, err := GetModelByUUID(uploadedModel.Meta.UUID)
-	if err != nil {
-		return nil, status, err
-	}
-
-	//TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
-
-	//there's this edge case with jsondiff for raw JSOn files. Hopefully, we don't have to worry aobut this.
-	//Let's say that the raw JSON of the original JSON file doesn't contain default values.
-	//If we take the raw JSOn, translate it into a Go struct (which definition has default values), change some values (and convert the new struct back to JSON),
-	// and then perform a JSON diff between the original JSON and the new JSON,
-	//then the diff will think that the default values are part of the JSON files.
-
-	//this means that if we actually try to apply the diff on the raw JSON, we will get an error because the default values are not in the raw JSON file.
-
-	//so this shows how changing Go structs and then applying the JSON on their raw JSON forms can be a problem. (The standard way is to apply changes to the raw JSON forms instead)
-	//However, this is not a problem for our purposes, because we only will aplpy the diff when we convert Go structs to raw JSON - not getting raw JSON from somewhere else.
-
-	//get the changed model bytes.
-	changedModelBytes, err := json.Marshal(changedModel)
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-	//fmt.Printf("Changed model: %s\n", string(changedModelBytes))
-	//get the bytes of the old model
-	oldmodelBytes, err := json.Marshal(oldModel)
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-	//fmt.Println(string(oldmodelBytes))
-
-	//NOTE the RFC 6902 spec for JSON diffs  will not work with any JSON keys that are of value "-"
-	//get the diff between the old and new JSON.
-	diff, err := jsondiff.CompareJSON(oldmodelBytes, changedModelBytes, jsondiff.Invertible())
-
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-
-	//time to create the commit object for GORM to save to our database.
-	var commit apiTypes.Commit
-
-	commit.CDMUUID = uploadedModel.Meta.UUID
-
-	if diff.String() == "" {
-		return nil, http.StatusBadRequest, fmt.Errorf("no changes made to model")
-	}
-	// Marshal the diff to JSON, so we can convert it to a string to store in the database.
-	jsonData, err := json.Marshal(diff)
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-
-	commit.Diff = string(jsonData)
-	commit.UserUUID = uploadedModel.Meta.Creator.UUID
-
-	status, parent, err := GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
-
-	//if there's no latest commit for this model, this must be the first.
-	if status == http.StatusNotFound {
-		commit.ParentCommitID = ""
-		commit.Version = 1
-	} else if status == http.StatusInternalServerError {
-		return nil, status, err
-
-	} else {
-		commit.ParentCommitID = fmt.Sprintf("%d", parent.ID)
-		commit.Version = parent.Version + 1
-	}
-	//finally, create the commit that we made.
-	if status, err := CreateCommit(&commit); err != nil {
-		return nil, status, err
-	}
-	return changedModel, http.StatusOK, nil
-}
-
-// CreateCommit encapsulates the GORM functionality for creating a commit in a transaction
-func CreateCommit(uploadedCommit *apiTypes.Commit) (int, error) {
-
-	// Begin transaction.
-	transaction := dbInstance.Begin()
-	if transaction.Error != nil {
-		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
-	}
-
-	// Create the commit in transaction; error out on failure.
-	if err := transaction.Create(&uploadedCommit).Error; err != nil {
-		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not create commit: %s", err.Error())
-	}
-
-	// Commit the transaction; error out if commit fails.
-	if err := transaction.Commit().Error; err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
-	}
-
-	return http.StatusCreated, nil
-}
-
-func GetUserByEmail(email string) (int, *apiTypes.User, error) {
-	var user apiTypes.User
-
-	// Find the user record with the given ID.
-	if err := dbInstance.Where("email = ?", email).First(&user).Error; err != nil {
-		return http.StatusNotFound, nil, fmt.Errorf("user with email %s not found", email)
-	}
-
-	return http.StatusOK, &user, nil
-}
-
-// / GetModelLineage returns the ancestry of a model given its UUID.
-// It retrieves the model and its ancestors in reverse order, starting from the most recent ancestor.
-func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
-	status, modelPtr, err := GetModelByUUID(uuid)
-
-	if err != nil {
-		return status, nil, err
-	}
-
-	model := *modelPtr
-
-	var lineage []apiTypes.CausalDecisionModel
-
-	for model.ParentUUID != "" {
-		_, parentPtr, err := GetModelByUUID(model.ParentUUID)
-
-		if err != nil {
-			break
-		}
-
-		parent := *parentPtr
-		lineage = append(lineage, parent)
-		model = parent
-	}
-
-	// Reverse the lineage so that the earliest ancestor is first.
-	for i, j := 0, len(lineage)-1; i < j; i, j = i+1, j-1 {
-		lineage[i], lineage[j] = lineage[j], lineage[i]
-	}
-
-	return http.StatusOK, lineage, nil
-}
-
-// get the children of this model.
-func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
-	var children []apiTypes.CausalDecisionModel
-	if err := dbInstance.
-		Preload("Meta").
-		Preload("Diagrams").
-		Preload("Diagrams.Meta").
-		Preload("Diagrams.Elements").
-		Preload("Diagrams.Dependencies").
-		Preload("Diagrams.Elements.Meta").
-		Preload("Diagrams.Dependencies.Meta").
-		Preload("Meta.Creator").
-		Preload("Meta.Updaters").
-		Preload("Diagrams.Meta.Creator").
-		Preload("Diagrams.Meta.Updaters").
-		Preload("Diagrams.Elements.Meta.Creator").
-		Preload("Diagrams.Elements.Meta.Updaters").
-		Preload("Diagrams.Dependencies.Meta.Creator").
-		Preload("Diagrams.Dependencies.Meta.Updaters").
-		Where("parent_uuid = ?", uuid).
-		Find(&children).Error; err != nil {
-		return http.StatusNotFound, nil, err
-	}
-
-	return http.StatusOK, children, nil
-}
-
-func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error) {
-	var models []apiTypes.CausalDecisionModel
-
-	// Use GORM's query builder to work with Full-Text Search
-	if err := dbInstance.
-		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
-		Where("MATCH(meta.name, meta.summary) AGAINST(? IN NATURAL LANGUAGE MODE)", name).
-		Preload("Meta").
-		Preload("Diagrams").
-		Preload("Diagrams.Meta").
-		Preload("Diagrams.Elements").
-		Preload("Diagrams.Dependencies").
-		Preload("Diagrams.Elements.Meta").
-		Preload("Diagrams.Dependencies.Meta").
-		Preload("Meta.Creator").
-		Preload("Meta.Updaters").
-		Find(&models).Error; err != nil {
-		return http.StatusInternalServerError, nil, err
-	}
-
-	return http.StatusOK, models, nil
-}
-
-func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, error) {
-	var models []apiTypes.CausalDecisionModel
-
-	if err := dbInstance.
-		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
-		Joins("JOIN users ON meta.creator_id = users.id").
-		Where("users.username LIKE ?", "%"+username+"%").
-		Preload("Meta").
-		Preload("Diagrams").
-		Preload("Diagrams.Meta").
-		Preload("Diagrams.Elements").
-		Preload("Diagrams.Dependencies").
-		Preload("Diagrams.Elements.Meta").
-		Preload("Diagrams.Dependencies.Meta").
-		Preload("Meta.Creator").
-		Preload("Meta.Updaters").
-		Find(&models).Error; err != nil {
-		return http.StatusInternalServerError, nil, err
-	}
-
-	return http.StatusOK, models, nil
-}
-
-// GetCommitsByModelUUID returns all commits for a model UUID, ordered by version
-func GetCommitsByModelUUID(uuid string) (int, []apiTypes.Commit, error) {
-	var commits []apiTypes.Commit
-	err := dbInstance.Where("cdm_uuid = ?", uuid).
-		Order("version DESC").
-		Find(&commits).Error
-
-	if err != nil {
-		return http.StatusInternalServerError, nil, err
-	}
-
-	if len(commits) == 0 {
-		return http.StatusNotFound, nil, fmt.Errorf("no commits found for model with UUID %s", uuid)
-	}
-
-	return http.StatusOK, commits, nil
 }

@@ -60,7 +60,7 @@ func SetUpRouter() *gin.Engine {
 	//initialize handler
 	modelHandler, err := NewModelHandler()
 
-	authHandler, _ := NewAuthHandler()
+	authHandler, _ := NewAuthHandler("test-client-id", "test-client-secret")
 
 	commitHandler, _ := NewCommitHandler()
 
@@ -89,15 +89,31 @@ func SetUpRouter() *gin.Engine {
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
 		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
+		models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
+		models.PUT("/privacy/:uuid", modelHandler.PutModelPrivacy)
+		models.GET("/transfer/:uuid", modelHandler.GetTransfer)
+		models.POST("/transfer/:uuid", modelHandler.PostTransfer)
+		models.DELETE("/transfer/:uuid", modelHandler.DeleteTransfer)
 	}
 
 	auth := r.Group("/auth")
 	{
 		auth.GET("/google/login", authHandler.GoogleLogin)
 		auth.GET("/google/callback", authHandler.GoogleCallback)
+		auth.GET("/testlogin", authHandler.TestLogin)
 	}
 
 	return r
+}
+
+func getTestToken(id int) string {
+	loginReq, _ := http.NewRequest("GET", fmt.Sprintf("/auth/testlogin?id=%d", id), nil)
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+
+	var loginResp map[string]interface{}
+	json.Unmarshal(loginW.Body.Bytes(), &loginResp)
+	return loginResp["token"].(string)
 }
 
 func TestGetModels(t *testing.T) {
@@ -458,4 +474,451 @@ func TestGetVersionOfModel(t *testing.T) {
 
 	assert.Equal(t, strReturnedModel3, strmodel)
 
+}
+
+func TestGoogleLogin(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/auth/google/login", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
+
+	// location header should be set correctly
+	location := w.Header().Get("Location")
+	assert.NotEmpty(t, location)
+	assert.Contains(t, location, "accounts.google.com/o/oauth2/auth")
+	assert.Contains(t, location, "client_id=test-client-id")
+
+	// state cookie should be set correctly
+	cookies := w.Result().Cookies()
+	var stateCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == "oauth_state" {
+			stateCookie = cookie
+			break
+		}
+	}
+
+	// state cookie should not be empty either
+	assert.NotNil(t, stateCookie)
+	assert.NotEmpty(t, stateCookie.Value)
+}
+
+func TestGoogleCallbackInvalidState(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/auth/google/callback?code=test-code&state=wrong-state", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "oauth_state",
+		Value: "badstate",
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGoogleCallbackMissingState(t *testing.T) {
+	// request is missing state cookie
+	req, _ := http.NewRequest("GET", "/auth/google/callback?code=test-code&state=some-state", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPutAndGetModelPrivacy(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	type privacy struct {
+		IsPublic bool             `json:"isPublic"`
+		Shares   []apiTypes.Share `json:"shares"`
+	}
+
+	putBody := privacy{
+		IsPublic: true,
+		Shares: []apiTypes.Share{
+			{
+				UserID: 2,
+				Level:  "write",
+			},
+		},
+	}
+	jsonBody, _ := json.Marshal(putBody)
+	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", bytes.NewBuffer(jsonBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	putW := httptest.NewRecorder()
+	router.ServeHTTP(putW, putReq)
+
+	// should be updated now
+	assert.Equal(t, http.StatusOK, putW.Code)
+
+	// get the privacy settings to check
+	getReq, _ := http.NewRequest("GET", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getW := httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusOK, getW.Code)
+
+	var response privacy
+	json.Unmarshal(getW.Body.Bytes(), &response)
+
+	assert.Equal(t, true, response.IsPublic)
+	assert.Equal(t, 1, len(response.Shares))
+	assert.Equal(t, 2, response.Shares[0].UserID)
+	assert.Equal(t, "write", response.Shares[0].Level)
+}
+
+func TestPutModelPrivacyInvalidPermissions(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	// userID 2 does not have owner access to this model
+	token := getTestToken(2)
+
+	type privacy struct {
+		IsPublic bool             `json:"isPublic"`
+		Shares   []apiTypes.Share `json:"shares"`
+	}
+
+	putBody := privacy{
+		IsPublic: true,
+		Shares:   []apiTypes.Share{},
+	}
+
+	jsonBody, _ := json.Marshal(putBody)
+	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", bytes.NewReader(jsonBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	putW := httptest.NewRecorder()
+	router.ServeHTTP(putW, putReq)
+
+	assert.Equal(t, http.StatusForbidden, putW.Code)
+}
+
+func TestPutModelPrivacyInvalidUUID(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	type privacy struct {
+		IsPublic bool             `json:"isPublic"`
+		Shares   []apiTypes.Share `json:"shares"`
+	}
+
+	putBody := privacy{
+		IsPublic: true,
+		Shares:   []apiTypes.Share{},
+	}
+
+	// bad uuid for request
+	jsonBody, _ := json.Marshal(putBody)
+	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/baduuid", bytes.NewReader(jsonBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	putW := httptest.NewRecorder()
+	router.ServeHTTP(putW, putReq)
+
+	assert.Equal(t, http.StatusNotFound, putW.Code)
+}
+
+func TestPutModelPrivacyInvalidShares(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	type privacy struct {
+		IsPublic bool             `json:"isPublic"`
+		Shares   []apiTypes.Share `json:"shares"`
+	}
+
+	// shouldn't be able to set public to true AND have a read level access
+	putBody := privacy{
+		IsPublic: true,
+		Shares: []apiTypes.Share{
+			{
+				UserID: 2,
+				Level:  "read",
+			},
+		},
+	}
+
+	jsonBody, _ := json.Marshal(putBody)
+	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", bytes.NewReader(jsonBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	putW := httptest.NewRecorder()
+	router.ServeHTTP(putW, putReq)
+
+	assert.Equal(t, http.StatusBadRequest, putW.Code)
+}
+
+func TestGetModelPrivacyInvalidPermissions(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	// userID 2 does not have owner access to this model
+	token := getTestToken(2)
+
+	getReq, _ := http.NewRequest("GET", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getW := httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusForbidden, getW.Code)
+}
+
+func TestGetModelPrivacyInvalidUUID(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	// bad uuid for request
+	getReq, _ := http.NewRequest("GET", "/v0/models/privacy/baduuid", nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getW := httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusNotFound, getW.Code)
+}
+
+func TestPostTransfer(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	req, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response apiTypes.Transfer
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	assert.Equal(t, "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", response.CDMUUID)
+	assert.Equal(t, 1, response.FromUserID)
+	assert.Equal(t, 2, response.ToUserID)
+}
+
+func TestPostTransferInvalidPermissions(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	// user should not be able to create a ownership transfer request for a model they do not own
+	token := getTestToken(2)
+
+	req, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestPostTransferMissingOwnerParam(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	// missing owner query parameter
+	req, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPostTransferAlreadyExists(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	// create first transfer
+	req1, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	req1.Header.Set("Authorization", "Bearer "+token)
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// try to create another transfer on the same model
+	req2, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	req2.Header.Set("Authorization", "Bearer "+token)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	assert.Equal(t, http.StatusBadRequest, w2.Code)
+}
+
+func TestGetTransfer(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token1 := getTestToken(1)
+	postReq1, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq1.Header.Set("Authorization", "Bearer "+token1)
+	postW1 := httptest.NewRecorder()
+	router.ServeHTTP(postW1, postReq1)
+
+	// should be able to see the transfer as the sending user
+	getReq1, _ := http.NewRequest("GET", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq1.Header.Set("Authorization", "Bearer "+token1)
+	getW1 := httptest.NewRecorder()
+	router.ServeHTTP(getW1, getReq1)
+
+	assert.Equal(t, http.StatusOK, getW1.Code)
+
+	// make sure response is as expected
+	var response apiTypes.Transfer
+	json.Unmarshal(getW1.Body.Bytes(), &response)
+	assert.Equal(t, "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", response.CDMUUID)
+	assert.Equal(t, 1, response.FromUserID)
+	assert.Equal(t, 2, response.ToUserID)
+
+	// should be able to see the transfer as the receiving user
+	token2 := getTestToken(2)
+	getReq2, _ := http.NewRequest("GET", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq2.Header.Set("Authorization", "Bearer "+token2)
+	getW2 := httptest.NewRecorder()
+	router.ServeHTTP(getW2, getReq2)
+
+	assert.Equal(t, http.StatusOK, getW2.Code)
+
+	// should not be able to see the transfer as the alternate user
+	token3 := getTestToken(3)
+	getReq3, _ := http.NewRequest("GET", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq3.Header.Set("Authorization", "Bearer "+token3)
+	getW3 := httptest.NewRecorder()
+	router.ServeHTTP(getW3, getReq3)
+
+	assert.Equal(t, http.StatusForbidden, getW3.Code)
+}
+
+func TestDeleteTransferAccept(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	// user 1 makes ownership transfer request to user 2
+	token1 := getTestToken(1)
+	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq.Header.Set("Authorization", "Bearer "+token1)
+	postW := httptest.NewRecorder()
+	router.ServeHTTP(postW, postReq)
+
+	assert.Equal(t, http.StatusOK, postW.Code)
+
+	// user 2 accepts transfer
+	token2 := getTestToken(2)
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?accept=true", nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+token2)
+	deleteW := httptest.NewRecorder()
+	router.ServeHTTP(deleteW, deleteReq)
+
+	assert.Equal(t, http.StatusOK, deleteW.Code)
+
+	// transfer should be deleted and owner updated
+	transfer, err := database.GetTransferByModelUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.Nil(t, transfer)
+	assert.Error(t, err)
+	_, model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.Equal(t, 2, model.OwnerID)
+}
+
+func TestDeleteTransferDecline(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	// user 1 makes ownership transfer request to user 2
+	token1 := getTestToken(1)
+	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq.Header.Set("Authorization", "Bearer "+token1)
+	postW := httptest.NewRecorder()
+	router.ServeHTTP(postW, postReq)
+
+	assert.Equal(t, http.StatusOK, postW.Code)
+
+	// user 2 declines transfer
+	token2 := getTestToken(2)
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?accept=false", nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+token2)
+	deleteW := httptest.NewRecorder()
+	router.ServeHTTP(deleteW, deleteReq)
+
+	assert.Equal(t, http.StatusOK, deleteW.Code)
+
+	// transfer should be deleted and owner should not be updated
+	transfer, err := database.GetTransferByModelUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.Nil(t, transfer)
+	assert.Error(t, err)
+	_, model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.Equal(t, 1, model.OwnerID)
+}
+
+func TestDeleteTransferInvalidPermissions(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	// user 1 makes ownership transfer request to user 2
+	token1 := getTestToken(1)
+	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq.Header.Set("Authorization", "Bearer "+token1)
+	postW := httptest.NewRecorder()
+	router.ServeHTTP(postW, postReq)
+
+	assert.Equal(t, http.StatusOK, postW.Code)
+
+	// user 1 tries to accept their own transfer request
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?accept=true", nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+token1)
+	deleteW := httptest.NewRecorder()
+	router.ServeHTTP(deleteW, deleteReq)
+
+	assert.Equal(t, http.StatusForbidden, deleteW.Code)
+}
+
+func TestDeleteTransferNotFound(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(2)
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?accept=true", nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+token)
+	deleteW := httptest.NewRecorder()
+	router.ServeHTTP(deleteW, deleteReq)
+
+	assert.Equal(t, http.StatusNotFound, deleteW.Code)
+}
+
+func TestDeleteTransferMissingAcceptParam(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	router := SetUpRouter()
+
+	// user 1 makes ownership transfer request to user 2
+	token1 := getTestToken(1)
+	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq.Header.Set("Authorization", "Bearer "+token1)
+	postW := httptest.NewRecorder()
+	router.ServeHTTP(postW, postReq)
+
+	// missing accept param
+	token2 := getTestToken(2)
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+token2)
+	deleteW := httptest.NewRecorder()
+	router.ServeHTTP(deleteW, deleteReq)
+
+	assert.Equal(t, http.StatusBadRequest, deleteW.Code)
 }
