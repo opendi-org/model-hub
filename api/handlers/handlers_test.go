@@ -81,10 +81,11 @@ func SetUpRouter() *gin.Engine {
 	//router group for all endpoints related to models
 	models := r.Group("/v0/models")
 	{
-		models.GET("", modelHandler.GetModels)            // Get all models
-		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
-		models.POST("", modelHandler.UploadModel)         // Upload a model
-		models.PUT("", modelHandler.PutModel)             // Update a model
+		models.GET("", modelHandler.GetModels)              // Get all models
+		models.GET("/:uuid", modelHandler.GetModelByUUID)   // Get a model by UUID
+		models.GET("/tag/:tag", modelHandler.GetModelByTag) // Get a model by tag
+		models.POST("", modelHandler.UploadModel)           // Upload a model
+		models.PUT("", modelHandler.PutModel)               // Update a model
 		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
@@ -141,6 +142,21 @@ func TestGetModelByUUID(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
+}
+
+func TestGetModelByTag(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	req, _ := http.NewRequest("GET", "/v0/models/tag/test-model:1.0", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.Equal(t, "Test Model", response.Meta.Name)
 }
 
 func TestUploadModel(t *testing.T) {
@@ -833,7 +849,7 @@ func TestDeleteTransferAccept(t *testing.T) {
 	assert.Nil(t, transfer)
 	assert.Error(t, err)
 	_, model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
-	assert.Equal(t, 2, model.OwnerID)
+	assert.Equal(t, 2, model.Addons.OwnerID)
 }
 
 func TestDeleteTransferDecline(t *testing.T) {
@@ -863,7 +879,7 @@ func TestDeleteTransferDecline(t *testing.T) {
 	assert.Nil(t, transfer)
 	assert.Error(t, err)
 	_, model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
-	assert.Equal(t, 1, model.OwnerID)
+	assert.Equal(t, 1, model.Addons.OwnerID)
 }
 
 func TestDeleteTransferInvalidPermissions(t *testing.T) {

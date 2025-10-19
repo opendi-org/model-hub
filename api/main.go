@@ -99,10 +99,11 @@ func main() {
 		// Or even worse, a trusted unrelated site could be compromised with a script (from an ad service or similar), and that script could start making calls to your-bank.com without you knowing about it, and if you happened to be logged in from earlier, it would just use those credentials.
 		// With CORS, your-bank.com would just reject the requests.
 
-		models.GET("", modelHandler.GetModels)            // Get all models
-		models.GET("/:uuid", modelHandler.GetModelByUUID) // Get a model by UUID
-		models.POST("", modelHandler.UploadModel)         // Upload a model
-		models.PUT("", modelHandler.PutModel)             // Update a model
+		models.GET("", modelHandler.GetModels)              // Get all models
+		models.GET("/:uuid", modelHandler.GetModelByUUID)   // Get a model by UUID
+		models.GET("/tag/:tag", modelHandler.GetModelByTag) // Get a model by tag
+		models.POST("", modelHandler.UploadModel)           // Upload a model
+		models.PUT("", modelHandler.PutModel)               // Update a model
 
 		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)

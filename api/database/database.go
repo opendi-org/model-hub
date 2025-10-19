@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/wI2L/jsondiff"
@@ -169,6 +171,31 @@ func GetModelByUUID(uuid string) (int, *apiTypes.CausalDecisionModel, error) {
 	return http.StatusOK, &model, nil
 }
 
+func GetModelByTag(tag string) (*apiTypes.CausalDecisionModel, error) {
+	var model apiTypes.CausalDecisionModel
+	if err := dbInstance.
+		Preload("Meta").
+		Preload("Diagrams").
+		Preload("Diagrams.Meta").
+		Preload("Diagrams.Elements").
+		Preload("Diagrams.Dependencies").
+		Preload("Diagrams.Elements.Meta").
+		Preload("Diagrams.Dependencies.Meta").
+		Preload("Meta.Creator").
+		Preload("Meta.Updaters").
+		Preload("Diagrams.Meta.Creator").
+		Preload("Diagrams.Meta.Updaters").
+		Preload("Diagrams.Elements.Meta.Creator").
+		Preload("Diagrams.Elements.Meta.Updaters").
+		Preload("Diagrams.Dependencies.Meta.Creator").
+		Preload("Diagrams.Dependencies.Meta.Updaters").
+		Where("JSON_EXTRACT(addons, '$.tag') = ?", tag).First(&model).Error; err != nil {
+		return nil, fmt.Errorf("model with tag %s not found", tag)
+	}
+
+	return &model, nil
+}
+
 func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
 
@@ -228,8 +255,8 @@ func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
 
 	var lineage []apiTypes.CausalDecisionModel
 
-	for model.ParentUUID != "" {
-		_, parentPtr, err := GetModelByUUID(model.ParentUUID)
+	for model.Addons.ParentUUID != "" {
+		_, parentPtr, err := GetModelByUUID(model.Addons.ParentUUID)
 
 		if err != nil {
 			break
@@ -267,7 +294,7 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 		Preload("Diagrams.Elements.Meta.Updaters").
 		Preload("Diagrams.Dependencies.Meta.Creator").
 		Preload("Diagrams.Dependencies.Meta.Updaters").
-		Where("parent_uuid = ?", uuid).
+		Where("JSON_EXTRACT(addons, '$.parentUUID') = ?", uuid).
 		Find(&children).Error; err != nil {
 		return http.StatusNotFound, nil, err
 	}
@@ -283,8 +310,8 @@ func UpdateModelPrivacyByUUID(uuid string, isPublic bool, shares []apiTypes.Shar
 		return err
 	}
 
-	model.IsPublic = isPublic
-	model.Shares = shares
+	model.Addons.IsPublic = isPublic
+	model.Addons.Shares = shares
 	if err := transaction.Save(&model).Error; err != nil {
 		transaction.Rollback()
 		return fmt.Errorf("could not update model privacy: %s", err.Error())
@@ -318,7 +345,7 @@ func DeleteTransfer(transfer *apiTypes.Transfer, accept bool) error {
 			return err
 		}
 		transaction := dbInstance.Begin()
-		model.OwnerID = transfer.ToUserID
+		model.Addons.OwnerID = transfer.ToUserID
 		if err := transaction.Save(&model).Error; err != nil {
 			transaction.Rollback()
 			return fmt.Errorf("could not update model owner: %s", err.Error())
@@ -332,6 +359,22 @@ func DeleteTransfer(transfer *apiTypes.Transfer, accept bool) error {
 		return fmt.Errorf("failed to delete transfer: %s", err)
 	}
 	return nil
+}
+
+func generateTag(name, version string) string {
+	return fmt.Sprintf("%s:%s", strings.ReplaceAll(strings.ToLower(name), " ", "-"), version)
+}
+
+func sanitizeTag(tag string) string {
+	parts := strings.Split(tag, ":")
+	if len(parts) < 2 {
+		return generateTag(tag, "0.0")
+	}
+	parts = parts[0:2]
+	if match, _ := regexp.MatchString(`^[0-9]+(\.[0-9]+)*$`, parts[1]); !match {
+		return generateTag(parts[0], "0.0")
+	}
+	return generateTag(parts[0], parts[1])
 }
 
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
@@ -351,6 +394,13 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 		if count == 0 {
 			break
 		}
+	}
+
+	// Generate tag if it is not provided
+	if uploadedModel.Addons.Tag == "" {
+		uploadedModel.Addons.Tag = generateTag(uploadedModel.Meta.Name, uploadedModel.Meta.Version)
+	} else {
+		uploadedModel.Addons.Tag = sanitizeTag(uploadedModel.Addons.Tag)
 	}
 
 	email := uploadedModel.Meta.Creator.Email
@@ -826,12 +876,12 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		}
 
 		// Match Parent if exists
-		if cdm.ParentUUID != "" {
+		if cdm.Addons.ParentUUID != "" {
 			var parentMeta apiTypes.Meta
-			if err := tx.Where("uuid = ?", cdm.ParentUUID).First(&parentMeta).Error; err == nil {
+			if err := tx.Where("uuid = ?", cdm.Addons.ParentUUID).First(&parentMeta).Error; err == nil {
 				var parentModel apiTypes.CausalDecisionModel
 				if err := tx.Where("meta_id = ?", parentMeta.ID).First(&parentModel).Error; err == nil {
-					cdm.ParentID = &parentModel.ID
+					cdm.Addons.ParentID = &parentModel.ID
 				}
 			}
 		}
@@ -1025,9 +1075,10 @@ func CreateExampleData() {
 		Schema:    "Test Schema",
 		MetaID:    1,
 		Meta:      meta,
-		Parent:    nil,
-		Diagrams:  nil,
-		OwnerID:   creator.ID,
+		Addons: apiTypes.Addons{
+			OwnerID: creator.ID,
+			Tag:     "test-model:1.0",
+		},
 	}
 
 	childMeta := apiTypes.Meta{
@@ -1048,17 +1099,19 @@ func CreateExampleData() {
 	}
 
 	childModel := apiTypes.CausalDecisionModel{
-		ID:         2,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-		Schema:     "Test Child Schema",
-		MetaID:     2,
-		Meta:       childMeta,
-		ParentUUID: model.Meta.UUID,
-		ParentID:   &model.ID,
-		Parent:     &model,
-		Diagrams:   nil,
-		OwnerID:    childCreator.ID,
+		ID:        2,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Schema:    "Test Child Schema",
+		MetaID:    2,
+		Meta:      childMeta,
+		Addons: apiTypes.Addons{
+			ParentUUID: model.Meta.UUID,
+			ParentID:   &model.ID,
+			Parent:     &model,
+			OwnerID:    childCreator.ID,
+			Tag:        "test-child-model:1.0",
+		},
 	}
 
 	if err := dbInstance.Create(&model).Error; err != nil {

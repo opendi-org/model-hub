@@ -350,14 +350,14 @@ func (h *ModelHandler) GetModelPrivacy(c *gin.Context) {
 	}
 
 	// make sure the user can do this action
-	if model.OwnerID != actingUserID {
+	if model.Addons.OwnerID != actingUserID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
 		return
 	}
 
 	resp := gin.H{
-		"isPublic": model.IsPublic,
-		"shares":   model.Shares,
+		"isPublic": model.Addons.IsPublic,
+		"shares":   model.Addons.Shares,
 	}
 
 	c.JSON(http.StatusOK, resp)
@@ -393,7 +393,7 @@ func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
 	}
 
 	// make sure the user can do this action
-	if model.OwnerID != actingUserID {
+	if model.Addons.OwnerID != actingUserID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
 		return
 	}
@@ -508,7 +508,7 @@ func (h *ModelHandler) PostTransfer(c *gin.Context) {
 	}
 
 	// make sure the requesting user owns the model
-	if model.OwnerID != actingUserID {
+	if model.Addons.OwnerID != actingUserID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
 		return
 	}
@@ -661,6 +661,29 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 
 	// Return the model if found
 	c.JSON(status, model)
+}
+
+// GetModelByTag godoc
+// @Summary      Get model by its tag
+// @Description  gets models using its tag
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        tag
+// @Success      200
+// @Failure      404
+// @Router       /v0/models/tag/{tag} [get]
+func (h *ModelHandler) GetModelByTag(c *gin.Context) {
+	tag := c.Param("tag")
+
+	model, err := database.GetModelByTag(tag)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Return the model if found
+	c.JSON(http.StatusOK, model)
 }
 
 // putModel godoc
@@ -945,7 +968,7 @@ func (h *ModelHandler) ModelSearch(c *gin.Context) {
 		}
 		c.JSON(status, models)
 	default:
-		c.JSON(404, gin.H{"error": "This type of search does not exist"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "This type of search does not exist"})
 		return
 	}
 }

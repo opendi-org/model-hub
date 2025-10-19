@@ -99,6 +99,17 @@ func TestGetModelByUUID(t *testing.T) {
 
 }
 
+func TestGetModelByTag(t *testing.T) {
+	ResetTables()
+	CreateExampleData()
+
+	model, err := GetModelByTag("test-model:1.0")
+
+	assert.NoError(t, err)
+	assert.Equal(t, 36, len(model.Meta.UUID))
+	assert.Equal(t, "Test Model", model.Meta.Name)
+}
+
 // TestCreateModel tests the CreateModel function
 func TestCreateModel(t *testing.T) {
 
@@ -749,10 +760,10 @@ func TestUpdateModelPrivacyByUUID(t *testing.T) {
 	// make sure the model was updated
 	_, model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.NoError(t, err)
-	assert.Equal(t, true, model.IsPublic)
-	assert.Equal(t, 1, len(model.Shares))
-	assert.Equal(t, 2, model.Shares[0].UserID)
-	assert.Equal(t, "write", model.Shares[0].Level)
+	assert.Equal(t, true, model.Addons.IsPublic)
+	assert.Equal(t, 1, len(model.Addons.Shares))
+	assert.Equal(t, 2, model.Addons.Shares[0].UserID)
+	assert.Equal(t, "write", model.Addons.Shares[0].Level)
 }
 
 func TestUpdateModelPrivacyByUUIDBadUUID(t *testing.T) {
@@ -818,7 +829,7 @@ func TestDeleteTransferAccept(t *testing.T) {
 	// ownership should have changed
 	_, model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.NoError(t, err)
-	assert.Equal(t, 2, model.OwnerID)
+	assert.Equal(t, 2, model.Addons.OwnerID)
 
 	// transfer should have been deleted
 	deletedTransfer, err := GetTransferByModelUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
@@ -847,7 +858,7 @@ func TestDeleteTransferDecline(t *testing.T) {
 	// ownership should not have changed
 	_, model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.NoError(t, err)
-	assert.Equal(t, 1, model.OwnerID)
+	assert.Equal(t, 1, model.Addons.OwnerID)
 
 	// transfer should have been deleted
 	deletedTransfer, err := GetTransferByModelUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
