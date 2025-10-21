@@ -32,6 +32,7 @@ function App() {
             <Route path="/model/:uuid" element={<ModelPage />} />
             <Route path="/model" element={<ModelPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/user" element={<UserPage />} />
             <Route path="/search" element={<SearchPage />} />
           </Routes>
