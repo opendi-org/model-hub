@@ -124,7 +124,7 @@ func (h *AuthHandler) TestLogin(c *gin.Context) {
 	}
 
 	// Get the user from database
-	_, user, err := database.GetUserByID(userID)
+	user, err := database.GetUserByID(userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -343,7 +343,7 @@ func (h *ModelHandler) GetModelPrivacy(c *gin.Context) {
 	}
 
 	// Get the model from database
-	_, model, err := database.GetModelByUUID(uuid)
+	model, err := database.GetModelByUUID(uuid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -386,7 +386,7 @@ func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
 	}
 
 	// make sure the model exists
-	_, model, err := database.GetModelByUUID(uuid)
+	model, err := database.GetModelByUUID(uuid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -410,7 +410,7 @@ func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
 
 	// make sure the shares object is valid
 	for _, share := range req.Shares {
-		_, _, err := database.GetUserByID(share.UserID)
+		_, err := database.GetUserByID(share.UserID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
@@ -501,9 +501,9 @@ func (h *ModelHandler) PostTransfer(c *gin.Context) {
 	}
 
 	// make sure the model exists
-	status, model, err := database.GetModelByUUID(uuid)
+	model, err := database.GetModelByUUID(uuid)
 	if err != nil {
-		c.JSON(status, gin.H{"error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -606,38 +606,6 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 	c.JSON(status, models)
 }
 
-// UploadModel godoc
-// @Summary      Upload a new model
-// @Description  Given a body of a model with a creator with an email that corresponds to a user in the database, creates the model.
-// @Tags         models
-// @Accept       json
-// @Produce      json
-// @Param        model  body  apiTypes.CausalDecisionModel  true  "Causal Decision Model Payload"
-// @Success      201 {object} apiTypes.CausalDecisionModel "Created model"
-// @Failure      400 {object} gin.H "Bad Request"
-// @Failure      409 {object} gin.H "Conflict: Model with same UUID already exists"
-// @Failure      500 {object} gin.H "Internal Server Error"
-// @Router       /v0/models/ [post]
-func (h *ModelHandler) UploadModel(c *gin.Context) {
-	var uploadedModel apiTypes.CausalDecisionModel
-
-	// Bind the JSON payload to the uploaded model struct
-	if err := c.ShouldBindJSON(&uploadedModel); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Call the encapsulated CreateModel method from the database package
-	if status, err := database.CreateModel(&uploadedModel); err != nil {
-		// Return error based on the CreateModel function response
-		c.JSON(status, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Return a successful response if model creation is successful
-	c.JSON(http.StatusCreated, uploadedModel)
-}
-
 // GetModelByUUID godoc
 // @Summary      Get model by its uuid
 // @Description  gets models using its uuid
@@ -652,15 +620,15 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	uuid := c.Param("uuid")
 
 	// Call the encapsulated GetModelByUUID function from the database package
-	status, model, err := database.GetModelByUUID(uuid)
+	model, err := database.GetModelByUUID(uuid)
 	if err != nil {
 		// If error, return an appropriate response based on the error
-		c.JSON(status, gin.H{"error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Return the model if found
-	c.JSON(status, model)
+	c.JSON(http.StatusOK, model)
 }
 
 // GetModelByTag godoc
@@ -686,43 +654,65 @@ func (h *ModelHandler) GetModelByTag(c *gin.Context) {
 	c.JSON(http.StatusOK, model)
 }
 
-// putModel godoc
-// @Summary      Update model
-// @Description  Updates a causal decision model along with its metadata in a single transaction.
-// @Tags         models
-// @Accept       json
-// @Produce      json
-// @Param        model  body  apiTypes.CausalDecisionModel  true  "Causal Decision Model Payload"
-// @Success      201 {object} apiTypes.CausalDecisionModel "Updated model"
-// @Failure      400 {object} gin.H "Bad Request"
-// @Failure      500 {object} gin.H "Internal Server Error"
-// @Router       /v0/models/ [put]
-func (h *ModelHandler) PutModel(c *gin.Context) {
-
+func (h *ModelHandler) UploadModel(c *gin.Context) {
 	var uploadedModel apiTypes.CausalDecisionModel
 
-	// Bind the JSON payload to the uploaded model struct
 	if err := c.ShouldBindJSON(&uploadedModel); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
-	//if we can't find the model with the given UUID, return error.
-	status, oldmodel, err := database.GetModelByUUID(uploadedModel.Meta.UUID)
 
+	actingUserID, err := getUserIDFromToken(c)
 	if err != nil {
-		// Return error based on the UpdateModel function response
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	changedModel, status, err := database.UpdateModelAndCreateCommit(&uploadedModel, oldmodel)
-	if err != nil {
-		// Return error based on the UpdateModel function response
-		c.JSON(status, gin.H{"Error": err.Error()})
-		return
+	var resultModel *apiTypes.CausalDecisionModel
+	var status int
+
+	if uploadedModel.Meta.UUID != "" {
+		// either the model already exists or the user has provided one (which we should ignore and create another one)
+		if retrievedModel, err := database.GetModelByUUID(uploadedModel.Meta.UUID); err != nil {
+			// the user provided a UUID that does not match any model in the system, make a new one and ignore the old UUID
+			uploadedModel.Addons.OwnerID = actingUserID
+			resultModel, status, err = database.CreateModel(&uploadedModel)
+			if err != nil {
+				c.JSON(status, gin.H{"error": err.Error()})
+				return
+			}
+		} else {
+			// we found a model with a matching UUID, make sure the user has permissions to update
+			canWrite := retrievedModel.Addons.OwnerID == actingUserID
+			if !canWrite {
+				for _, share := range retrievedModel.Addons.Shares {
+					if share.UserID == actingUserID && share.Level == "write" {
+						canWrite = true
+						break
+					}
+				}
+			}
+			if !canWrite {
+				c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+				return
+			}
+			// user has permissions to udpate this model, so create a commit
+			resultModel, status, err = database.UpdateModelAndCreateCommit(&uploadedModel, retrievedModel)
+			if err != nil {
+				c.JSON(status, gin.H{"error": err.Error()})
+				return
+			}
+		}
+	} else {
+		// a UUID was not provided, we assume this means we are creating a new model
+		uploadedModel.Addons.OwnerID = actingUserID
+		resultModel, status, err = database.CreateModel(&uploadedModel)
+		if err != nil {
+			c.JSON(status, gin.H{"error": err.Error()})
+			return
+		}
 	}
-	// Return a successful response if model put is
-	c.JSON(http.StatusCreated, changedModel)
+	c.JSON(http.StatusOK, resultModel)
 }
 
 // GetCommits godoc
@@ -781,7 +771,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		return
 	}
 	//get latest version of model.
-	_, latestVersionOfModel, err := database.GetModelByUUID(uuid)
+	latestVersionOfModel, err := database.GetModelByUUID(uuid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
 		return
@@ -835,22 +825,19 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		//reset variables for next iteration of applying patches
 		currModelBytes = modified
 		currVersion--
-		parentIdStr := currCommit.ParentCommitID
+		parentId := currCommit.ParentCommitID
 
 		//if we reach the version we want, return the model
 		if currVersion <= version {
 			break
 		}
 
-		if parentIdStr == "" {
+		if parentId == -1 {
 			c.JSON(http.StatusInternalServerError, "No parent ID") //if we encounter a null parent id, return error.
 			return
 		}
 
-		parentId, _ := strconv.ParseInt(parentIdStr, 10, 64)
-
 		_, currCommit, _ = database.GetCommitByID(int(parentId))
-
 	}
 
 	finalModel := apiTypes.CausalDecisionModel{}
@@ -909,12 +896,12 @@ func (h *CommitHandler) UploadCommit(c *gin.Context) {
 
 func (h *ModelHandler) GetModelLineage(c *gin.Context) {
 	uuid := c.Param("uuid")
-	status, lineage, err := database.GetModelLineage(uuid)
+	lineage, err := database.GetModelLineage(uuid)
 	if err != nil {
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
 		return
 	}
-	c.JSON(status, lineage)
+	c.JSON(http.StatusOK, lineage)
 }
 
 // GetModelChildren godoc

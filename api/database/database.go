@@ -136,12 +136,12 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 }
 
 // GetModelByUUID encapsulates the GORM functionality for getting a model by its UUID
-func GetModelByUUID(uuid string) (int, *apiTypes.CausalDecisionModel, error) {
+func GetModelByUUID(uuid string) (*apiTypes.CausalDecisionModel, error) {
 	var meta apiTypes.Meta
 
 	// Find the meta record with the given UUID.
 	if err := dbInstance.Where("uuid = ?", uuid).First(&meta).Error; err != nil {
-		return http.StatusNotFound, nil, fmt.Errorf("meta with uuid %s not found", uuid)
+		return nil, fmt.Errorf("meta with uuid %s not found", uuid)
 	}
 
 	var model apiTypes.CausalDecisionModel
@@ -165,10 +165,10 @@ func GetModelByUUID(uuid string) (int, *apiTypes.CausalDecisionModel, error) {
 		Preload("Diagrams.Dependencies.Meta.Updaters").
 		Where("meta_id = ?", meta.ID).
 		First(&model).Error; err != nil {
-		return http.StatusNotFound, nil, fmt.Errorf("this meta is not associated with a model")
+		return nil, fmt.Errorf("this meta is not associated with a model")
 	}
 
-	return http.StatusOK, &model, nil
+	return &model, nil
 }
 
 func GetModelByTag(tag string) (*apiTypes.CausalDecisionModel, error) {
@@ -244,11 +244,10 @@ func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, e
 
 // / GetModelLineage returns the ancestry of a model given its UUID.
 // It retrieves the model and its ancestors in reverse order, starting from the most recent ancestor.
-func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
-	status, modelPtr, err := GetModelByUUID(uuid)
-
+func GetModelLineage(uuid string) ([]apiTypes.CausalDecisionModel, error) {
+	modelPtr, err := GetModelByUUID(uuid)
 	if err != nil {
-		return status, nil, err
+		return nil, err
 	}
 
 	model := *modelPtr
@@ -256,7 +255,7 @@ func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
 	var lineage []apiTypes.CausalDecisionModel
 
 	for model.Addons.ParentUUID != "" {
-		_, parentPtr, err := GetModelByUUID(model.Addons.ParentUUID)
+		parentPtr, err := GetModelByUUID(model.Addons.ParentUUID)
 
 		if err != nil {
 			break
@@ -272,7 +271,7 @@ func GetModelLineage(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
 		lineage[i], lineage[j] = lineage[j], lineage[i]
 	}
 
-	return http.StatusOK, lineage, nil
+	return lineage, nil
 }
 
 // get the children of this model.
@@ -305,7 +304,7 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 func UpdateModelPrivacyByUUID(uuid string, isPublic bool, shares []apiTypes.Share) error {
 	transaction := dbInstance.Begin()
 
-	_, model, err := GetModelByUUID(uuid)
+	model, err := GetModelByUUID(uuid)
 	if err != nil {
 		return err
 	}
@@ -340,7 +339,7 @@ func CreateTransfer(transfer *apiTypes.Transfer) error {
 func DeleteTransfer(transfer *apiTypes.Transfer, accept bool) error {
 	// if accepting, change the model owner
 	if accept {
-		_, model, err := GetModelByUUID(transfer.CDMUUID)
+		model, err := GetModelByUUID(transfer.CDMUUID)
 		if err != nil {
 			return err
 		}
@@ -378,81 +377,79 @@ func sanitizeTag(tag string) string {
 }
 
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
-func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
+func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalDecisionModel, int, error) {
 	var count int64
-	//keep generating UUIDs until a unique one is found
+	// keep generating UUIDs until a unique one is found
 	for {
-		// Generate a UUID for the model.
+		// generate a UUID for the model
 		uuid, err := generateUUID()
 		if err != nil {
-			return http.StatusInternalServerError, fmt.Errorf("could not generate UUID: %s", err.Error())
+			return nil, http.StatusInternalServerError, fmt.Errorf("could not generate UUID: %s", err.Error())
 		}
 		uploadedModel.Meta.UUID = uuid
 
-		// Ensure no other model with the same UUID exists.
+		// ensure no other model with the same UUID exists
 		dbInstance.Model(&apiTypes.Meta{}).Where("uuid = ?", uploadedModel.Meta.UUID).Count(&count)
 		if count == 0 {
 			break
 		}
 	}
 
-	// Generate tag if it is not provided
-	if uploadedModel.Addons.Tag == "" {
-		uploadedModel.Addons.Tag = generateTag(uploadedModel.Meta.Name, uploadedModel.Meta.Version)
-	} else {
-		uploadedModel.Addons.Tag = sanitizeTag(uploadedModel.Addons.Tag)
+	// make sure the tag is set properly and does not conflict
+	uploadedModel.Addons.Tag = generateTag(uploadedModel.Meta.Name, uploadedModel.Meta.Version)
+	dbInstance.Model(&apiTypes.CausalDecisionModel{}).
+		Where("JSON_EXTRACT(addons, '$.tag') = ?", uploadedModel.Addons.Tag).
+		Count(&count)
+	if count > 0 {
+		return nil, http.StatusConflict, fmt.Errorf("tag %s already exists, version may need to be updated", uploadedModel.Addons.Tag)
 	}
 
-	email := uploadedModel.Meta.Creator.Email
+	// make sure the privacy is set correctly
+	uploadedModel.Addons.Shares = nil
+	uploadedModel.Addons.IsPublic = false
 
-	//string is not copied
-	status, user, _ := GetUserByEmail(email)
-	if status != http.StatusOK {
-		return http.StatusConflict, fmt.Errorf("could not find creator: %s", email)
-	}
-	uploadedModel.Meta.Creator = *user
-	uploadedModel.Meta.CreatorID = user.ID
+	// set timestamps
+	uploadedModel.Meta.CreatedAt = time.Now()
+	uploadedModel.Meta.UpdatedAt = time.Now()
 
-	// Begin transaction.
+	// begin transactions
 	transaction := dbInstance.Begin()
 	if transaction.Error != nil {
-		return http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
+		return nil, http.StatusInternalServerError, fmt.Errorf("could not begin transaction: %s", transaction.Error.Error())
 	}
 
-	// Match all UUIDs in the model to existing database IDs where possible
-	// This will ensure that we are not duplicating pre-existing components
-	// but rather reusing them.
+	// match all UUIDs in the model to existing database IDs where possible
+	// this will ensure that we are not duplicating pre-existing components
+	// but rather reusing them
 	if err := matchUUIDsToID(transaction, uploadedModel); err != nil {
 		transaction.Rollback()
-		return http.StatusInternalServerError, err
+		return nil, http.StatusInternalServerError, err
 	}
 
-	// Create meta in transaction; error out on failure.
+	// create meta in transaction, error out on failure
 	if err := transaction.Create(&uploadedModel.Meta).Error; err != nil {
 		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not create model meta: %s", err.Error())
+		return nil, http.StatusInternalServerError, fmt.Errorf("could not create model meta: %s", err.Error())
 	}
 
-	// Create the model in transaction; error out on failure.
+	// create the model in transaction, error out on failure
 	if err := transaction.Create(&uploadedModel).Error; err != nil {
 		transaction.Rollback()
-		return http.StatusInternalServerError, fmt.Errorf("could not create model: %s", err.Error())
+		return nil, http.StatusInternalServerError, fmt.Errorf("could not create model: %s", err.Error())
 	}
 
-	// Commit the transaction; error out if commit fails.
+	// commit the transaction, error out if commit fails
 	if err := transaction.Commit().Error; err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
+		return nil, http.StatusInternalServerError, fmt.Errorf("could not commit transaction: %s", err.Error())
 	}
 
-	return http.StatusCreated, nil
+	return uploadedModel, http.StatusCreated, nil
 }
 
 // UpdateModel encapsulates the GORM functionality for updating a model with its metadata in a transaction. This is a helper method for a PUT to a model.
-//
-//	Currently, for diagrams associated with the model, it creates diagrams that are not already in the database.
-//
+// currently, for diagrams associated with the model, it creates diagrams that are not already in the database.
 // however, for exisitng diagrams, it doesn't change them.
-func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
+func updateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	// Begin transaction.
 	transaction := dbInstance.Begin()
 	if transaction.Error != nil {
@@ -539,90 +536,85 @@ func UpdateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 	return http.StatusCreated, nil
 }
 
-// Database method for PUT to a model.
+// database method for PUT to a model
+// model versions are strings and should be semantic, commit versions are integers and used for internal tracking
 func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, oldModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalDecisionModel, int, error) {
 
-	// Update the model before creating the commit so that on a bad
-	// put, we don't have to roll back the commit.
-	if status, err := UpdateModel(uploadedModel); err != nil {
-		//TODO fix this so that if we get an error here, we roll back the update
-		// Return error based on the UpdateModel function response
+	// Get the next commit version (internal tracking)
+	status, parent, err := GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
+
+	var commitVersion int
+	if status == http.StatusNotFound {
+		commitVersion = 1
+	} else if status == http.StatusInternalServerError {
+		return nil, status, err
+	} else {
+		commitVersion = parent.Version + 1
+	}
+
+	// version should be provided and valid
+	if uploadedModel.Meta.Version == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("model version must be provided")
+	}
+	if uploadedModel.Meta.Version == oldModel.Meta.Version {
+		return nil, http.StatusBadRequest, fmt.Errorf("model version must differ from previous version")
+	}
+
+	// update the tag
+	uploadedModel.Addons.Tag = generateTag(uploadedModel.Meta.Name, uploadedModel.Meta.Version)
+
+	// update the model
+	if status, err := updateModel(uploadedModel); err != nil {
 		return nil, status, err
 	}
 
-	status, changedModel, err := GetModelByUUID(uploadedModel.Meta.UUID)
+	// get the changed model
+	changedModel, err := GetModelByUUID(uploadedModel.Meta.UUID)
 	if err != nil {
-		return nil, status, err
+		return nil, http.StatusNotFound, err
 	}
 
-	//TODO  - remember to lock database for transacitons that can have race conditions for multiple users!
-
-	//there's this edge case with jsondiff for raw JSOn files. Hopefully, we don't have to worry aobut this.
-	//Let's say that the raw JSON of the original JSON file doesn't contain default values.
-	//If we take the raw JSOn, translate it into a Go struct (which definition has default values), change some values (and convert the new struct back to JSON),
-	// and then perform a JSON diff between the original JSON and the new JSON,
-	//then the diff will think that the default values are part of the JSON files.
-
-	//this means that if we actually try to apply the diff on the raw JSON, we will get an error because the default values are not in the raw JSON file.
-
-	//so this shows how changing Go structs and then applying the JSON on their raw JSON forms can be a problem. (The standard way is to apply changes to the raw JSON forms instead)
-	//However, this is not a problem for our purposes, because we only will aplpy the diff when we convert Go structs to raw JSON - not getting raw JSON from somewhere else.
-
-	//get the changed model bytes.
+	// check diff
 	changedModelBytes, err := json.Marshal(changedModel)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
-	//fmt.Printf("Changed model: %s\n", string(changedModelBytes))
-	//get the bytes of the old model
-	oldmodelBytes, err := json.Marshal(oldModel)
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-	//fmt.Println(string(oldmodelBytes))
 
-	//NOTE the RFC 6902 spec for JSON diffs  will not work with any JSON keys that are of value "-"
-	//get the diff between the old and new JSON.
-	diff, err := jsondiff.CompareJSON(oldmodelBytes, changedModelBytes, jsondiff.Invertible())
-
+	oldModelBytes, err := json.Marshal(oldModel)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
 
-	//time to create the commit object for GORM to save to our database.
-	var commit apiTypes.Commit
-
-	commit.CDMUUID = uploadedModel.Meta.UUID
+	diff, err := jsondiff.CompareJSON(oldModelBytes, changedModelBytes, jsondiff.Invertible())
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
 
 	if diff.String() == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("no changes made to model")
 	}
-	// Marshal the diff to JSON, so we can convert it to a string to store in the database.
+
 	jsonData, err := json.Marshal(diff)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
 
+	// create commit with auto-incremented version
+	var commit apiTypes.Commit
+	commit.CDMUUID = uploadedModel.Meta.UUID
 	commit.Diff = string(jsonData)
 	commit.UserID = uploadedModel.Meta.Creator.ID
-
-	status, parent, err := GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
-
-	//if there's no latest commit for this model, this must be the first.
+	commit.Version = commitVersion
 	if status == http.StatusNotFound {
-		commit.ParentCommitID = ""
-		commit.Version = 1
-	} else if status == http.StatusInternalServerError {
-		return nil, status, err
-
+		commit.ParentCommitID = -1
 	} else {
-		commit.ParentCommitID = fmt.Sprintf("%d", parent.ID)
-		commit.Version = parent.Version + 1
+		commit.ParentCommitID = parent.ID
 	}
-	//finally, create the commit that we made.
+
 	if status, err := CreateCommit(&commit); err != nil {
 		return nil, status, err
 	}
+
 	return changedModel, http.StatusOK, nil
 }
 
@@ -706,15 +698,15 @@ func CreateCommit(uploadedCommit *apiTypes.Commit) (int, error) {
 }
 
 // GetUserByID encapsulates the GORM functionality for getting a user by their ID
-func GetUserByID(id int) (int, *apiTypes.User, error) {
+func GetUserByID(id int) (*apiTypes.User, error) {
 	var user apiTypes.User
 
 	// Find the user record with the given ID.
 	if err := dbInstance.Where("id = ?", id).First(&user).Error; err != nil {
-		return http.StatusNotFound, nil, fmt.Errorf("user with id %d not found", id)
+		return nil, fmt.Errorf("user with id %d not found", id)
 	}
 
-	return http.StatusOK, &user, nil
+	return &user, nil
 }
 
 func GetUserByEmail(email string) (int, *apiTypes.User, error) {

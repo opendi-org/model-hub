@@ -78,10 +78,10 @@ func TestGetModelByUUID(t *testing.T) {
 	}
 
 	//get the first model in the database
-	status, model, err := GetModelByUUID(models[0].Meta.UUID)
+	model, err := GetModelByUUID(models[0].Meta.UUID)
 
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	if err != nil {
+		t.Errorf("Expected to not find model, err: %s", err)
 	}
 
 	if len(model.Meta.UUID) != 36 {
@@ -91,10 +91,10 @@ func TestGetModelByUUID(t *testing.T) {
 	//not the UUID
 	anotherUUID := model.Meta.UUID + "1"
 
-	status, _, err = GetModelByUUID(anotherUUID)
+	_, err = GetModelByUUID(anotherUUID)
 
-	if status != http.StatusNotFound {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusNotFound, status, err)
+	if err == nil {
+		t.Errorf("Expected to not find model, err: %s", err)
 	}
 
 }
@@ -118,7 +118,7 @@ func TestCreateModel(t *testing.T) {
 	CreateExampleData()
 
 	// There should be a user with id 2. Retrieve it.
-	_, user, _ := GetUserByID(1)
+	user, _ := GetUserByID(1)
 
 	// Ensure the user is not nil
 	if user == nil {
@@ -130,7 +130,7 @@ func TestCreateModel(t *testing.T) {
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6f",
-		Name:          "Test Model",
+		Name:          "New Model",
 		Summary:       "This is a test model",
 		Documentation: nil,
 		Version:       "1.0",
@@ -152,17 +152,17 @@ func TestCreateModel(t *testing.T) {
 		Diagrams:  nil,
 	}
 
-	status, err := CreateModel(&model)
+	_, status, err := CreateModel(&model)
 	if status != http.StatusCreated {
 		t.Errorf("Expected status %d, got %d, err: %s", http.StatusCreated, status, err)
 	}
 
 	var model2 *apiTypes.CausalDecisionModel
 
-	status, model2, err = GetModelByUUID(model.Meta.UUID)
+	model2, err = GetModelByUUID(model.Meta.UUID)
 
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	if err != nil {
+		t.Errorf("Expected to find model, err: %s", err)
 	}
 
 	if model.Meta.UUID != model2.Meta.UUID {
@@ -200,9 +200,9 @@ func TestGetModelLineage(t *testing.T) {
 	//example model is a parent-child pair.
 	CreateExampleData()
 
-	ret, models, error := GetModelLineage("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e")
-	if ret != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
+	models, err := GetModelLineage("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e")
+	if err != nil {
+		t.Errorf("Expected to find model lineage, err: %s", err)
 	}
 	if len(models) != 1 {
 		t.Errorf("Expected 1 parent model, got %d", len(models))
@@ -348,7 +348,7 @@ func TestCreateModelGivenEmail(t *testing.T) {
 	//note that:
 	//model.Meta gets a COPY of the previous meta object, meaning they are two separate Meta instances in memory.
 
-	status, err := CreateModel(&model)
+	_, status, err := CreateModel(&model)
 
 	if status != http.StatusCreated {
 		t.Fatalf("There was an error when creating the model given the email. Status: %d Error:%s", status, err.Error())
@@ -380,7 +380,7 @@ func TestCreateModelGivenEmail(t *testing.T) {
 	//fmt.Println("This was the email for the creator: ", model.Meta.Creator.Email)
 
 	// grfreema NOTE: check err state here
-	status, err = CreateModel(&model)
+	_, status, _ = CreateModel(&model)
 
 	if status != http.StatusConflict {
 		t.Fatalf("There was an error when creating the model given the email. Status: %d", status)
@@ -474,12 +474,12 @@ func TestGetAllCommits(t *testing.T) {
 	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
 		expectedModel = models[1]
 	}
-	//prevSummary := expectedModel.Meta.Summary
+
 	// Create a commit
 	expectedModel.Meta.Summary = "changed!"
+	expectedModel.Meta.Version = "2.0"
 
-	// grfreema NOTE: check status state here
-	status, oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
+	oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
 
 	changedModel, status, err := UpdateModelAndCreateCommit(&expectedModel, oldModel)
 
@@ -494,8 +494,8 @@ func TestGetAllCommits(t *testing.T) {
 	if len(commits) != 1 {
 		t.Errorf("Expected 1 commit, got %d", len(commits))
 	}
-	if commits[0].ParentCommitID != "" {
-		t.Errorf("Expected parent commit ID to be empty, got %s", commits[0].ParentCommitID)
+	if commits[0].ParentCommitID != -1 {
+		t.Errorf("Expected parent commit ID to be -1, got %d", commits[0].ParentCommitID)
 	}
 
 	//try applying diff to get first model.
@@ -595,7 +595,7 @@ func TestMatchUUIDToID(t *testing.T) {
 		transaction.Rollback()
 		t.Errorf("Error matching UUIDs to ID: %s", err)
 	}
-	_, err = CreateModel(&model4)
+	_, _, err = CreateModel(&model4)
 	if err != nil {
 		t.Errorf("Error creating model: %s", err)
 	}
@@ -631,18 +631,19 @@ func TestGetCommitById(t *testing.T) {
 	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
 		expectedModel = models[1]
 	}
-	//prevSummary := expectedModel.Meta.Summary
+
 	// Create a commit
 	expectedModel.Meta.Summary = "changed!"
+	expectedModel.Meta.Version = "2.0"
 
-	_, oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
+	oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
 
 	// grfreema NOTE: check err state here
-	_, status, err = UpdateModelAndCreateCommit(&expectedModel, oldModel)
+	_, _, _ = UpdateModelAndCreateCommit(&expectedModel, oldModel)
 
 	// grfreema NOTE: check err state here
 	//get the commit
-	_, commits, err := GetAllCommits()
+	_, commits, _ := GetAllCommits()
 
 	commit := commits[0]
 
@@ -675,11 +676,12 @@ func TestUpdateModelAndCreateCommit(t *testing.T) {
 	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
 		expectedModel = models[1]
 	}
-	//prevSummary := expectedModel.Meta.Summary
+
 	// Create a commit
 	expectedModel.Meta.Summary = "changed!"
+	expectedModel.Meta.Version = "2.0"
 
-	_, oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
+	oldModel, _ := GetModelByUUID(expectedModel.Meta.UUID)
 
 	newmodel, status, err := UpdateModelAndCreateCommit(&expectedModel, oldModel)
 
@@ -701,14 +703,14 @@ func TestUpdateModelAndCreateCommit(t *testing.T) {
 
 	// grfreema NOTE: check status and err states
 	// get latest commit
-	status, commit, err := GetLatestCommitForModelUUID(expectedModel.Meta.UUID)
+	_, commit, _ := GetLatestCommitForModelUUID(expectedModel.Meta.UUID)
 
 	//commit version should be 2, parent should not be ""
 	if commit.Version != 2 {
 		t.Errorf("Expected commit version 2, got %d", commit.Version)
 	}
-	if commit.ParentCommitID == "" {
-		t.Errorf("Expected parent commit ID to be not empty, got %s", commit.ParentCommitID)
+	if commit.ParentCommitID == -1 {
+		t.Errorf("Expected parent commit ID to not be -1, got %d", commit.ParentCommitID)
 	}
 
 }
@@ -758,7 +760,7 @@ func TestUpdateModelPrivacyByUUID(t *testing.T) {
 	assert.NoError(t, err)
 
 	// make sure the model was updated
-	_, model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.NoError(t, err)
 	assert.Equal(t, true, model.Addons.IsPublic)
 	assert.Equal(t, 1, len(model.Addons.Shares))
@@ -827,7 +829,7 @@ func TestDeleteTransferAccept(t *testing.T) {
 	assert.NoError(t, err)
 
 	// ownership should have changed
-	_, model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.NoError(t, err)
 	assert.Equal(t, 2, model.Addons.OwnerID)
 
@@ -856,7 +858,7 @@ func TestDeleteTransferDecline(t *testing.T) {
 	assert.NoError(t, err)
 
 	// ownership should not have changed
-	_, model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	model, err := GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, model.Addons.OwnerID)
 

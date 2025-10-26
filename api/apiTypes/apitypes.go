@@ -96,7 +96,7 @@ type User struct {
 
 type Commit struct {
 	ID             int       `gorm:"primaryKey" json:"-"`
-	ParentCommitID string    `json:"parentCommitID"`
+	ParentCommitID int       `json:"parentCommitID"`
 	Diff           string    `json:"diff"`
 	UserID         int       `json:"userid"`
 	CDMUUID        string    `json:"cdmuuid"`

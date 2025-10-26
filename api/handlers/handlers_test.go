@@ -84,8 +84,7 @@ func SetUpRouter() *gin.Engine {
 		models.GET("", modelHandler.GetModels)              // Get all models
 		models.GET("/:uuid", modelHandler.GetModelByUUID)   // Get a model by UUID
 		models.GET("/tag/:tag", modelHandler.GetModelByTag) // Get a model by tag
-		models.POST("", modelHandler.UploadModel)           // Upload a model
-		models.PUT("", modelHandler.PutModel)               // Update a model
+		models.POST("", modelHandler.UploadModel)           // Update or create a model
 		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
@@ -159,6 +158,7 @@ func TestGetModelByTag(t *testing.T) {
 	assert.Equal(t, "Test Model", response.Meta.Name)
 }
 
+// TODO: rewrite this test (functionality is now different + need to be authorized)
 func TestUploadModel(t *testing.T) {
 	database.ResetTables()
 
@@ -260,45 +260,7 @@ func TestModelSearch(t *testing.T) {
 	assert.Error(t, err3)
 }
 
-func TestPutModel(t *testing.T) {
-	database.ResetTables()
-	database.CreateExampleData()
-
-	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
-	if err != nil {
-		t.Errorf("Error reading test data: %s", err)
-
-	}
-
-	// update the example model with the updated example model.
-	reqBody := bytes.NewBuffer(example)
-	req, _ := http.NewRequest("PUT", "/v0/models", reqBody)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusCreated, w.Code)
-
-	// try to update with a Nil - should return bad request
-	req2, _ := http.NewRequest("PUT", "/v0/models", nil)
-	req2.Header.Set("Content-Type", "application/json")
-	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, req2)
-
-	assert.Equal(t, http.StatusBadRequest, w2.Code)
-
-	// try to update with a model currently not in the database.
-	model4, _ := os.ReadFile("../test_files/model4.json")
-	req3Body := bytes.NewBuffer(model4)
-	req3, _ := http.NewRequest("PUT", "/v0/models", req3Body)
-	req3.Header.Set("Content-Type", "application/json")
-	w3 := httptest.NewRecorder()
-	router.ServeHTTP(w3, req3)
-
-	assert.Equal(t, http.StatusNotFound, w3.Code)
-
-}
-
+// TODO: rewrite this test (functionality is now different)
 func TestGetAllCommits(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleData()
@@ -306,21 +268,12 @@ func TestGetAllCommits(t *testing.T) {
 	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
 	if err != nil {
 		t.Errorf("Error reading test data: %s", err)
-
 	}
 
 	example2, err := os.ReadFile("../test_files/updatedExampleModel2.json")
 	if err != nil {
 		t.Errorf("Error reading test data: %s", err)
-
 	}
-
-	//Need to have the user be created in order for this to work, so
-	//we can log the user in
-	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
-	req1.Header.Set("Content-Type", "application/json")
-	w1 := httptest.NewRecorder()
-	router.ServeHTTP(w1, req1)
 
 	//test get all commits  when no models have been updated yet.
 	req3, _ := http.NewRequest("GET", "/v0/commits", nil)
@@ -430,7 +383,7 @@ func TestGetVersionOfModel(t *testing.T) {
 	byteReturnedModel, _ := json.Marshal(returnedModel)
 	strReturnedModel := string(byteReturnedModel)
 
-	_, model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	bytemodel, _ := json.Marshal(model)
 	strmodel := string(bytemodel)
 
@@ -848,7 +801,7 @@ func TestDeleteTransferAccept(t *testing.T) {
 	transfer, err := database.GetTransferByModelUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.Nil(t, transfer)
 	assert.Error(t, err)
-	_, model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.Equal(t, 2, model.Addons.OwnerID)
 }
 
@@ -878,7 +831,7 @@ func TestDeleteTransferDecline(t *testing.T) {
 	transfer, err := database.GetTransferByModelUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.Nil(t, transfer)
 	assert.Error(t, err)
-	_, model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
 	assert.Equal(t, 1, model.Addons.OwnerID)
 }
 

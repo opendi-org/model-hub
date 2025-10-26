@@ -102,8 +102,7 @@ func main() {
 		models.GET("", modelHandler.GetModels)              // Get all models
 		models.GET("/:uuid", modelHandler.GetModelByUUID)   // Get a model by UUID
 		models.GET("/tag/:tag", modelHandler.GetModelByTag) // Get a model by tag
-		models.POST("", modelHandler.UploadModel)           // Upload a model
-		models.PUT("", modelHandler.PutModel)               // Update a model
+		models.POST("", modelHandler.UploadModel)           // Update or create a model
 
 		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
