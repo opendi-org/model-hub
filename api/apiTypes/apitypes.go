@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// CDM structs. TODO update with Isaac Kellog's newest CDM json defs.
 type CausalDecisionModel struct {
 	ID             int             `gorm:"primaryKey" json:"-"`
 	CreatedAt      time.Time       `json:"-"`
@@ -30,7 +29,7 @@ type Meta struct {
 	ID            int             `gorm:"primaryKey" json:"-"`
 	CreatedAt     time.Time       `json:"-"`
 	UpdatedAt     time.Time       `json:"-"`
-	UUID          string          `gorm:"unique" json:"uuid"`
+	UUID          string          `gorm:"unique" json:"UUID"`
 	Name          string          `gorm:"index:idx_name_summary,class:FULLTEXT" json:"name,omitempty"`
 	Summary       string          `gorm:"index:idx_name_summary,class:FULLTEXT" json:"summary,omitempty"`
 	Documentation json.RawMessage `json:"documentation,omitempty"`
@@ -95,13 +94,13 @@ type User struct {
 }
 
 type Commit struct {
-	ID             int       `gorm:"primaryKey" json:"-"`
-	ParentCommitID int       `json:"parentCommitID"`
-	Diff           string    `json:"diff"`
-	UserID         int       `json:"userid"`
-	CDMUUID        string    `json:"cdmuuid"`
-	CreatedAt      time.Time `json:"CreatedAt"`
-	Version        int       `json:"version"`
+	ID        int       `gorm:"primaryKey" json:"-"`
+	ParentID  int       `json:"parentID"`
+	Diff      string    `json:"diff"`
+	UserID    int       `json:"userID"`
+	CDMUUID   string    `json:"cdmUUID"`
+	CreatedAt time.Time `json:"createdAt"`
+	Version   string    `json:"version"`
 }
 
 type Share struct {
@@ -199,5 +198,5 @@ func (u User) Equals(other User) bool {
 
 // testing functionality for Commit equal with other Commit.
 func (c Commit) Equals(other Commit) bool {
-	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID && c.Diff == other.Diff && c.UserID == other.UserID
+	return c.ParentID == other.ParentID && c.CDMUUID == other.CDMUUID && c.Diff == other.Diff && c.UserID == other.UserID
 }

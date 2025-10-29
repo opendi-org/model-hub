@@ -35,10 +35,6 @@ import (
 type ModelHandler struct {
 }
 
-// CommitHandler struct for handling commit requests
-type CommitHandler struct {
-}
-
 // AuthHandler struct for handling user login/auth requests
 type AuthHandler struct {
 	googleConfig *oauth2.Config
@@ -47,11 +43,6 @@ type AuthHandler struct {
 // method for getting an instance of ModelHandler
 func NewModelHandler() (*ModelHandler, error) {
 	return &ModelHandler{}, nil
-}
-
-// method for getting an instance of CommitHandler
-func NewCommitHandler() (*CommitHandler, error) {
-	return &CommitHandler{}, nil
 }
 
 // method for getting an instance of AuthHandler
@@ -174,11 +165,11 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 // @Summary      Handle Google OAuth callback
 // @Description  Processes Callback and returns user info
 // @Tags         auth
-// @Param        code   query  string  true  "Authorization code from Google"
-// @Param        state  query  string  true  "Random state token from login"
-// @Success      200 {object} gin.H "Success with body containing user info"
-// @Failure      400 {object} gin.H "Bad Request"
-// @Failure      500 {object} gin.H "Internal Server Error"
+// @Param        code   query
+// @Param        state  query
+// @Success      200
+// @Failure      400
+// @Failure      500
 // @Router       /auth/google/callback [get]
 func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	code := c.Query("code")
@@ -324,7 +315,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 // GetModelPrivacy godoc
 // @Summary      Get privacy settings for model
-// @Description  get privacy settings for model
+// @Description  Get privacy settings for model
 // @Tags         models
 // @Produce      json
 // @Success      200
@@ -365,7 +356,7 @@ func (h *ModelHandler) GetModelPrivacy(c *gin.Context) {
 
 // PutModelPrivacy godoc
 // @Summary      Get privacy settings for model
-// @Description  get privacy settings for model
+// @Description  Get privacy settings for model
 // @Tags         models
 // @Produce      json
 // @Success      200
@@ -433,7 +424,7 @@ func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
 
 // GetTransfer godoc
 // @Summary      Get ownership transfer request for model
-// @Description  get ownership transfer request for model
+// @Description  Get ownership transfer request for model
 // @Tags         models
 // @Produce      json
 // @Success      200
@@ -469,7 +460,7 @@ func (h *ModelHandler) GetTransfer(c *gin.Context) {
 
 // PostTransfer godoc
 // @Summary      Create ownership transfer request for model
-// @Description  create ownership transfer request for model
+// @Description  Create ownership transfer request for model
 // @Tags         models
 // @Produce      json
 // @Success      200
@@ -537,7 +528,7 @@ func (h *ModelHandler) PostTransfer(c *gin.Context) {
 
 // DeleteTransfer godoc
 // @Summary      Accept/decline ownership transfer request for model
-// @Description  accept/decline ownership transfer request for model
+// @Description  Accept/decline ownership transfer request for model
 // @Tags         models
 // @Success      200
 // @Failure      400
@@ -591,7 +582,7 @@ func (h *ModelHandler) DeleteTransfer(c *gin.Context) {
 
 // GetModels godoc
 // @Summary      Get all models
-// @Description  gets all models
+// @Description  Gets all models
 // @Tags         models
 // @Produce      json
 // @Success      200
@@ -607,8 +598,8 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 }
 
 // GetModelByUUID godoc
-// @Summary      Get model by its uuid
-// @Description  gets models using its uuid
+// @Summary      Get model by its UUID
+// @Description  Get model by its UUID
 // @Tags         models
 // @Accept       json
 // @Produce      json
@@ -633,7 +624,7 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 
 // GetModelByTag godoc
 // @Summary      Get model by its tag
-// @Description  gets models using its tag
+// @Description  Get model by its tag
 // @Tags         models
 // @Accept       json
 // @Produce      json
@@ -654,6 +645,18 @@ func (h *ModelHandler) GetModelByTag(c *gin.Context) {
 	c.JSON(http.StatusOK, model)
 }
 
+// UploadModel godoc
+// @Summary      Creates or updates a model
+// @Description  Creates or updates a model
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Success      200
+// @Failure      400
+// @Failure      401
+// @Failure      403
+// @Failure      500
+// @Router       /v0/models [post]
 func (h *ModelHandler) UploadModel(c *gin.Context) {
 	var uploadedModel apiTypes.CausalDecisionModel
 
@@ -673,14 +676,10 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 
 	if uploadedModel.Meta.UUID != "" {
 		// either the model already exists or the user has provided one (which we should ignore and create another one)
-		if retrievedModel, err := database.GetModelByUUID(uploadedModel.Meta.UUID); err != nil {
+		var retrievedModel *apiTypes.CausalDecisionModel
+		if retrievedModel, err = database.GetModelByUUID(uploadedModel.Meta.UUID); err != nil {
 			// the user provided a UUID that does not match any model in the system, make a new one and ignore the old UUID
-			uploadedModel.Addons.OwnerID = actingUserID
-			resultModel, status, err = database.CreateModel(&uploadedModel)
-			if err != nil {
-				c.JSON(status, gin.H{"error": err.Error()})
-				return
-			}
+			resultModel, status, err = database.CreateModel(&uploadedModel, actingUserID)
 		} else {
 			// we found a model with a matching UUID, make sure the user has permissions to update
 			canWrite := retrievedModel.Addons.OwnerID == actingUserID
@@ -697,203 +696,99 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 				return
 			}
 			// user has permissions to udpate this model, so create a commit
-			resultModel, status, err = database.UpdateModelAndCreateCommit(&uploadedModel, retrievedModel)
-			if err != nil {
-				c.JSON(status, gin.H{"error": err.Error()})
-				return
-			}
+			resultModel, status, err = database.UpdateModelAndCreateCommit(&uploadedModel, retrievedModel, actingUserID)
 		}
 	} else {
 		// a UUID was not provided, we assume this means we are creating a new model
-		uploadedModel.Addons.OwnerID = actingUserID
-		resultModel, status, err = database.CreateModel(&uploadedModel)
-		if err != nil {
-			c.JSON(status, gin.H{"error": err.Error()})
-			return
-		}
+		resultModel, status, err = database.CreateModel(&uploadedModel, actingUserID)
+	}
+	if err != nil {
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, resultModel)
 }
 
-// GetCommits godoc
-// @Summary      Get all commits
-// @Description  gets all commits
-// @Tags         commits
-// @Produce      json
-// @Success      200
-// @Failure      500
-// @Router       /v0/commits/ [get]
-func (h *CommitHandler) GetCommits(c *gin.Context) {
-	//TODO remove this API. No real need for it.
-	status, models, err := database.GetAllCommits()
-	if err != nil {
-		c.JSON(status, gin.H{"Error": err.Error()})
-		return
-	}
-	c.JSON(status, models)
-}
-
-func (h *CommitHandler) GetLatestCommitByModelUUID(c *gin.Context) {
-	uuid := c.Param("uuid")
-
-	// Call the encapsulated GetModelByUUID function from the database package
-	status, commit, err := database.GetLatestCommitForModelUUID(uuid)
-	if err != nil {
-		// If error, return an appropriate response based on the error
-		c.JSON(status, gin.H{"Error": err.Error()})
-		return
-	}
-
-	// Return the commit if found
-	c.JSON(status, commit)
-}
-
-// doesn't do anything to the database, but just returns the version of the model associated with the commit version
-
 // GetVersionOfModel godoc
 // @Summary      Get version of model
-// @Description  gets models using its uuid
+// @Description  Get version of model
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid path string true "Model UUID"
-// @Param        version path string true "Model Version"
+// @Param        uuid
+// @Param        version
 // @Success      200
-// @Failure      404 {object} gin.H "Model not found"
-// @Failure      500 {object} gin.H "Internal Server Error"
+// @Failure      404
+// @Failure      500
 // @Router       /v0/models/version/{uuid}/{version} [get]
 func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
-	strVersion := c.Param("version")
+	version := c.Param("version")
 	uuid := c.Param("uuid")
-	version, err := strconv.Atoi(strVersion)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
-		return
-	}
-	//get latest version of model.
+
+	// get latest version of model
 	latestVersionOfModel, err := database.GetModelByUUID(uuid)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	//get latest commit for model UUID.
-	status, commit, err := database.GetLatestCommitForModelUUID(uuid)
-	if version == 0 && status == http.StatusNotFound {
+
+	if latestVersionOfModel.Meta.Version == version {
 		c.JSON(http.StatusOK, latestVersionOfModel)
 		return
 	}
+
+	// get the latest commit; if there isnt one, we are working with a model that has not been updated
+	latestCommit, err := database.GetLatestCommitForModelUUID(uuid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-		return
-	}
-	//if the version requested is the latest version of the model, just return.
-	if version == commit.Version {
-		c.JSON(http.StatusOK, latestVersionOfModel)
-		return
-	}
-	//if the version requested is greater than the latest version of the model, return error.
-	if version > commit.Version {
-		c.JSON(http.StatusConflict, gin.H{"Error": "Version requested is greater than the latest version"})
-		return
-	}
-	if version < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": "Version requested is less than 0"})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	currVersion := commit.Version
-	currCommit := commit
+	currCommit := latestCommit
+	currModelBytes, _ := json.Marshal(latestVersionOfModel)
 
-	currModelBytes, err := json.Marshal(latestVersionOfModel)
-
-	if err != nil {
-		// Return error based on the UpdateModel function response
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-		return
-	}
-
-	// loop through the commits until we reach the version we want.
-	// we need to apply the diff to the model in reverse order, so we start with the latest commit and go backwards.
+	// we need to apply the diff to the model in reverse order, so we start with the latest commit and go backwards
 	for {
-		diff := []byte(currCommit.Diff)
-		modified, err := jsonDiffHelpers.ApplyInvertedPatch(currModelBytes, diff)
+		currModelBytes, err = jsonDiffHelpers.ApplyInvertedPatch(currModelBytes, []byte(currCommit.Diff))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		//reset variables for next iteration of applying patches
-		currModelBytes = modified
-		currVersion--
-		parentId := currCommit.ParentCommitID
-
-		//if we reach the version we want, return the model
-		if currVersion <= version {
+		// if we reach the version we want, return the model
+		if currCommit.Version == version {
+			break
+		}
+		if currCommit.ParentID == -1 {
 			break
 		}
 
-		if parentId == -1 {
-			c.JSON(http.StatusInternalServerError, "No parent ID") //if we encounter a null parent id, return error.
-			return
-		}
-
-		_, currCommit, _ = database.GetCommitByID(int(parentId))
+		_, currCommit, _ = database.GetCommitByID(currCommit.ParentID)
 	}
 
 	finalModel := apiTypes.CausalDecisionModel{}
 	if err := json.Unmarshal(currModelBytes, &finalModel); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if finalModel.Meta.Version != version {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model does not have version: %s", version)})
 		return
 	}
 	c.JSON(http.StatusOK, finalModel)
 
 }
 
-/* //ERIC - we only needed this for testing.
-// UploadCommit godoc
-// @Summary      Upload a new commit
-// @Description  Uploads a commit
-// @Tags         commits
-// @Accept       json
-// @Produce      json
-// @Param        model  body  apiTypes.Commit  true  "Commit Payload"
-// @Success      201 {object} apiTypes.Commit "Created Commit"
-// @Failure      400 {object} gin.H "Bad Request"
-// @Failure      409 {object} gin.H "Conflict: Commit with same UUID already exists"
-// @Failure      500 {object} gin.H "Internal Server Error"
-// @Router       /v0/commits/ [post]
-func (h *CommitHandler) UploadCommit(c *gin.Context) {
-	var uploadedCommit apiTypes.Commit
-
-	// Bind the JSON payload to the uploaded commit struct
-	if err := c.ShouldBindJSON(&uploadedCommit); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
-		return
-	}
-
-	// Call the encapsulated CreateCommit method from the database package
-	if status, err := database.CreateCommit(&uploadedCommit); err != nil {
-		// Return error based on the CreateCommit function response
-		c.JSON(status, gin.H{"Error": err.Error()})
-		return
-	}
-
-	// Return a successful response if commit creation is successful
-	c.JSON(http.StatusCreated, uploadedCommit)
-}
-*/
-
 // GetModelLineage godoc
 // @Summary      Get model lineage
-// @Description  gets models using its uuid
+// @Description  Get model lineage
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid path string true "Model UUID"
+// @Param        uuid
 // @Success      200
-// @Failure      404 {object} gin.H "Model not found"
+// @Failure      404
 // @Router       /v0/models/lineage/{uuid} [get]
-
 func (h *ModelHandler) GetModelLineage(c *gin.Context) {
 	uuid := c.Param("uuid")
 	lineage, err := database.GetModelLineage(uuid)
@@ -962,24 +857,49 @@ func (h *ModelHandler) ModelSearch(c *gin.Context) {
 
 // GetCommitsByModelUUID godoc
 // @Summary      Get all commits for a model
-// @Description  gets all commits for a specific model by its UUID
-// @Tags         commits
+// @Description  Get all commits for a model
+// @Tags         models
 // @Produce      json
-// @Param        uuid path string true "Model UUID"
+// @Param        uuid
 // @Success      200
-// @Failure      404 {object} gin.H "Commits not found"
-// @Router       /v0/commits/model/{uuid} [get]
-func (h *CommitHandler) GetCommitsByModelUUID(c *gin.Context) {
+// @Failure      404
+// @Router       /v0/models/commits/{uuid} [get]
+func (h *ModelHandler) GetCommitsByModelUUID(c *gin.Context) {
 	uuid := c.Param("uuid")
 
 	// Call the database function to get all commits for the model
-	status, commits, err := database.GetCommitsByModelUUID(uuid)
+	commits, err := database.GetCommitsByModelUUID(uuid)
 	if err != nil {
 		// If error, return an appropriate response
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
 		return
 	}
 
 	// Return the commits if found
-	c.JSON(status, commits)
+	c.JSON(http.StatusOK, commits)
+}
+
+// GetLatestCommitByModelUUID godoc
+// @Summary      Get latest commit for a model
+// @Description  Get latest commit for a model
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        uuid
+// @Success      200
+// @Failure      404
+// @Router       /v0/models/commmits/latest/{uuid} [get]
+func (h *ModelHandler) GetLatestCommitByModelUUID(c *gin.Context) {
+	uuid := c.Param("uuid")
+
+	// Call the encapsulated GetModelByUUID function from the database package
+	commit, err := database.GetLatestCommitForModelUUID(uuid)
+	if err != nil {
+		// If error, return an appropriate response based on the error
+		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+		return
+	}
+
+	// Return the commit if found
+	c.JSON(http.StatusOK, commit)
 }

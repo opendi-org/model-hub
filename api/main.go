@@ -62,13 +62,10 @@ func main() {
 	//initialize handler
 	modelHandler, _ := handlers.NewModelHandler()
 
-	// grfreema NOTE: Replace with actual client id and secret
 	authHandler, _ := handlers.NewAuthHandler(
 		os.Getenv("GOOGLE_CLIENT_ID"),
 		os.Getenv("GOOGLE_CLIENT_SECRET"),
 	)
-
-	commitHandler, err := handlers.NewCommitHandler()
 
 	// TODO fix this logic
 	// Handle any errors that occur during initialization of the API endpoint handling logic
@@ -99,29 +96,21 @@ func main() {
 		// Or even worse, a trusted unrelated site could be compromised with a script (from an ad service or similar), and that script could start making calls to your-bank.com without you knowing about it, and if you happened to be logged in from earlier, it would just use those credentials.
 		// With CORS, your-bank.com would just reject the requests.
 
-		models.GET("", modelHandler.GetModels)              // Get all models
-		models.GET("/:uuid", modelHandler.GetModelByUUID)   // Get a model by UUID
-		models.GET("/tag/:tag", modelHandler.GetModelByTag) // Get a model by tag
-		models.POST("", modelHandler.UploadModel)           // Update or create a model
-
+		models.GET("", modelHandler.GetModels)
+		models.POST("", modelHandler.UploadModel)
+		models.GET("/:uuid", modelHandler.GetModelByUUID)
+		models.GET("/tag/:tag", modelHandler.GetModelByTag)
+		models.GET("/commits/:uuid", modelHandler.GetCommitsByModelUUID)
+		models.GET("/commits/latest/:uuid", modelHandler.GetLatestCommitByModelUUID)
 		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
-		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
+		models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
 		models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
 		models.PUT("/privacy/:uuid", modelHandler.PutModelPrivacy)
 		models.GET("/transfer/:uuid", modelHandler.GetTransfer)
 		models.POST("/transfer/:uuid", modelHandler.PostTransfer)
 		models.DELETE("/transfer/:uuid", modelHandler.DeleteTransfer)
-	}
-
-	//router group for all endpoints related to models
-	commits := router.Group("/v0/commits")
-	{
-		commits.GET("", commitHandler.GetCommits) // Get all commits
-		commits.GET("/:uuid", commitHandler.GetLatestCommitByModelUUID)
-		commits.GET("/model/:uuid", commitHandler.GetCommitsByModelUUID)
-		//commits.POST("", commitHandler.UploadCommit) // Create a commit (for testing)
 	}
 
 	auth := router.Group("/auth")

@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"opendi/model-hub/api/apiTypes"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -364,20 +363,8 @@ func generateTag(name, version string) string {
 	return fmt.Sprintf("%s:%s", strings.ReplaceAll(strings.ToLower(name), " ", "-"), version)
 }
 
-func sanitizeTag(tag string) string {
-	parts := strings.Split(tag, ":")
-	if len(parts) < 2 {
-		return generateTag(tag, "0.0")
-	}
-	parts = parts[0:2]
-	if match, _ := regexp.MatchString(`^[0-9]+(\.[0-9]+)*$`, parts[1]); !match {
-		return generateTag(parts[0], "0.0")
-	}
-	return generateTag(parts[0], parts[1])
-}
-
 // CreateModel encapsulates the GORM functionality for creating a model with its metadata in a transaction
-func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalDecisionModel, int, error) {
+func CreateModel(uploadedModel *apiTypes.CausalDecisionModel, creatorID int) (*apiTypes.CausalDecisionModel, int, error) {
 	var count int64
 	// keep generating UUIDs until a unique one is found
 	for {
@@ -404,13 +391,25 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalD
 		return nil, http.StatusConflict, fmt.Errorf("tag %s already exists, version may need to be updated", uploadedModel.Addons.Tag)
 	}
 
+	retrievedUser, err := GetUserByEmail(uploadedModel.Meta.Creator.Email)
+	if err != nil {
+		uploadedModel.Meta.Creator.ID = creatorID
+		uploadedModel.Meta.CreatorID = creatorID
+	} else {
+		uploadedModel.Meta.Creator.ID = retrievedUser.ID
+		uploadedModel.Meta.CreatorID = retrievedUser.ID
+	}
+
 	// make sure the privacy is set correctly
 	uploadedModel.Addons.Shares = nil
 	uploadedModel.Addons.IsPublic = false
+	uploadedModel.Addons.OwnerID = creatorID
 
 	// set timestamps
 	uploadedModel.Meta.CreatedAt = time.Now()
 	uploadedModel.Meta.UpdatedAt = time.Now()
+	uploadedModel.CreatedAt = time.Now()
+	uploadedModel.UpdatedAt = time.Now()
 
 	// begin transactions
 	transaction := dbInstance.Begin()
@@ -431,6 +430,8 @@ func CreateModel(uploadedModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalD
 		transaction.Rollback()
 		return nil, http.StatusInternalServerError, fmt.Errorf("could not create model meta: %s", err.Error())
 	}
+
+	uploadedModel.MetaID = uploadedModel.Meta.ID
 
 	// create the model in transaction, error out on failure
 	if err := transaction.Create(&uploadedModel).Error; err != nil {
@@ -538,19 +539,7 @@ func updateModel(uploadedModel *apiTypes.CausalDecisionModel) (int, error) {
 
 // database method for PUT to a model
 // model versions are strings and should be semantic, commit versions are integers and used for internal tracking
-func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, oldModel *apiTypes.CausalDecisionModel) (*apiTypes.CausalDecisionModel, int, error) {
-
-	// Get the next commit version (internal tracking)
-	status, parent, err := GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
-
-	var commitVersion int
-	if status == http.StatusNotFound {
-		commitVersion = 1
-	} else if status == http.StatusInternalServerError {
-		return nil, status, err
-	} else {
-		commitVersion = parent.Version + 1
-	}
+func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, oldModel *apiTypes.CausalDecisionModel, updaterID int) (*apiTypes.CausalDecisionModel, int, error) {
 
 	// version should be provided and valid
 	if uploadedModel.Meta.Version == "" {
@@ -599,16 +588,21 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 		return nil, http.StatusInternalServerError, err
 	}
 
+	// get the latest commit version (internal tracking)
+	parent, err := GetLatestCommitForModelUUID(uploadedModel.Meta.UUID)
+
 	// create commit with auto-incremented version
 	var commit apiTypes.Commit
 	commit.CDMUUID = uploadedModel.Meta.UUID
 	commit.Diff = string(jsonData)
-	commit.UserID = uploadedModel.Meta.Creator.ID
-	commit.Version = commitVersion
-	if status == http.StatusNotFound {
-		commit.ParentCommitID = -1
+	commit.UserID = updaterID
+	commit.Version = changedModel.Meta.Version
+	commit.CreatedAt = time.Now()
+	if err != nil {
+		commit.ParentID = -1
 	} else {
-		commit.ParentCommitID = parent.ID
+		commit.ParentID = parent.ID
+
 	}
 
 	if status, err := CreateCommit(&commit); err != nil {
@@ -618,7 +612,7 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 	return changedModel, http.StatusOK, nil
 }
 
-// function for getting all commits in Go struct  - remember, in Go, public methods have to be capitalized
+// function for getting all commits in Go struct
 func GetAllCommits() (int, []apiTypes.Commit, error) {
 	var commits []apiTypes.Commit
 	// Updated query to preload associated fields
@@ -641,37 +635,28 @@ func GetCommitByID(id int) (int, *apiTypes.Commit, error) {
 }
 
 // GetCommitsByModelUUID returns all commits for a model UUID, ordered by version
-func GetCommitsByModelUUID(uuid string) (int, []apiTypes.Commit, error) {
+func GetCommitsByModelUUID(uuid string) ([]apiTypes.Commit, error) {
 	var commits []apiTypes.Commit
-	err := dbInstance.Where("cdm_uuid = ?", uuid).
-		Order("version DESC").
-		Find(&commits).Error
+	err := dbInstance.Where("cdm_uuid = ?", uuid).Order("parent_id DESC").Find(&commits).Error
 
-	if err != nil {
-		return http.StatusInternalServerError, nil, err
+	if err != nil || len(commits) == 0 {
+		return nil, fmt.Errorf("no commits found for model with UUID %s", uuid)
 	}
 
-	if len(commits) == 0 {
-		return http.StatusNotFound, nil, fmt.Errorf("no commits found for model with UUID %s", uuid)
-	}
-
-	return http.StatusOK, commits, nil
+	return commits, nil
 }
 
 // get the latest commit for a model with the given UUID
-func GetLatestCommitForModelUUID(uuid string) (int, *apiTypes.Commit, error) {
+func GetLatestCommitForModelUUID(uuid string) (*apiTypes.Commit, error) {
 	var commit apiTypes.Commit
 	err := dbInstance.Where("cdm_uuid = ?", uuid).
 		Order("created_at DESC").
 		First(&commit).Error
 
-	if err == gorm.ErrRecordNotFound {
-		return http.StatusNotFound, nil, err
-	}
 	if err != nil {
-		return http.StatusInternalServerError, nil, err
+		return nil, err
 	}
-	return http.StatusOK, &commit, nil
+	return &commit, nil
 }
 
 // CreateCommit encapsulates the GORM functionality for creating a commit in a transaction
@@ -701,7 +686,7 @@ func CreateCommit(uploadedCommit *apiTypes.Commit) (int, error) {
 func GetUserByID(id int) (*apiTypes.User, error) {
 	var user apiTypes.User
 
-	// Find the user record with the given ID.
+	// find the user record with the given id
 	if err := dbInstance.Where("id = ?", id).First(&user).Error; err != nil {
 		return nil, fmt.Errorf("user with id %d not found", id)
 	}
@@ -709,15 +694,15 @@ func GetUserByID(id int) (*apiTypes.User, error) {
 	return &user, nil
 }
 
-func GetUserByEmail(email string) (int, *apiTypes.User, error) {
+func GetUserByEmail(email string) (*apiTypes.User, error) {
 	var user apiTypes.User
 
 	// Find the user record with the given ID.
 	if err := dbInstance.Where("email = ?", email).First(&user).Error; err != nil {
-		return http.StatusNotFound, nil, fmt.Errorf("user with email %s not found", email)
+		return nil, fmt.Errorf("user with email %s not found", email)
 	}
 
-	return http.StatusOK, &user, nil
+	return &user, nil
 }
 
 func CreateUser(user apiTypes.User) (*apiTypes.User, error) {
@@ -765,35 +750,17 @@ func FindOrCreateUserFromGoogle(name, email, googleID, picture string) (*apiType
 // and its nested structures and finds matching UUIDs in the database and updates
 // the IDs of the components to match the ID found in the database
 // It is designed to work with the structs defined in apitypes.go,
-// which as of now are CausalDecisionModel, Meta, Diagram, DiaElement, CausalDependency, User,
-// and Commit.
+// which as of now are CausalDecisionModel, Meta, Diagram, DiaElement, and CausalDependency.
 func matchUUIDsToID(tx *gorm.DB, component any) error {
 	// Check if this is a Meta struct and create its users if they don't exist
-	// While it may not make sense to have a meta get updated when performing a create, it is
-	// necessary to do this for putting a model, since in that use case we are not creating a new meta,
-	// but rather updating an existing one.
-	// Furthermore, we should already be checking to make sure a meta with the same UUID does not exist in the database
-	// before creating a new model, and so this should not be a problem. Meanwhile if we are creating a new
-	// model and we are referencing, say for example, preexisting diagrams, we should be
-	// getting the existing diagram and it's meta, not creating a new meta. So while it may see odd
-	// to have code here that doesn't throw an error if the meta is found, it is necessary to not throw
-	// and in fact makes sense to do so.
 	if meta, ok := component.(*apiTypes.Meta); ok && meta.UUID != "" {
 		var existingMeta apiTypes.Meta
 		if err := tx.Where("uuid = ?", meta.UUID).First(&existingMeta).Error; err == nil {
 			meta.ID = existingMeta.ID
-			// Also if the created at time is zero, go ahead and set it to the existing created at time
-			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
-			// which the database/GORM does not like
 			if meta.CreatedAt.IsZero() {
 				meta.CreatedAt = existingMeta.CreatedAt
 			}
 		}
-
-		// TODO: Change this so we no longer create a new user if the UUID is not found
-		// Right now this is just a workaround to create a new user, but in the future when
-		// we have a way to properly create users, we should not do this, and instead if there
-		// is no user with the email, we should error out and not create a new user.
 
 		// Match Creator email to ID
 		if meta.Creator.Email != "" {
@@ -801,12 +768,6 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 			if err := tx.Where("email = ?", meta.Creator.Email).First(&existingUser).Error; err == nil {
 				meta.Creator = existingUser
 				meta.CreatorID = existingUser.ID
-			} else if meta.Creator.ID == 0 {
-				// Create user if not exists
-				if err := tx.Create(&meta.Creator).Error; err != nil {
-					return fmt.Errorf("could not create creator: %s", err.Error())
-				}
-				meta.CreatorID = meta.Creator.ID
 			}
 		}
 
@@ -816,23 +777,8 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 				var existingUser apiTypes.User
 				if err := tx.Where("email = ?", updater.Email).First(&existingUser).Error; err == nil {
 					meta.Updaters[i] = existingUser
-				} else if updater.ID == 0 {
-					// Create updater if not exists
-					if err := tx.Create(&meta.Updaters[i]).Error; err != nil {
-						return fmt.Errorf("could not create updater: %s", err.Error())
-					}
 				}
 			}
-		}
-		return nil
-	}
-
-	// Check if this is a User struct and match its Email to ID
-	if user, ok := component.(*apiTypes.User); ok && user.Email != "" {
-		var existingUser apiTypes.User
-		if err := tx.Where("email = ?", user.Email).First(&existingUser).Error; err == nil {
-			// Match the existing user ID to the current user
-			user.ID = existingUser.ID
 		}
 		return nil
 	}
@@ -846,15 +792,8 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 
 		// Try to find the existing CausalDecisionModel in the database
 		var existingModel apiTypes.CausalDecisionModel
-
-		// Check if the meta ID is set, if not, we should not try to find it in the database
-		// since it is not a pre-existing model, but rather a new one
 		if err := tx.Where("meta_id = ?", cdm.Meta.ID).First(&existingModel).Error; err == nil {
 			cdm.ID = existingModel.ID
-
-			// Also if the created at time is zero, go ahead and set it to the existing created at time
-			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
-			// which the database/GORM does not like
 			if cdm.CreatedAt.IsZero() {
 				cdm.CreatedAt = existingModel.CreatedAt
 			}
@@ -890,15 +829,8 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 
 		// Try to find the existing Diagram in the database
 		var existingDiagram apiTypes.Diagram
-
-		// Check if the meta ID is set, if not, we should not try to find it in the database
-		// since it is not a pre-existing diagram, but rather a new one
 		if err := tx.Where("meta_id = ?", diagram.Meta.ID).First(&existingDiagram).Error; err == nil {
 			diagram.ID = existingDiagram.ID
-
-			// Also if the created at time is zero, go ahead and set it to the existing created at time
-			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
-			// which the database/GORM does not like
 			if diagram.CreatedAt.IsZero() {
 				diagram.CreatedAt = existingDiagram.CreatedAt
 			}
@@ -922,7 +854,6 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 	}
 
 	// Check if this is a DiaElement struct and match its Meta UUID to ID
-	// then see if we can find the existing DiaElement in the database
 	if element, ok := component.(*apiTypes.DiaElement); ok {
 		// First match the meta UUID
 		if err := matchUUIDsToID(tx, &element.Meta); err != nil {
@@ -930,15 +861,8 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		}
 		// Try to find the existing DiaElement in the database
 		var existingElement apiTypes.DiaElement
-
-		// Check if the meta ID is set, if not, we should not try to find it in the database
-		// since it is not a pre-existing element, but rather a new one
 		if err := tx.Where("meta_id = ?", element.Meta.ID).First(&existingElement).Error; err == nil {
 			element.ID = existingElement.ID
-
-			// Also if the created at time is zero, go ahead and set it to the existing created at time
-			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
-			// which the database/GORM does not like
 			if element.CreatedAt.IsZero() {
 				element.CreatedAt = existingElement.CreatedAt
 			}
@@ -947,7 +871,6 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 	}
 
 	// Check if this is a CausalDependency struct and match its Meta UUID to ID
-	// then see if we can find the existing CausalDependency in the database
 	if dependency, ok := component.(*apiTypes.CausalDependency); ok {
 		// First match the meta UUID
 		if err := matchUUIDsToID(tx, &dependency.Meta); err != nil {
@@ -955,36 +878,13 @@ func matchUUIDsToID(tx *gorm.DB, component any) error {
 		}
 		// Try to find the existing CausalDependency in the database
 		var existingDependency apiTypes.CausalDependency
-
-		// Check if the meta ID is set, if not, we should not try to find it in the database
-		// since it is not a pre-existing dependency, but rather a new one
 		if err := tx.Where("meta_id = ?", dependency.Meta.ID).First(&existingDependency).Error; err == nil {
 			dependency.ID = existingDependency.ID
-
-			// Also if the created at time is zero, go ahead and set it to the existing created at time
-			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
-			// which the database/GORM does not like
 			if dependency.CreatedAt.IsZero() {
 				dependency.CreatedAt = existingDependency.CreatedAt
 			}
 		}
 		return nil
-	}
-
-	// Check if this is a Commit struct and match its (supposedly unique) pair [ParentCommitID, CDMUUID] to ID
-	if commit, ok := component.(*apiTypes.Commit); ok {
-		// Try to find the existing Commit in the database
-		var existingCommit apiTypes.Commit
-		if err := tx.Where("parent_commit_id = ? AND cdm_uuid = ?", commit.ParentCommitID, commit.CDMUUID).First(&existingCommit).Error; err == nil {
-			commit.ID = existingCommit.ID
-
-			// Also if the created at time is zero, go ahead and set it to the existing created at time
-			// This is necessary to fix a bug with PUT endpoints not sending a created at time thereby causing an invalid time to be set
-			// which the database/GORM does not like
-			if commit.CreatedAt.IsZero() {
-				commit.CreatedAt = existingCommit.CreatedAt
-			}
-		}
 	}
 
 	return nil

@@ -13,7 +13,6 @@ import (
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -62,33 +61,25 @@ func SetUpRouter() *gin.Engine {
 
 	authHandler, _ := NewAuthHandler("test-client-id", "test-client-secret")
 
-	commitHandler, _ := NewCommitHandler()
-
 	// Handle any errors that occur during initialization of the API endpoint handling logic
 	if err != nil {
 		fmt.Println("Error initializing model handler: ", err)
 		os.Exit(1)
 	}
 
-	//router group for all endpoints related to commits
-	commits := r.Group("/v0/commits")
-	{
-		commits.GET("", commitHandler.GetCommits) // Get all commits
-		commits.GET("/:uuid", commitHandler.GetLatestCommitByModelUUID)
-		//commits.POST("", commitHandler.UploadCommit) // Create a commit (for testing)
-	}
-
 	//router group for all endpoints related to models
 	models := r.Group("/v0/models")
 	{
-		models.GET("", modelHandler.GetModels)              // Get all models
-		models.GET("/:uuid", modelHandler.GetModelByUUID)   // Get a model by UUID
-		models.GET("/tag/:tag", modelHandler.GetModelByTag) // Get a model by tag
-		models.POST("", modelHandler.UploadModel)           // Update or create a model
+		models.GET("", modelHandler.GetModels)
+		models.POST("", modelHandler.UploadModel)
+		models.GET("/:uuid", modelHandler.GetModelByUUID)
+		models.GET("/tag/:tag", modelHandler.GetModelByTag)
+		models.GET("/commits/:uuid", modelHandler.GetCommitsByModelUUID)
+		models.GET("/commits/latest/:uuid", modelHandler.GetLatestCommitByModelUUID)
 		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
 		models.GET("/children/:uuid", modelHandler.GetModelChildren)
+		models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
-		models.GET("/modelVersion/:uuid/:version", modelHandler.GetVersionOfModel)
 		models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
 		models.PUT("/privacy/:uuid", modelHandler.PutModelPrivacy)
 		models.GET("/transfer/:uuid", modelHandler.GetTransfer)
@@ -158,38 +149,283 @@ func TestGetModelByTag(t *testing.T) {
 	assert.Equal(t, "Test Model", response.Meta.Name)
 }
 
-// TODO: rewrite this test (functionality is now different + need to be authorized)
-func TestUploadModel(t *testing.T) {
+func TestUploadModelNoUUID(t *testing.T) {
 	database.ResetTables()
+	database.CreateExampleData()
 
-	// user must exist to create a model
-	database.CreateUser(apiTypes.User{
-		Username: "creator",
-		Email:    "creator@gmail.com",
-		GoogleID: "creator-googleid",
-	})
+	token := getTestToken(1)
 
-	example, err := os.ReadFile("../test_files/model.json")
-	if err != nil {
-		t.Errorf("Error reading test data: %s", err)
+	meta := apiTypes.Meta{
+		Name:    "New Model",
+		Summary: "This is a test model",
+		Version: "1.0",
+		Draft:   false,
+		Creator: apiTypes.User{
+			Username: "creator",
+			Email:    "creator@gmail.com",
+		},
 	}
 
-	// create a new model
-	reqBody := bytes.NewBuffer(example)
-	req, _ := http.NewRequest("POST", "/v0/models", reqBody)
+	model := apiTypes.CausalDecisionModel{
+		Schema: "Test Schema",
+		Meta:   meta,
+	}
+
+	body, _ := json.Marshal(model)
+	req, _ := http.NewRequest("POST", "/v0/models", bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
 
-	// tests POST a nil.
-	req2, _ := http.NewRequest("POST", "/v0/models", nil)
-	req2.Header.Set("Content-Type", "application/json")
-	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, req2)
+	var resultModel apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &resultModel)
+	assert.NotEmpty(t, resultModel.Meta.UUID)
 
-	assert.Equal(t, http.StatusBadRequest, w2.Code)
+	// should not be any commits
+	getReq, _ := http.NewRequest("GET", "/v0/models/commits/"+resultModel.Meta.UUID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getW := httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusNotFound, getW.Code)
+
+	// check the latest commit, which should not exist
+	getReq, _ = http.NewRequest("GET", "/v0/models/commits/latest"+resultModel.Meta.UUID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getW = httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusNotFound, getW.Code)
+}
+
+func TestUploadModelBadUUID(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	// bad UUID that we did not create, should be overridden
+	meta := apiTypes.Meta{
+		UUID:    "2a3b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6m",
+		Name:    "New Model",
+		Summary: "This is a test model",
+		Version: "1.0",
+		Draft:   false,
+		Creator: apiTypes.User{
+			Username: "creator",
+			Email:    "creator@gmail.com",
+		},
+	}
+
+	model := apiTypes.CausalDecisionModel{
+		Schema: "Test Schema",
+		Meta:   meta,
+	}
+
+	body, _ := json.Marshal(model)
+	req, _ := http.NewRequest("POST", "/v0/models", bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resultModel apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &resultModel)
+	assert.NotEmpty(t, resultModel.Meta.UUID)
+	assert.NotEqual(t, meta.UUID, resultModel.Meta.UUID)
+
+	// should not be any commits
+	getReq, _ := http.NewRequest("GET", "/v0/models/commits/"+resultModel.Meta.UUID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getW := httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusNotFound, getW.Code)
+
+	// check the latest commit, which should not exist
+	getReq, _ = http.NewRequest("GET", "/v0/models/commits/latest"+resultModel.Meta.UUID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getW = httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusNotFound, getW.Code)
+}
+
+// also functionally tests GetLatestCommitByModelUUID
+func TestUploadModelExistingModel(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	meta := apiTypes.Meta{
+		UUID:    "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+		Name:    "Test Model",
+		Summary: "This is an updated test model", // updated the description
+		Version: "2.0",                           // updated the version
+		Draft:   false,
+		Creator: apiTypes.User{
+			Username: "creator",
+			Email:    "creator@gmail.com",
+		},
+	}
+
+	model := apiTypes.CausalDecisionModel{
+		Schema: "Test Schema",
+		Meta:   meta,
+	}
+
+	body, _ := json.Marshal(model)
+	req, _ := http.NewRequest("POST", "/v0/models", bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resultModel apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &resultModel)
+	assert.Equal(t, meta.UUID, resultModel.Meta.UUID)
+	assert.Equal(t, "This is an updated test model", resultModel.Meta.Summary)
+
+	// we should have a single commit
+	getReq, _ := http.NewRequest("GET", "/v0/models/commits/"+resultModel.Meta.UUID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getW := httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusOK, getW.Code)
+
+	var response1 []apiTypes.Commit
+	json.Unmarshal(getW.Body.Bytes(), &response1)
+
+	assert.Equal(t, 1, len(response1))
+	assert.Equal(t, 1, response1[0].UserID)
+
+	// check the latest commit, which should exist
+	getReq, _ = http.NewRequest("GET", "/v0/models/commits/latest/"+resultModel.Meta.UUID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getW = httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusOK, getW.Code)
+
+	var response2 apiTypes.Commit
+	json.Unmarshal(getW.Body.Bytes(), &response2)
+
+	assert.Equal(t, 1, response2.UserID)
+	assert.NotEmpty(t, response2.Diff)
+}
+
+func TestUploadModelExistingModelUnchangedVersion(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	token := getTestToken(1)
+
+	meta := apiTypes.Meta{
+		UUID:    "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+		Name:    "Test Model",
+		Summary: "This is an updated test model", // updated the description
+		Version: "1.0",                           // did not update the version
+		Draft:   false,
+		Creator: apiTypes.User{
+			Username: "creator",
+			Email:    "creator@gmail.com",
+		},
+	}
+
+	model := apiTypes.CausalDecisionModel{
+		Schema: "Test Schema",
+		Meta:   meta,
+	}
+
+	body, _ := json.Marshal(model)
+	req, _ := http.NewRequest("POST", "/v0/models", bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUploadModelInvalidPermissions(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	database.UpdateModelPrivacyByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", false, []apiTypes.Share{
+		{
+			UserID: 2,
+			Level:  "read",
+		},
+	})
+
+	// userID 2 will only have read access
+	token := getTestToken(2)
+
+	meta := apiTypes.Meta{
+		UUID:    "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+		Name:    "Test Model",
+		Summary: "This is an updated test model",
+		Version: "2.0",
+		Draft:   false,
+		Creator: apiTypes.User{
+			Username: "creator",
+			Email:    "creator@gmail.com",
+		},
+	}
+
+	model := apiTypes.CausalDecisionModel{
+		Schema: "Test Schema",
+		Meta:   meta,
+	}
+
+	body, _ := json.Marshal(model)
+	req, _ := http.NewRequest("POST", "/v0/models", bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestUploadModelUnauthorized(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	meta := apiTypes.Meta{
+		UUID:    "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+		Name:    "Test Model",
+		Summary: "This is an updated test model",
+		Version: "2.0",
+		Draft:   false,
+		Creator: apiTypes.User{
+			Username: "creator",
+			Email:    "creator@gmail.com",
+		},
+	}
+
+	model := apiTypes.CausalDecisionModel{
+		Schema: "Test Schema",
+		Meta:   meta,
+	}
+
+	body, _ := json.Marshal(model)
+	req, _ := http.NewRequest("POST", "/v0/models", bytes.NewBuffer(body))
+	// missing authorization
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 func TestGetModelLineage(t *testing.T) {
@@ -260,189 +496,73 @@ func TestModelSearch(t *testing.T) {
 	assert.Error(t, err3)
 }
 
-// TODO: rewrite this test (functionality is now different)
-func TestGetAllCommits(t *testing.T) {
-	database.ResetTables()
-	database.CreateExampleData()
-
-	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
-	if err != nil {
-		t.Errorf("Error reading test data: %s", err)
-	}
-
-	example2, err := os.ReadFile("../test_files/updatedExampleModel2.json")
-	if err != nil {
-		t.Errorf("Error reading test data: %s", err)
-	}
-
-	//test get all commits  when no models have been updated yet.
-	req3, _ := http.NewRequest("GET", "/v0/commits", nil)
-	req3.Header.Set("Content-Type", "application/json")
-	w3 := httptest.NewRecorder()
-	router.ServeHTTP(w3, req3)
-
-	assert.Equal(t, http.StatusOK, w3.Code)
-	assert.False(t, strings.Contains(w3.Body.String(), "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"))
-
-	reqBody := bytes.NewBuffer(example)
-	req, _ := http.NewRequest("PUT", "/v0/models", reqBody)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	//Test get all commits after a model has been updated.
-	req2, _ := http.NewRequest("GET", "/v0/commits", nil)
-	req2.Header.Set("Content-Type", "application/json")
-	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, req2)
-
-	assert.Equal(t, http.StatusOK, w2.Code)
-	assert.True(t, strings.Contains(w2.Body.String(), "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"))
-
-	//test creating a new model does not create a commit[nothing put yet] or break commits
-	reqBody6 := bytes.NewBuffer(example2)
-	req6, _ := http.NewRequest("POST", "/v0/models", reqBody6)
-	req6.Header.Set("Content-Type", "application/json")
-	w6 := httptest.NewRecorder()
-	router.ServeHTTP(w6, req6)
-
-	assert.Equal(t, http.StatusCreated, w6.Code)
-
-	req4, _ := http.NewRequest("GET", "/v0/commits", nil)
-	req4.Header.Set("Content-Type", "application/json")
-	w4 := httptest.NewRecorder()
-	router.ServeHTTP(w4, req4)
-
-	assert.Equal(t, http.StatusOK, w4.Code)
-	assert.True(t, strings.Contains(w4.Body.String(), "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"))
-	assert.False(t, strings.Contains(w4.Body.String(), "eeee5c4d-5e6f-7eb-140d"))
-
-}
-
-func TestGetLatestCommitByUUID(t *testing.T) {
-	database.ResetTables()
-	database.CreateExampleData()
-
-	example, err := os.ReadFile("../test_files/updatedExampleModel.json")
-	if err != nil {
-		t.Errorf("Error reading test data: %s", err)
-
-	}
-
-	//Need to have the user be created in order for this to work, so
-	//we can log the user in
-	req1, _ := http.NewRequest("POST", "/login?email=creator@example.com&password=pass1", nil)
-	req1.Header.Set("Content-Type", "application/json")
-	w1 := httptest.NewRecorder()
-	router.ServeHTTP(w1, req1)
-	//get the latest commit for the example model.
-	req3, _ := http.NewRequest("GET", "/v0/commits/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
-	req3.Header.Set("Content-Type", "application/json")
-	w3 := httptest.NewRecorder()
-	router.ServeHTTP(w3, req3)
-
-	assert.Equal(t, http.StatusNotFound, w3.Code)
-
-	reqBody := bytes.NewBuffer(example)
-	req, _ := http.NewRequest("PUT", "/v0/models", reqBody)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	//get the latest commit after updating the model.
-	req2, _ := http.NewRequest("GET", "/v0/commits/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
-	req2.Header.Set("Content-Type", "application/json")
-	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, req2)
-
-	assert.Equal(t, http.StatusOK, w2.Code)
-
-	//get the latest commit for a model that doesnt exist.
-	req4, _ := http.NewRequest("GET", "/v0/commits/fake", nil)
-	req4.Header.Set("Content-Type", "application/json")
-	w4 := httptest.NewRecorder()
-	router.ServeHTTP(w4, req4)
-
-	assert.Equal(t, http.StatusNotFound, w4.Code)
-
-}
-
-// tests getting different versions of models.
+// tests getting different versions of models
 func TestGetVersionOfModel(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleData()
 
-	//tests getting version 0 of a model that has not been updated yet.
-	req, _ := http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/0", nil)
+	// get initial version of model that has not been updated
+	req, _ := http.NewRequest("GET", "/v0/models/version/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/1.0", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+
 	var returnedModel apiTypes.CausalDecisionModel
 	json.Unmarshal(w.Body.Bytes(), &returnedModel)
-	byteReturnedModel, _ := json.Marshal(returnedModel)
-	strReturnedModel := string(byteReturnedModel)
 
-	model, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
-	bytemodel, _ := json.Marshal(model)
-	strmodel := string(bytemodel)
+	currentModel, _ := database.GetModelByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	assert.Equal(t, currentModel.Meta.Version, returnedModel.Meta.Version)
+	assert.Equal(t, currentModel.Meta.Summary, returnedModel.Meta.Summary)
 
-	assert.Equal(t, strmodel, strReturnedModel)
-	//tests non-number version that results in error.
-	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/haha", nil)
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	//tests getting model version with a non-existent UUID.
-	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4bfff/0", nil)
+	// get version with non-existent UUID
+	req, _ = http.NewRequest("GET", "/v0/models/version/non-existent-uuid/1.0", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
-	//push a change to our model.
+
+	// update model and create version 2.0
 	returnedModel.Meta.Summary = "Updated summary"
-	database.UpdateModelAndCreateCommit(&returnedModel, model)
-	//tests getting version 1 of a model that has been updated.
-	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/1", nil)
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
+	returnedModel.Meta.Version = "2.0"
+	database.UpdateModelAndCreateCommit(&returnedModel, currentModel, 1)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	var returnedModel2 apiTypes.CausalDecisionModel
-	json.Unmarshal(w.Body.Bytes(), &returnedModel2)
-	byteReturnedModel2, _ := json.Marshal(returnedModel2)
-	strReturnedModel2 := string(byteReturnedModel2)
-
-	byteReturnedModel, _ = json.Marshal(returnedModel)
-	strReturnedModel = string(byteReturnedModel)
-
-	assert.Equal(t, strReturnedModel2, strReturnedModel)
-	//tests getting nonexistent version of a model.
-	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/2", nil)
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusConflict, w.Code)
-	//tests getting version 0 of a model that has been updated.
-	req, _ = http.NewRequest("GET", "/v0/models/modelVersion/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/0", nil)
+	// get latest version of updated model
+	req, _ = http.NewRequest("GET", "/v0/models/version/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/2.0", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var returnedModel3 apiTypes.CausalDecisionModel
-	json.Unmarshal(w.Body.Bytes(), &returnedModel3)
-	byteReturnedModel3, _ := json.Marshal(returnedModel3)
-	strReturnedModel3 := string(byteReturnedModel3)
+	var returnedModelV2 apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &returnedModelV2)
+	assert.Equal(t, "2.0", returnedModelV2.Meta.Version)
+	assert.Equal(t, "Updated summary", returnedModelV2.Meta.Summary)
 
-	assert.Equal(t, strReturnedModel3, strmodel)
+	// get non-existent version
+	req, _ = http.NewRequest("GET", "/v0/models/version/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/3.0", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
 
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	// get old version after model has been updated
+	req, _ = http.NewRequest("GET", "/v0/models/version/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/1.0", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var returnedModelV1 apiTypes.CausalDecisionModel
+	json.Unmarshal(w.Body.Bytes(), &returnedModelV1)
+	assert.Equal(t, "1.0", returnedModelV1.Meta.Version)
+	assert.Equal(t, currentModel.Meta.Summary, returnedModelV1.Meta.Summary)
+	assert.NotEqual(t, "Updated summary", returnedModelV1.Meta.Summary)
 }
 
 func TestGoogleLogin(t *testing.T) {
