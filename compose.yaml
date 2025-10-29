@@ -25,6 +25,12 @@ services:
       OPEN_DI_DB_USERNAME: root
       OPENDI_MODEL_HUB_ADDRESS: api
       OPENDI_MODEL_HUB_PORT: 8080
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      DEV_MODE: true
+
     #For debugging purposes, may be able to not expose this port later (unsure)
     ports:
       - "8080:8080"

@@ -82,6 +82,7 @@ type User struct {
 	Username string `json:"username"`
 	Email    string `gorm:"unique" json:"email"`
 	GoogleID string `gorm:"unique" json:"-"`
+	Picture  string `json:"picture,omitempty"`
 }
 
 type Commit struct {

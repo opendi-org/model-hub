@@ -701,7 +701,7 @@ func CreateUser(user apiTypes.User) (*apiTypes.User, error) {
 	return &user, nil
 }
 
-func FindOrCreateUserFromGoogle(name, email, googleID string) (*apiTypes.User, error) {
+func FindOrCreateUserFromGoogle(name, email, googleID, picture string) (*apiTypes.User, error) {
 	var user apiTypes.User
 	if err := dbInstance.Where("google_id = ?", googleID).First(&user).Error; err == gorm.ErrRecordNotFound {
 		// didn't find an existing user, make a new one
@@ -709,6 +709,7 @@ func FindOrCreateUserFromGoogle(name, email, googleID string) (*apiTypes.User, e
 			Username: name,
 			Email:    email,
 			GoogleID: googleID,
+			Picture:  picture,
 		}
 		return CreateUser(newUser)
 	}

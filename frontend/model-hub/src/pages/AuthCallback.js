@@ -24,7 +24,7 @@ const AuthCallback = () => {
         const response = await fetch(
           `${API_URL}/auth/google/callback?code=${code}&state=${state}`,
           {
-            method: 'POST',
+            method: 'GET',
             credentials: 'include',
           }
         );

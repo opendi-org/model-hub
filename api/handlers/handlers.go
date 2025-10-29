@@ -146,10 +146,8 @@ func (h *AuthHandler) TestLogin(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"user":  user,
-		"token": jwtToken,
-	})
+	c.SetCookie("auth_token", jwtToken, 3600*24, "/", "", false, true)
+	c.JSON(http.StatusOK, user)
 }
 
 // GoogleLogin godoc
@@ -216,8 +214,13 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
+	picture := ""
+	if pic, ok := userInfo["picture"].(string); ok {
+		picture = pic
+	}
+
 	// find or create user based on the user info
-	user, err := database.FindOrCreateUserFromGoogle(userInfo["name"].(string), userInfo["email"].(string), userInfo["id"].(string))
+	user, err := database.FindOrCreateUserFromGoogle(userInfo["name"].(string), userInfo["email"].(string), userInfo["id"].(string), picture)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -239,10 +242,76 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"user":  user,
-		"token": jwtToken,
+	// Set JWT as httpOnly cookie
+	c.SetCookie("auth_token", jwtToken, 3600*24, "/", "", false, true)
+	// Return just user data
+	c.Redirect(http.StatusFound, "http://localhost:3000")
+}
+
+// GetCurrentUser godoc
+// @Summary      Get current authenticated user
+// @Description  Verifies JWT token and returns current user info
+// @Tags         auth
+// @Produce      json
+// @Success      200 {object} apiTypes.User
+// @Failure      401 {object} gin.H "Unauthorized"
+// @Failure      404 {object} gin.H "User not found"
+// @Router       /auth/me [get]
+func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
+	cookie, err := c.Cookie("auth_token")
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	secret, ok := os.LookupEnv("JWT_SECRET")
+	if !ok || secret == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "JWT_SECRET not configured"})
+		return
+	}
+
+	token, err := jwt.Parse(cookie, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return []byte(secret), nil
 	})
+
+	if err != nil || !token.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
+		return
+	}
+
+	userID, ok := claims["user_id"].(float64)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user_id in token"})
+		return
+	}
+
+	_, user, err := database.GetUserByID(int(userID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+// Logout godoc
+// @Summary      Logout user
+// @Description  Clears authentication cookie
+// @Tags         auth
+// @Success      200 {object} gin.H
+// @Router       /auth/logout [post]
+func (h *AuthHandler) Logout(c *gin.Context) {
+	c.SetCookie("auth_token", "", -1, "/", "", false, true)
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
 
 // GetModelPrivacy godoc

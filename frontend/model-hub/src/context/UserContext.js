@@ -20,9 +20,26 @@ export const UserProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    // check if user is already logged in
-    // requires a backend endpoint to verify JWT
-    setLoading(false);
+    // Check if user is already logged in on mount
+    const checkAuth = async () => {
+      try {
+        const response = await fetch(`${API_URL}/auth/me`, {
+          credentials: 'include',
+        });
+        
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        }
+      } catch (err) {
+        console.error('Auth check failed:', err);
+        // Not an error, user just isn't logged in
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
   }, []);
 
   return (
