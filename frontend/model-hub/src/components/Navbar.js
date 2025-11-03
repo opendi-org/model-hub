@@ -61,8 +61,9 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
 }));
 
 export default function Navbar() {
-    const { user, logout } = useUser(); // NEW - use context instead of sessionStorage
+    const { user, logout } = useUser();
     const [anchorEl, setAnchorEl] = React.useState(null);
+    const [imageError, setImageError] = React.useState(false);
 
     const handleMenuOpen = (event) => {
         setAnchorEl(event.currentTarget);
@@ -75,6 +76,14 @@ export default function Navbar() {
     const handleLogout = () => {
         logout();
         handleMenuClose();
+    };
+
+    // Helper function to get initials for avatar
+    const getInitials = () => {
+        if (!user) return 'U';
+        if (user.username) return user.username[0].toUpperCase();
+        if (user.email) return user.email[0].toUpperCase();
+        return 'U';
     };
 
     return (
@@ -122,15 +131,27 @@ export default function Navbar() {
                         <Button color="inherit">Popular</Button>
                         <Button color="inherit">About</Button>
                         
-                        {/* NEW - conditional rendering based on user context */}
                         {user ? (
                             <>
                                 <IconButton onClick={handleMenuOpen} sx={{ p: 0, ml: 1 }}>
                                     <Avatar 
-                                        alt={user.username} 
-                                        src={user.picture}
-                                        sx={{ width: 32, height: 32 }}
-                                    />
+                                        alt={user.username}
+                                        src={!imageError && user.picture ? user.picture : undefined}
+                                        imgProps={{
+                                            onError: () => {
+                                                console.log('Avatar image failed to load, using fallback');
+                                                setImageError(true);
+                                            },
+                                            referrerPolicy: 'no-referrer',
+                                        }}
+                                        sx={{ 
+                                            width: 32, 
+                                            height: 32,
+                                            bgcolor: imageError || !user.picture ? '#1976d2' : undefined,
+                                        }}
+                                    >
+                                        {(imageError || !user.picture) && getInitials()}
+                                    </Avatar>
                                 </IconButton>
                                 <Menu
                                     anchorEl={anchorEl}

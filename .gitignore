@@ -57,7 +57,7 @@ setup/windows/set-env.ps1
 go.work
 go.work.sum
 
-# env file
+# env files
 .env
 .env.test
 

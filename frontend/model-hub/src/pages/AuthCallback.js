@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import { useUser } from '../context/UserContext';
@@ -9,8 +9,12 @@ const AuthCallback = () => {
   const navigate = useNavigate();
   const { setUser } = useUser();
   const [error, setError] = useState(null);
+  const hasRun = useRef(false); // Prevent double execution in Strict Mode
 
   useEffect(() => {
+    if (hasRun.current) return;
+    hasRun.current = true;
+
     const handleCallback = async () => {
       const code = searchParams.get('code');
       const state = searchParams.get('state');
@@ -24,32 +28,44 @@ const AuthCallback = () => {
         const response = await fetch(
           `${API_URL}/auth/google/callback?code=${code}&state=${state}`,
           {
-            method: 'POST',
+            method: 'GET',
             credentials: 'include',
           }
         );
 
+        const data = await response.json();
+
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Authentication failed');
+          throw new Error(data.error || 'Authentication failed');
         }
 
-        const userData = await response.json();
+        console.log('Full auth response:', data);
+        
+        const userData = data.user || data;
+        console.log('Setting user:', userData);
         setUser(userData);
-        navigate('/');
+        
+        // Navigate to home
+        navigate('/', { replace: true });
       } catch (err) {
         console.error('Auth error:', err);
         setError(err.message);
+        
+        // Redirect to login after 3 seconds
+        setTimeout(() => {
+          navigate('/login', { replace: true });
+        }, 3000);
       }
     };
 
     handleCallback();
-  }, [searchParams, navigate, setUser]);
+  }, []);
 
   if (error) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-        <Alert severity="error">{error}</Alert>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 4 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+        <Typography variant="body2">Redirecting to login...</Typography>
       </Box>
     );
   }

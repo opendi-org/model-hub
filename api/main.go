@@ -128,6 +128,8 @@ func main() {
 	{
 		auth.GET("/google/login", authHandler.GoogleLogin)
 		auth.GET("/google/callback", authHandler.GoogleCallback)
+		auth.GET("/me", authHandler.GetCurrentUser)
+		auth.POST("/logout", authHandler.Logout)
 		if os.Getenv("DEV_MODE") == "true" {
 			auth.GET("/testlogin", authHandler.TestLogin)
 		}
