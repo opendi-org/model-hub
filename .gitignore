@@ -60,7 +60,6 @@ go.work.sum
 # env files
 .env
 .env.test
-api/config/.env
 
 #tmp files
 api/tmp/*

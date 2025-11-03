@@ -4,8 +4,22 @@ import API_URL from '../config';
 const UserContext = createContext();
 
 export const UserProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  // Initialize from localStorage if available
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
   const [loading, setLoading] = useState(true);
+
+  // Create a wrapper for setUser that also updates localStorage
+  const setUserWithPersistence = (userData) => {
+    setUser(userData);
+    if (userData) {
+      localStorage.setItem('user', JSON.stringify(userData));
+    } else {
+      localStorage.removeItem('user');
+    }
+  };
 
   const logout = async () => {
     try {
@@ -13,9 +27,11 @@ export const UserProvider = ({ children }) => {
         method: 'POST',
         credentials: 'include',
       });
-      setUser(null);
+      setUserWithPersistence(null);
     } catch (err) {
       console.error('Logout failed:', err);
+      // Still clear user locally even if backend call fails
+      setUserWithPersistence(null);
     }
   };
 
@@ -29,11 +45,16 @@ export const UserProvider = ({ children }) => {
         
         if (response.ok) {
           const userData = await response.json();
-          setUser(userData);
+          console.log('Loaded user from /auth/me:', userData);
+          setUserWithPersistence(userData);
+        } else {
+          // If auth check fails, clear any stale localStorage
+          localStorage.removeItem('user');
         }
       } catch (err) {
         console.error('Auth check failed:', err);
-        // Not an error, user just isn't logged in
+        // Clear stalelocalStorage on error
+        localStorage.removeItem('user');
       } finally {
         setLoading(false);
       }
@@ -43,7 +64,7 @@ export const UserProvider = ({ children }) => {
   }, []);
 
   return (
-    <UserContext.Provider value={{ user, setUser, logout, loading }}>
+    <UserContext.Provider value={{ user, setUser: setUserWithPersistence, logout, loading }}>
       {children}
     </UserContext.Provider>
   );

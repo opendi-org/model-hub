@@ -60,7 +60,7 @@ func NewAuthHandler(id, secret string) (*AuthHandler, error) {
 		googleConfig: &oauth2.Config{
 			ClientID:     id,
 			ClientSecret: secret,
-			RedirectURL:  "http://localhost:8080/auth/google/callback",
+			RedirectURL:  "http://localhost:3000/auth/callback",
 			Scopes: []string{
 				"https://www.googleapis.com/auth/userinfo.email",
 				"https://www.googleapis.com/auth/userinfo.profile",
@@ -243,9 +243,17 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	}
 
 	// Set JWT as httpOnly cookie
-	c.SetCookie("auth_token", jwtToken, 3600*24, "/", "", false, true)
-	// Return just user data
-	c.Redirect(http.StatusFound, "http://localhost:3000")
+	c.SetCookie("auth_token", jwtToken, 3600*24, "/", "localhost", false, true)
+	// Return user data
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Logged in successfully",
+		"user": gin.H{
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+			"picture":  user.Picture,
+		},
+	})
 }
 
 // GetCurrentUser godoc
