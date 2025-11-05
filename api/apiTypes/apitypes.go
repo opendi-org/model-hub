@@ -10,28 +10,26 @@ import (
 	"time"
 )
 
-// CDM structs. TODO update with Isaac Kellog's newest CDM json defs.
 type CausalDecisionModel struct {
-	ID         int                  `gorm:"primaryKey" json:"-"`
-	CreatedAt  time.Time            `json:"-"`
-	UpdatedAt  time.Time            `json:"-"`
-	Schema     string               `json:"$schema"`
-	MetaID     int                  `json:"-"`
-	Meta       Meta                 `json:"meta"`
-	ParentUUID string               `json:"parentUUID,omitempty"`
-	ParentID   *int                 `json:"-"`
-	Parent     *CausalDecisionModel `json:"-"`
-	Diagrams   []Diagram            `gorm:"many2many:cdm_diagrams" json:"diagrams,omitempty"`
-	IsPublic   bool                 `json:"-"`
-	Shares     []Share              `gorm:"serializer:json" json:"-"`
-	OwnerID    int                  `json:"-"`
+	ID             int             `gorm:"primaryKey" json:"-"`
+	CreatedAt      time.Time       `json:"-"`
+	UpdatedAt      time.Time       `json:"-"`
+	Schema         string          `json:"$schema"`
+	MetaID         int             `gorm:"index;constraint:OnDelete:CASCADE;" json:"-"`
+	Meta           Meta            `json:"meta"`
+	RunnableModels json.RawMessage `json:"runnableModels,omitempty"` // Value not used, but should be maintained
+	Diagrams       []Diagram       `gorm:"many2many:cdm_diagrams" json:"diagrams,omitempty"`
+	EvalAssets     json.RawMessage `json:"evaluatableAssets,omitempty"` // Value not used, but should be maintained
+	IOValues       json.RawMessage `json:"inputOutputValues,omitempty"` // Value not used, but should be maintained
+	Controls       json.RawMessage `json:"controls,omitempty"`          // Value not used, but should be maintained
+	Addons         Addons          `gorm:"serializer:json" json:"-"`
 }
 
 type Meta struct {
 	ID            int             `gorm:"primaryKey" json:"-"`
 	CreatedAt     time.Time       `json:"-"`
 	UpdatedAt     time.Time       `json:"-"`
-	UUID          string          `gorm:"unique" json:"uuid"`
+	UUID          string          `gorm:"unique" json:"UUID"`
 	Name          string          `gorm:"index:idx_name_summary,class:FULLTEXT" json:"name,omitempty"`
 	Summary       string          `gorm:"index:idx_name_summary,class:FULLTEXT" json:"summary,omitempty"`
 	Documentation json.RawMessage `json:"documentation,omitempty"`
@@ -42,6 +40,16 @@ type Meta struct {
 	CreatedDate   string          `json:"createdDate,omitempty"`
 	Updaters      []User          `gorm:"many2many:meta_updaters" json:"updaters,omitempty"`
 	UpdatedDate   string          `json:"updatedDate,omitempty"`
+}
+
+type Addons struct {
+	ParentUUID string               `json:"parentUUID,omitempty"`
+	ParentID   *int                 `json:"-"`
+	Parent     *CausalDecisionModel `json:"parent,omitempty"`
+	IsPublic   bool                 `json:"isPublic,omitempty"`
+	Shares     []Share              `json:"shares,omitempty"`
+	OwnerID    int                  `json:"ownerID,omitempty"`
+	Tag        string               `json:"tag"`
 }
 
 type Diagram struct {
@@ -86,13 +94,13 @@ type User struct {
 }
 
 type Commit struct {
-	ID             int       `gorm:"primaryKey" json:"-"`
-	ParentCommitID string    `json:"parentCommitID"`
-	Diff           string    `json:"diff"`
-	UserID         int       `json:"userid"`
-	CDMUUID        string    `json:"cdmuuid"`
-	CreatedAt      time.Time `json:"CreatedAt"`
-	Version        int       `json:"version"`
+	ID        int       `gorm:"primaryKey" json:"-"`
+	ParentID  int       `json:"parentID"`
+	Diff      string    `json:"diff"`
+	UserID    int       `json:"userID"`
+	CDMUUID   string    `json:"cdmUUID"`
+	CreatedAt time.Time `json:"createdAt"`
+	Version   string    `json:"version"`
 }
 
 type Share struct {
@@ -190,5 +198,5 @@ func (u User) Equals(other User) bool {
 
 // testing functionality for Commit equal with other Commit.
 func (c Commit) Equals(other Commit) bool {
-	return c.ParentCommitID == other.ParentCommitID && c.CDMUUID == other.CDMUUID && c.Diff == other.Diff && c.UserID == other.UserID
+	return c.ParentID == other.ParentID && c.CDMUUID == other.CDMUUID && c.Diff == other.Diff && c.UserID == other.UserID
 }
