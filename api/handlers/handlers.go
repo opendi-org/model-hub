@@ -137,8 +137,12 @@ func (h *AuthHandler) TestLogin(c *gin.Context) {
 		return
 	}
 
+	// set the cookie and the token
 	c.SetCookie("auth_token", jwtToken, 3600*24, "/", "", false, true)
-	c.JSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, gin.H{
+		"user":  user,
+		"token": jwtToken,
+	})
 }
 
 // GoogleLogin godoc
@@ -293,7 +297,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		return
 	}
 
-	_, user, err := database.GetUserByID(int(userID))
+	user, err := database.GetUserByID(int(userID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return

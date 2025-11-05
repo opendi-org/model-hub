@@ -584,6 +584,7 @@ func TestFindOrCreateUserFromGoogleExisting(t *testing.T) {
 		"creator",
 		"creator@gmail.com",
 		"creator-googleid",
+		"",
 	)
 
 	assert.NoError(t, err)
@@ -602,6 +603,7 @@ func TestFindOrCreateUserFromGoogleNew(t *testing.T) {
 		"newuser",
 		"newuser@gmail.com",
 		"newuser-googleid",
+		"",
 	)
 
 	assert.NoError(t, err)
