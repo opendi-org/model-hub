@@ -1,1 +1,0 @@
-# makes `python -m cli ...` work
