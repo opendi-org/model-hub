@@ -9,7 +9,7 @@ Commands:
   cli commit "tag"
   cli init "path"
   cli get-commits -r "tag"
-  cli lineage -r "tag"
+  cli get-lineage -r "tag"
   cli get-models
   cli clear-token
 
@@ -33,13 +33,16 @@ from urllib.parse import urlparse
 try:
     import requests  # noqa: F401
 except Exception:
-    sys.exit("This CLI needs 'requests'. Install with: py -m pip install requests")
+    sys.exit("Error: this CLI needs 'requests'. Install with: py -m pip install requests")
 
 # -----------------------------------------------------------------------------
 # Config management
 # -----------------------------------------------------------------------------
 CONFIG_DIR = Path(__file__).resolve().parent / ".opendi_cli"
 CONFIG_PATH = CONFIG_DIR / "config.json"
+MAPPINGS_PATH = CONFIG_DIR / "mapping.json"
+DEFAULT_REMOTE_URL = "http://opendi-modelhub.org" # temporary
+DEFAULT_ENGINE_URL = "http://localhost:7070"
 
 def load_config() -> dict:
     """Load config JSON (or return {} if missing/corrupt)."""
@@ -55,11 +58,22 @@ def save_config(cfg: dict) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
-def require_base_url(cfg: dict) -> str:
-    base = (cfg.get("base_url") or "").strip()
-    if not base:
-        sys.exit("Error: no base URL set. Run: py -m cli set-url http://localhost:8080")
-    return base.rstrip("/")
+def load_mappings() -> list:
+    """Load mappings JSON (or return [] if missing/corrupt)."""
+    if not MAPPINGS_PATH.exists():
+        return []
+    try:
+        return json.loads(MAPPINGS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+def save_mappings(map: list) -> None:
+    """Persist mappings JSON to disk (inside repo)."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    MAPPINGS_PATH.write_text(json.dumps(map, indent=2), encoding="utf-8")
+
+def require_remote_url(cfg: dict) -> str:
+    return (cfg.get("remote_url") or "").strip() or DEFAULT_REMOTE_URL
 
 def require_token(cfg: dict) -> str:
     tok = (cfg.get("token") or "").strip()
@@ -71,42 +85,40 @@ def require_token(cfg: dict) -> str:
 # Implemented commands
 # -----------------------------------------------------------------------------
 def cmd_set_url(args, cfg):
-    """Save/override the base API URL."""
+    """Save/override the remote API URL."""
     url = args.url.strip()
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        sys.exit("Invalid URL. Example: http://localhost:8080")
-    cfg["base_url"] = url
+        sys.exit("Error: invalid URL. Example: http://localhost:8080")
+    cfg["remote_url"] = url
     save_config(cfg)
-    print(f"Base URL set to {url}")
+    print(f"Remote URL set to {url}")
     print(f"(Saved at {CONFIG_PATH})")
 
 def cmd_set_token(args, cfg):
     """Save/replace the auth token (login)."""
     token = args.token.strip()
     if not token:
-        sys.exit("Token cannot be empty.")
+        sys.exit("Error: token cannot be empty.")
     cfg["token"] = token
     save_config(cfg)
-    print("Token saved. (Login successful)")
+    print("Token saved")
     print(f"(Saved at {CONFIG_PATH})")
 
 def cmd_clear_token(args, cfg):
     """Clear the auth token (logout)."""
     cfg["token"] = ""
     save_config(cfg)
-    print("Token cleared. (Logged out)")
-    print(f"(Config file: {CONFIG_PATH})")
+    print("Token cleared")
+    print(f"(Cleared from: {CONFIG_PATH})")
 
 # -----------------------------------------------------------------------------
 # Stubs (help pages exist; implementation still needs to be added)
 # -----------------------------------------------------------------------------
 def cmd_pull(args, cfg):
-    require_base_url(cfg)
     print(f"[TODO] pull tag={args.tag}")
 
 def cmd_push(args, cfg):
-    require_base_url(cfg)
     require_token(cfg)
     print(f"[TODO] push tag={args.tag}")
 
@@ -114,19 +126,52 @@ def cmd_commit(args, cfg):
     print(f"[TODO] commit tag={args.tag}")
 
 def cmd_init(args, cfg):
-    print(f"[TODO] init path={args.path}")
+    path = Path(args.path)
+    try:
+      model_json = json.loads(path.read_text(encoding="utf-8"))
+      response = requests.post(f"{DEFAULT_ENGINE_URL}/v0/models", json=model_json)
+      if response.status_code == 200:
+          model = response.json()
+          model_tag = model.get("addons").get("tag") # will not work until tag is returned from API
+          mappings = [m for m in load_mappings() if m.get("tag") != model_tag] 
+          mappings.append({"tag": model_tag, "path": Path(__file__).resolve().parent, "remote": ""})
+          print("Model initialized successfully")
+      else:
+          sys.exit(f"Error: {response.json().get("error")}")
+    except requests.exceptions.ConnectionError:
+      sys.exit(f"Error: failed to connect to server. Is engine running at {DEFAULT_ENGINE_URL}?")
+    except Exception:
+        sys.exit(f"Error: Invalid file: {path}")
 
 def cmd_get_commits(args, cfg):
-    require_base_url(cfg)
-    print(f"[TODO] get-commits remote_tag={args.remote_tag}")
+    url = require_remote_url(cfg) if args.remote else DEFAULT_ENGINE_URL
+    try:
+        response = requests.get(f"{url}/v0/models/commits/{args.tag}")
+        commits = response.json()
+        print(commits) # once commits endpoint is updated to use tags, we can fix this
+    except requests.exceptions.ConnectionError:
+        sys.exit(f"Error: failed to connect to server. Is {"remote" if args.remote else "engine"} running at {url}?")
 
-def cmd_lineage(args, cfg):
-    require_base_url(cfg)
-    print(f"[TODO] lineage remote_tag={args.remote_tag}")
+def cmd_get_lineage(args, cfg):
+    url = require_remote_url(cfg) if args.remote else DEFAULT_ENGINE_URL
+    try:
+        response = requests.get(f"{url}/v0/models/lineage/{args.tag}")
+        lineage = response.json()
+        print(lineage) # once lineage endpoint is updated to use tags, we can fix this
+    except requests.exceptions.ConnectionError:
+        sys.exit(f"Error: failed to connect to server. Is {"remote" if args.remote else "engine"} running at {url}?")
 
 def cmd_get_models(args, cfg):
-    require_base_url(cfg)
-    print("[TODO] get-models")
+    try:
+        response = requests.get(f"{DEFAULT_ENGINE_URL}/v0/models")
+        models = response.json()
+        for model in models:
+            print(f"- Name: {model.get("meta").get("name")}")
+            print(f"  Summary: {model.get("meta").get("summary")}")
+            print(f"  Version: {model.get("meta").get("version")}")
+            print(f"  Last Updated: {model.get("meta").get("updatedDate")}\n")
+    except requests.exceptions.ConnectionError:
+        sys.exit(f"Error: failed to connect to server. Is engine running at {DEFAULT_ENGINE_URL}?")
 
 # -----------------------------------------------------------------------------
 # CLI wiring (argparse)
@@ -139,8 +184,8 @@ EPILOG = """Examples:
   py -m cli push my-tag
   py -m cli commit my-tag
   py -m cli init ./model.json
-  py -m cli get-commits -r 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d
-  py -m cli lineage -r 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d
+  py -m cli get-commits -r test-model:1.0
+  py -m cli get-lineage -r test-model:1.0
   py -m cli get-models
 """
 
@@ -154,8 +199,8 @@ def build_parser():
     sub = p.add_subparsers(dest="command", required=True)
 
     # set-url
-    sp = sub.add_parser("set-url", help="Set the base API URL, e.g., http://localhost:8080")
-    sp.add_argument("url", help="API base URL")
+    sp = sub.add_parser("set-url", help="Set the remote API URL, e.g., http://localhost:8080")
+    sp.add_argument("url", help="API remote URL")
     sp.set_defaults(func=cmd_set_url)
 
     # set-token (login)
@@ -179,19 +224,21 @@ def build_parser():
     sp.set_defaults(func=cmd_commit)
 
     # init
-    sp = sub.add_parser("init", help="Initialize a local model from a JSON file (stub)")
+    sp = sub.add_parser("init", help="Initialize a local model from a JSON file")
     sp.add_argument("path", help="Path to model.json")
     sp.set_defaults(func=cmd_init)
 
     # get-commits
-    sp = sub.add_parser("get-commits", help="Show remote commits for a model UUID (-r) (stub)")
-    sp.add_argument("-r", "--remote-tag", required=True, help="Remote tag (UUID)")
+    sp = sub.add_parser("get-commits", help="Show commits for a model using a tag (local by default, remote with -r)")
+    sp.add_argument("tag", help="Model tag")
+    sp.add_argument("-r", "--remote", action="store_true", help="Get commits from remote instead of local")
     sp.set_defaults(func=cmd_get_commits)
 
     # lineage
-    sp = sub.add_parser("lineage", help="Show lineage for a model UUID (-r) (stub)")
-    sp.add_argument("-r", "--remote-tag", required=True, help="Remote tag (UUID)")
-    sp.set_defaults(func=cmd_lineage)
+    sp = sub.add_parser("get-lineage", help="Show lineage for a model using a tag (local by default, remote with -r)")
+    sp.add_argument("tag", help="Model tag")
+    sp.add_argument("-r", "--remote", action="store_true", help="Get lineage from remote instead of local")
+    sp.set_defaults(func=cmd_get_lineage)
 
     # get-models
     sp = sub.add_parser("get-models", help="List models (stub)")

@@ -5,6 +5,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"opendi/model-hub/api/handlers"
 	"os"
@@ -23,7 +24,16 @@ import (
 )
 
 func main() {
+	// running the server using "go run main.go -e" runs the server in engine mode,
+	// which registers only certain routes needed for the CLI
+	engMode := flag.Bool("e", false, "Runs the Model Hub in engine mode for the CLI")
+	flag.Parse()
+
 	fmt.Println("Starting Model Hub API")
+	if *engMode {
+		fmt.Println("Running in engine mode")
+	}
+
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
@@ -38,16 +48,10 @@ func main() {
 	err := godotenv.Load("./config/.env")
 	if err != nil {
 		fmt.Println("Unable to import environment variables: ", err)
-		//os.Exit(1)
-		//I think the above line should remain commented out, so that
-		//the program can still run even if the .env file is not found
-		//This is because the .env file is not necessary for the program to run
-		//It is only necessary for the program to run in a specific environment
 	}
 
 	// Wait for 3 seconds to allow the database to start up before initializing the connection to the database table
 	time.Sleep(3 * time.Second)
-	//initialize db instance
 	ret, err := database.InitializeDBInstance()
 	if ret != 0 {
 		fmt.Println("Error initializing database: ", err)
@@ -59,13 +63,15 @@ func main() {
 		database.CreateExampleData()
 	}
 
-	//initialize handler
+	//initialize handlers
 	modelHandler, _ := handlers.NewModelHandler()
-
-	authHandler, _ := handlers.NewAuthHandler(
-		os.Getenv("GOOGLE_CLIENT_ID"),
-		os.Getenv("GOOGLE_CLIENT_SECRET"),
-	)
+	var authHandler *handlers.AuthHandler
+	if !*engMode {
+		authHandler, _ = handlers.NewAuthHandler(
+			os.Getenv("GOOGLE_CLIENT_ID"),
+			os.Getenv("GOOGLE_CLIENT_SECRET"),
+		)
+	}
 
 	// TODO fix this logic
 	// Handle any errors that occur during initialization of the API endpoint handling logic
@@ -77,71 +83,64 @@ func main() {
 	//router group for all endpoints related to models
 	models := router.Group("/v0/models")
 	{
-		// Note - CORS headers are cached by default, so if you had a problem with CORS, keep clearing the cache or using new incognito tabs
-
-		// note from Eric - remember to make the ending slashes consistent, or else any non-properly formatted request will redirect causing a CORS violation
-		// Gin has built-in automatic redirection for missing slashes.
-		// In essence, The initial request (GET /v0/models without a slash) gets redirected. (301 or 307) The browser is told to go to /v0/models/ (with a slash).
-		// The browser makes a new request, which must also be checked for CORS
-		// CORS is to the user agent (browser), not the server. The server can't tell the browser to ignore CORS.
-		// If CORS headers were inherited across redirects, a server could allow an unsafe redirect to a malicious site, exposing private data.
-		// Browsers treat redirects as new requests.
-
-		// When the browser follows a redirect (e.g., from /v0/models to /v0/models/), the browser does not automatically send a preflight request for the redirect.
-		// Instead, the browser treats the redirected request as a new separate request, and it needs to be evaluated for CORS again. This is where the issue arises: if the new request does not include the necessary CORS headers, the browser will block it.
-
-		// From reddit user toonerer
-		// It's not the API that's malicious, it's the client.
-		// Let's say you go to www.your-bamk.com (bamk being a misspelling you as a user typed into your browser), the page could behind the scenes be calling your-bank.com with api-calls, and transfer funds and whatever nasty things you can think of, circumventing any any security measures since it would seem like a real user was interacting with the site.
-		// Or even worse, a trusted unrelated site could be compromised with a script (from an ad service or similar), and that script could start making calls to your-bank.com without you knowing about it, and if you happened to be logged in from earlier, it would just use those credentials.
-		// With CORS, your-bank.com would just reject the requests.
-
-		models.GET("", modelHandler.GetModels)
-		models.POST("", modelHandler.UploadModel)
-		models.GET("/:uuid", modelHandler.GetModelByUUID)
-		models.GET("/tag/:tag", modelHandler.GetModelByTag)
-		models.GET("/commits/:uuid", modelHandler.GetCommitsByModelUUID)
-		models.GET("/commits/latest/:uuid", modelHandler.GetLatestCommitByModelUUID)
-		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
-		models.GET("/children/:uuid", modelHandler.GetModelChildren)
-		models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
-		models.GET("/search/:type/:name", modelHandler.ModelSearch)
-		models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
-		models.PUT("/privacy/:uuid", modelHandler.PutModelPrivacy)
-		models.GET("/transfer/:uuid", modelHandler.GetTransfer)
-		models.POST("/transfer/:uuid", modelHandler.PostTransfer)
-		models.DELETE("/transfer/:uuid", modelHandler.DeleteTransfer)
-	}
-
-	auth := router.Group("/auth")
-	{
-		auth.GET("/google/login", authHandler.GoogleLogin)
-		auth.GET("/google/callback", authHandler.GoogleCallback)
-		auth.GET("/me", authHandler.GetCurrentUser)
-		auth.POST("/logout", authHandler.Logout)
-		if os.Getenv("DEV_MODE") == "true" {
-			auth.GET("/testlogin", authHandler.TestLogin)
+		if *engMode {
+			models.GET("", modelHandler.GetModels)
+			models.POST("", modelHandler.UploadModel)
+			models.GET("/tag/:tag", modelHandler.GetModelByTag)
+			models.GET("/commits/:uuid", modelHandler.GetCommitsByModelUUID)
+			models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
+		} else {
+			models.GET("", modelHandler.GetModels)
+			models.POST("", modelHandler.UploadModel)
+			models.GET("/:uuid", modelHandler.GetModelByUUID)
+			models.GET("/tag/:tag", modelHandler.GetModelByTag)
+			models.GET("/commits/:uuid", modelHandler.GetCommitsByModelUUID)
+			models.GET("/commits/latest/:uuid", modelHandler.GetLatestCommitByModelUUID)
+			models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
+			models.GET("/children/:uuid", modelHandler.GetModelChildren)
+			models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
+			models.GET("/search/:type/:name", modelHandler.ModelSearch)
+			models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
+			models.PUT("/privacy/:uuid", modelHandler.PutModelPrivacy)
+			models.GET("/transfer/:uuid", modelHandler.GetTransfer)
+			models.POST("/transfer/:uuid", modelHandler.PostTransfer)
+			models.DELETE("/transfer/:uuid", modelHandler.DeleteTransfer)
 		}
 	}
 
-	// Get the address and port from environment variables
+	if !*engMode {
+		auth := router.Group("/auth")
+		{
+			auth.GET("/google/login", authHandler.GoogleLogin)
+			auth.GET("/google/callback", authHandler.GoogleCallback)
+			auth.GET("/me", authHandler.GetCurrentUser)
+			auth.POST("/logout", authHandler.Logout)
+			if os.Getenv("DEV_MODE") == "true" {
+				auth.GET("/testlogin", authHandler.TestLogin)
+			}
+		}
+	}
+
 	modelHubAddress := "localhost"
 	modelHubPort := "8080"
-	// Check to make sure the environment variables are set before using them
-	val, ok := os.LookupEnv("OPENDI_MODEL_HUB_ADDRESS")
-	if !ok || val == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPENDI_MODEL_HUB_ADDRESS is not set or empty")
-		os.Exit(1)
+	if *engMode {
+		modelHubPort = "7070" // engine mode should always use 7070
+	} else {
+		val, ok := os.LookupEnv("OPENDI_MODEL_HUB_ADDRESS")
+		if ok && val != "" {
+			modelHubAddress = val
+		} else {
+			// note that value is empty, but just use default
+			fmt.Println("Environment variable OPENDI_MODEL_HUB_ADDRESS is not set or empty")
+		}
+		val, ok = os.LookupEnv("OPENDI_MODEL_HUB_PORT")
+		if ok && val != "" {
+			modelHubPort = val
+		} else {
+			// note that value is empty, but just use default
+			fmt.Println("Environment variable OPENDI_MODEL_HUB_PORT is not set or empty")
+		}
 	}
-	modelHubAddress = val
-	val, ok = os.LookupEnv("OPENDI_MODEL_HUB_PORT")
-	if !ok || val == "" {
-		// error exit since the value is empty
-		fmt.Println("Environment variable OPENDI_MODEL_HUB_PORT is not set or empty")
-		os.Exit(1)
-	}
-	modelHubPort = val
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

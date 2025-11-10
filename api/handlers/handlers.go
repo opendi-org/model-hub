@@ -167,13 +167,13 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 
 // GoogleCallback godoc
 // @Summary      Handle Google OAuth callback
-// @Description  Processes Callback and returns user info
+// @Description  Processes callback and returns user info
 // @Tags         auth
-// @Param        code   query
-// @Param        state  query
-// @Success      200
-// @Failure      400
-// @Failure      500
+// @Param        code   query  string  true  "Authorization code from Google"
+// @Param        state  query  string  true  "State token for validation"
+// @Success      200    {object}  gin.H  "User info"
+// @Failure      400    {object}  gin.H  "Invalid state token or missing parameters"
+// @Failure      500    {object}  gin.H  "Internal server error"
 // @Router       /auth/google/callback [get]
 func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	code := c.Query("code")
@@ -322,10 +322,11 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 // @Description  Get privacy settings for model
 // @Tags         models
 // @Produce      json
-// @Success      200
-// @Failure      401
-// @Failure      403
-// @Failure      500
+// @Param        uuid  path  string  true  "Model UUID"
+// @Success      200   {object}  gin.H  "Privacy settings"
+// @Failure      401   {object}  gin.H  "Unauthorized"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      500   {object}  gin.H  "Internal server error"
 // @Router       /v0/models/privacy/{uuid} [get]
 func (h *ModelHandler) GetModelPrivacy(c *gin.Context) {
 	uuid := c.Param("uuid")
@@ -359,16 +360,19 @@ func (h *ModelHandler) GetModelPrivacy(c *gin.Context) {
 }
 
 // PutModelPrivacy godoc
-// @Summary      Get privacy settings for model
-// @Description  Get privacy settings for model
+// @Summary      Update privacy settings for model
+// @Description  Update privacy settings for model
 // @Tags         models
+// @Accept       json
 // @Produce      json
-// @Success      200
-// @Failure      400
-// @Failure      401
-// @Failure      403
-// @Failure      404
-// @Failure      500
+// @Param        uuid  path  string  true  "Model UUID"
+// @Param        privacy  body  object  true  "Privacy settings"
+// @Success      200   {object}  gin.H  "Privacy settings updated"
+// @Failure      400   {object}  gin.H  "Bad request"
+// @Failure      401   {object}  gin.H  "Unauthorized"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      404   {object}  gin.H  "Model not found"
+// @Failure      500   {object}  gin.H  "Internal server error"
 // @Router       /v0/models/privacy/{uuid} [put]
 func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
 	uuid := c.Param("uuid")
@@ -431,10 +435,11 @@ func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
 // @Description  Get ownership transfer request for model
 // @Tags         models
 // @Produce      json
-// @Success      200
-// @Failure      401
-// @Failure      403
-// @Failure      404
+// @Param        uuid  path  string  true  "Model UUID"
+// @Success      200   {object}  gin.H  "Transfer request details"
+// @Failure      401   {object}  gin.H  "Unauthorized"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      404   {object}  gin.H  "Transfer request not found"
 // @Router       /v0/models/transfer/{uuid} [get]
 func (h *ModelHandler) GetTransfer(c *gin.Context) {
 	uuid := c.Param("uuid")
@@ -467,11 +472,13 @@ func (h *ModelHandler) GetTransfer(c *gin.Context) {
 // @Description  Create ownership transfer request for model
 // @Tags         models
 // @Produce      json
-// @Success      200
-// @Failure      400
-// @Failure      403
-// @Failure      404
-// @Failure      500
+// @Param        uuid  path  string  true  "Model UUID"
+// @Param        transfer  body  object  true  "Transfer request details"
+// @Success      200   {object}  gin.H  "Transfer request created"
+// @Failure      400   {object}  gin.H  "Bad request"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      404   {object}  gin.H  "Model not found"
+// @Failure      500   {object}  gin.H  "Internal server error"
 // @Router       /v0/models/transfer/{uuid} [post]
 func (h *ModelHandler) PostTransfer(c *gin.Context) {
 	uuid := c.Param("uuid")
@@ -534,11 +541,13 @@ func (h *ModelHandler) PostTransfer(c *gin.Context) {
 // @Summary      Accept/decline ownership transfer request for model
 // @Description  Accept/decline ownership transfer request for model
 // @Tags         models
-// @Success      200
-// @Failure      400
-// @Failure      403
-// @Failure      404
-// @Failure      500
+// @Produce      json
+// @Param        uuid  path  string  true  "Model UUID"
+// @Success      200   {object}  gin.H  "Transfer request processed"
+// @Failure      400   {object}  gin.H  "Bad request"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      404   {object}  gin.H  "Transfer request not found"
+// @Failure      500   {object}  gin.H  "Internal server error"
 // @Router       /v0/models/transfer/{uuid} [delete]
 func (h *ModelHandler) DeleteTransfer(c *gin.Context) {
 	uuid := c.Param("uuid")
@@ -589,8 +598,8 @@ func (h *ModelHandler) DeleteTransfer(c *gin.Context) {
 // @Description  Gets all models
 // @Tags         models
 // @Produce      json
-// @Success      200
-// @Failure      500
+// @Success      200  {array}   gin.H  "List of models"
+// @Failure      500  {object}  gin.H  "Internal server error"
 // @Router       /v0/models/ [get]
 func (h *ModelHandler) GetModels(c *gin.Context) {
 	status, models, err := database.GetAllModels()
@@ -607,9 +616,9 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid path string true "Model UUID"
-// @Success      200
-// @Failure      404 {object} gin.H "Model not found"
+// @Param        uuid  path  string  true  "Model UUID"
+// @Success      200   {object}  gin.H  "Model"
+// @Failure      404   {object}  gin.H  "Model not found"
 // @Router       /v0/models/{uuid} [get]
 func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	uuid := c.Param("uuid")
@@ -632,9 +641,9 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        tag
-// @Success      200
-// @Failure      404
+// @Param        tag   path  string  true  "Model tag"
+// @Success      200   {object}  gin.H  "Model"
+// @Failure      404   {object}  gin.H  "Model not found"
 // @Router       /v0/models/tag/{tag} [get]
 func (h *ModelHandler) GetModelByTag(c *gin.Context) {
 	tag := c.Param("tag")
@@ -655,11 +664,12 @@ func (h *ModelHandler) GetModelByTag(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Success      200
-// @Failure      400
-// @Failure      401
-// @Failure      403
-// @Failure      500
+// @Param        model  body  object  true  "Model"
+// @Success      200    {object}  gin.H  "Model created or updated"
+// @Failure      400    {object}  gin.H  "Bad request"
+// @Failure      401    {object}  gin.H  "Unauthorized"
+// @Failure      403    {object}  gin.H  "Forbidden"
+// @Failure      500    {object}  gin.H  "Internal server error"
 // @Router       /v0/models [post]
 func (h *ModelHandler) UploadModel(c *gin.Context) {
 	var uploadedModel apiTypes.CausalDecisionModel
@@ -719,11 +729,11 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid
-// @Param        version
-// @Success      200
-// @Failure      404
-// @Failure      500
+// @Param        uuid     path  string  true  "Model UUID"
+// @Param        version  path  string  true  "Version number"
+// @Success      200      {object}  gin.H  "Model version details"
+// @Failure      404      {object}  gin.H  "Version not found"
+// @Failure      500      {object}  gin.H  "Internal server error"
 // @Router       /v0/models/version/{uuid}/{version} [get]
 func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 	version := c.Param("version")
@@ -789,9 +799,9 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid
-// @Success      200
-// @Failure      404
+// @Param        uuid  path  string  true  "Model UUID"
+// @Success      200   {object}  gin.H  "Model lineage"
+// @Failure      404   {object}  gin.H  "Model not found"
 // @Router       /v0/models/lineage/{uuid} [get]
 func (h *ModelHandler) GetModelLineage(c *gin.Context) {
 	uuid := c.Param("uuid")
@@ -805,13 +815,13 @@ func (h *ModelHandler) GetModelLineage(c *gin.Context) {
 
 // GetModelChildren godoc
 // @Summary      Get model children
-// @Description  gets models using its uuid
+// @Description  Gets models using its UUID
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid path string true "Model UUID"
-// @Success      200
-// @Failure      404 {object} gin.H "Model not found"
+// @Param        uuid  path  string  true  "Model UUID"
+// @Success      200   {array}   gin.H  "List of child models"
+// @Failure      404   {object}  gin.H  "Model not found"
 // @Router       /v0/models/children/{uuid} [get]
 func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 	uuid := c.Param("uuid")
@@ -829,11 +839,11 @@ func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        type path string true "Search type (model or user)"
-// @Param        name path string true "Search name"
-// @Success      200 {object} []apiTypes.CausalDecisionModel "List of models"
-// @Failure      404 {object} gin.H "Model not found"
-// @Failure      500 {object} gin.H "Internal Server Error"
+// @Param        type  path  string  true  "Search type (model or user)"
+// @Param        name  path  string  true  "Search name"
+// @Success      200   {array}   apiTypes.CausalDecisionModel  "List of models"
+// @Failure      404   {object}  gin.H  "Models not found"
+// @Failure      500   {object}  gin.H  "Internal server error"
 // @Router       /v0/models/search/{type}/{name} [get]
 func (h *ModelHandler) ModelSearch(c *gin.Context) {
 	searchType := c.Param("type")
@@ -864,9 +874,9 @@ func (h *ModelHandler) ModelSearch(c *gin.Context) {
 // @Description  Get all commits for a model
 // @Tags         models
 // @Produce      json
-// @Param        uuid
-// @Success      200
-// @Failure      404
+// @Param        uuid  path  string  true  "Model UUID"
+// @Success      200   {array}   gin.H  "List of commits"
+// @Failure      404   {object}  gin.H  "Model not found"
 // @Router       /v0/models/commits/{uuid} [get]
 func (h *ModelHandler) GetCommitsByModelUUID(c *gin.Context) {
 	uuid := c.Param("uuid")
@@ -889,10 +899,10 @@ func (h *ModelHandler) GetCommitsByModelUUID(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid
-// @Success      200
-// @Failure      404
-// @Router       /v0/models/commmits/latest/{uuid} [get]
+// @Param        uuid  path  string  true  "Model UUID"
+// @Success      200   {object}  gin.H  "Latest commit"
+// @Failure      404   {object}  gin.H  "Model not found"
+// @Router       /v0/models/commits/latest/{uuid} [get]
 func (h *ModelHandler) GetLatestCommitByModelUUID(c *gin.Context) {
 	uuid := c.Param("uuid")
 
