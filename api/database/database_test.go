@@ -70,7 +70,7 @@ func TestGetModelByUUID(t *testing.T) {
 	CreateExampleData()
 
 	//gets all models in the database
-	_, models, _ := GetAllModels()
+	models, _ := GetAllModels()
 
 	if len(models) != 2 {
 		t.Errorf("Expected 2 model, got %d", len(models))
@@ -303,9 +303,9 @@ func TestGetAllModels(t *testing.T) {
 
 	CreateExampleData()
 
-	ret, models, error := GetAllModels()
-	if ret != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
+	models, err := GetAllModels()
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	if len(models) != 2 {
 		t.Errorf("Expected 2 models, got %d", len(models))
@@ -339,15 +339,15 @@ func TestGetModelLineage(t *testing.T) {
 }
 
 // TestGetModelChildren tests the GetModelChildren function
-// This function is used to get the children of a model given its UUID
+// This function is used to get the children of a model given its tag
 func TestGetModelChildren(t *testing.T) {
 	ResetTables()
 	//example model is a parent-child pair.
 	CreateExampleData()
 
-	ret, models, error := GetModelChildren("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
-	if ret != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
+	models, err := GetModelChildren("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	if err != nil {
+		t.Errorf("Expected to find model children, err: %s", err)
 	}
 	if len(models) != 1 {
 		t.Errorf("Expected 1 child model, got %d", len(models))
@@ -508,9 +508,9 @@ func TestGetAllCommits(t *testing.T) {
 	}
 
 	// create a commit
-	status, models, err := GetAllModels()
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	models, err := GetAllModels()
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	expectedModel := models[0]
 	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
@@ -667,9 +667,9 @@ func TestGetCommitById(t *testing.T) {
 	CreateExampleData()
 
 	// create a commit
-	status, models, err := GetAllModels()
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	models, err := GetAllModels()
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	expectedModel := models[0]
 	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {

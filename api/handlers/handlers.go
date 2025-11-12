@@ -29,10 +29,9 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-//note - we technically don't need these structs for now. However, they could be useful in the future.
-
 // ModelHandler struct for handling model requests
 type ModelHandler struct {
+	engMode bool
 }
 
 // AuthHandler struct for handling user login/auth requests
@@ -41,12 +40,14 @@ type AuthHandler struct {
 }
 
 // method for getting an instance of ModelHandler
-func NewModelHandler() (*ModelHandler, error) {
-	return &ModelHandler{}, nil
+func NewModelHandler(engMode bool) *ModelHandler {
+	return &ModelHandler{
+		engMode: engMode,
+	}
 }
 
 // method for getting an instance of AuthHandler
-func NewAuthHandler(id, secret string) (*AuthHandler, error) {
+func NewAuthHandler(id, secret string) *AuthHandler {
 	return &AuthHandler{
 		googleConfig: &oauth2.Config{
 			ClientID:     id,
@@ -58,7 +59,7 @@ func NewAuthHandler(id, secret string) (*AuthHandler, error) {
 			},
 			Endpoint: google.Endpoint,
 		},
-	}, nil
+	}
 }
 
 func getUserIDFromToken(c *gin.Context) (int, error) {
@@ -98,6 +99,19 @@ func getUserIDFromToken(c *gin.Context) (int, error) {
 		return 0, fmt.Errorf("user_id not found in token")
 	}
 	return int(userID), nil
+}
+
+func addAddonsFields(model apiTypes.CausalDecisionModel) gin.H {
+	jsonData, _ := json.Marshal(model)
+	var result gin.H
+	json.Unmarshal(jsonData, &result)
+
+	result["addons"] = gin.H{
+		"ownerID": model.Addons.OwnerID,
+		"tag":     model.Addons.Tag,
+	}
+
+	return result
 }
 
 // @Router /auth/testlogin [get]
@@ -602,12 +616,18 @@ func (h *ModelHandler) DeleteTransfer(c *gin.Context) {
 // @Failure      500  {object}  gin.H  "Internal server error"
 // @Router       /v0/models/ [get]
 func (h *ModelHandler) GetModels(c *gin.Context) {
-	status, models, err := database.GetAllModels()
+	models, err := database.GetAllModels()
 	if err != nil {
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(status, models)
+
+	result := make([]gin.H, len(models))
+	for i, model := range models {
+		result[i] = addAddonsFields(model)
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // GetModelByUUID godoc
@@ -632,7 +652,7 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	}
 
 	// Return the model if found
-	c.JSON(http.StatusOK, model)
+	c.JSON(http.StatusOK, addAddonsFields(*model))
 }
 
 // GetModelByTag godoc
@@ -655,7 +675,7 @@ func (h *ModelHandler) GetModelByTag(c *gin.Context) {
 	}
 
 	// Return the model if found
-	c.JSON(http.StatusOK, model)
+	c.JSON(http.StatusOK, addAddonsFields(*model))
 }
 
 // UploadModel godoc
@@ -679,10 +699,15 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 		return
 	}
 
-	actingUserID, err := getUserIDFromToken(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
+	// if in engine mode, just pretend that acting user is always id 0
+	actingUserID := 0
+	var err error
+	if !h.engMode {
+		actingUserID, err = getUserIDFromToken(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	var resultModel *apiTypes.CausalDecisionModel
@@ -720,9 +745,10 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, resultModel)
+	c.JSON(http.StatusOK, addAddonsFields(*resultModel))
 }
 
+// TODO adjust this so it looks at the version and the first part of the tag separately
 // GetVersionOfModel godoc
 // @Summary      Get version of model
 // @Description  Get version of model
@@ -747,7 +773,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 	}
 
 	if latestVersionOfModel.Meta.Version == version {
-		c.JSON(http.StatusOK, latestVersionOfModel)
+		c.JSON(http.StatusOK, addAddonsFields(*latestVersionOfModel))
 		return
 	}
 
@@ -789,7 +815,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model does not have version: %s", version)})
 		return
 	}
-	c.JSON(http.StatusOK, finalModel)
+	c.JSON(http.StatusOK, addAddonsFields(finalModel))
 
 }
 
@@ -799,18 +825,31 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid  path  string  true  "Model UUID"
+// @Param        tag  path  string  true  "Model tag"
 // @Success      200   {object}  gin.H  "Model lineage"
 // @Failure      404   {object}  gin.H  "Model not found"
-// @Router       /v0/models/lineage/{uuid} [get]
+// @Router       /v0/models/lineage/{tag} [get]
 func (h *ModelHandler) GetModelLineage(c *gin.Context) {
-	uuid := c.Param("uuid")
-	lineage, err := database.GetModelLineage(uuid)
+	tag := c.Param("tag")
+
+	model, err := database.GetModelByTag(tag)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, lineage)
+
+	lineage, err := database.GetModelLineage(model.Meta.UUID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	result := make([]gin.H, len(lineage))
+	for i, model := range lineage {
+		result[i] = addAddonsFields(model)
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // GetModelChildren godoc
@@ -819,18 +858,31 @@ func (h *ModelHandler) GetModelLineage(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid  path  string  true  "Model UUID"
+// @Param        tag  path  string  true  "Model tag"
 // @Success      200   {array}   gin.H  "List of child models"
 // @Failure      404   {object}  gin.H  "Model not found"
-// @Router       /v0/models/children/{uuid} [get]
+// @Router       /v0/models/children/{tag} [get]
 func (h *ModelHandler) GetModelChildren(c *gin.Context) {
-	uuid := c.Param("uuid")
-	status, children, err := database.GetModelChildren(uuid)
+	tag := c.Param("tag")
+
+	model, err := database.GetModelByTag(tag)
 	if err != nil {
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(status, children)
+
+	children, err := database.GetModelChildren(model.Meta.UUID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	result := make([]gin.H, len(children))
+	for i, model := range children {
+		result[i] = addAddonsFields(model)
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // ModelSearch godoc
@@ -855,37 +907,50 @@ func (h *ModelHandler) ModelSearch(c *gin.Context) {
 			c.JSON(status, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(status, models)
+		result := make([]gin.H, len(models))
+		for i, model := range models {
+			result[i] = addAddonsFields(model)
+		}
+		c.JSON(status, result)
 	case "user":
 		status, models, err := database.SearchModelsByUser(name)
 		if err != nil {
 			c.JSON(status, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(status, models)
+		result := make([]gin.H, len(models))
+		for i, model := range models {
+			result[i] = addAddonsFields(model)
+		}
+		c.JSON(status, result)
 	default:
 		c.JSON(http.StatusNotFound, gin.H{"error": "This type of search does not exist"})
 		return
 	}
 }
 
-// GetCommitsByModelUUID godoc
+// GetCommitsByModelTag godoc
 // @Summary      Get all commits for a model
 // @Description  Get all commits for a model
 // @Tags         models
 // @Produce      json
-// @Param        uuid  path  string  true  "Model UUID"
+// @Param        tag  path  string  true  "Model tag"
 // @Success      200   {array}   gin.H  "List of commits"
 // @Failure      404   {object}  gin.H  "Model not found"
-// @Router       /v0/models/commits/{uuid} [get]
-func (h *ModelHandler) GetCommitsByModelUUID(c *gin.Context) {
-	uuid := c.Param("uuid")
+// @Router       /v0/models/commits/{tag} [get]
+func (h *ModelHandler) GetCommitsByModelTag(c *gin.Context) {
+	tag := c.Param("tag")
+
+	model, err := database.GetModelByTag(tag)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 
 	// Call the database function to get all commits for the model
-	commits, err := database.GetCommitsByModelUUID(uuid)
+	commits, err := database.GetCommitsByModelUUID(model.Meta.UUID)
 	if err != nil {
-		// If error, return an appropriate response
-		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -893,21 +958,27 @@ func (h *ModelHandler) GetCommitsByModelUUID(c *gin.Context) {
 	c.JSON(http.StatusOK, commits)
 }
 
-// GetLatestCommitByModelUUID godoc
+// GetLatestCommitByModelTag godoc
 // @Summary      Get latest commit for a model
 // @Description  Get latest commit for a model
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid  path  string  true  "Model UUID"
+// @Param        tag  path  string  true  "Model tag"
 // @Success      200   {object}  gin.H  "Latest commit"
 // @Failure      404   {object}  gin.H  "Model not found"
-// @Router       /v0/models/commits/latest/{uuid} [get]
-func (h *ModelHandler) GetLatestCommitByModelUUID(c *gin.Context) {
-	uuid := c.Param("uuid")
+// @Router       /v0/models/commits/latest/{tag} [get]
+func (h *ModelHandler) GetLatestCommitByModelTag(c *gin.Context) {
+	tag := c.Param("tag")
+
+	model, err := database.GetModelByTag(tag)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 
 	// Call the encapsulated GetModelByUUID function from the database package
-	commit, err := database.GetLatestCommitForModelUUID(uuid)
+	commit, err := database.GetLatestCommitForModelUUID(model.Meta.UUID)
 	if err != nil {
 		// If error, return an appropriate response based on the error
 		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})

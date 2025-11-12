@@ -56,16 +56,11 @@ func setup() {
 func SetUpRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	//initialize handler
-	modelHandler, err := NewModelHandler()
 
-	authHandler, _ := NewAuthHandler("test-client-id", "test-client-secret")
+	//initialize handlers
+	modelHandler := NewModelHandler(false)
 
-	// Handle any errors that occur during initialization of the API endpoint handling logic
-	if err != nil {
-		fmt.Println("Error initializing model handler: ", err)
-		os.Exit(1)
-	}
+	authHandler := NewAuthHandler("test-client-id", "test-client-secret")
 
 	//router group for all endpoints related to models
 	models := r.Group("/v0/models")
@@ -74,10 +69,10 @@ func SetUpRouter() *gin.Engine {
 		models.POST("", modelHandler.UploadModel)
 		models.GET("/:uuid", modelHandler.GetModelByUUID)
 		models.GET("/tag/:tag", modelHandler.GetModelByTag)
-		models.GET("/commits/:uuid", modelHandler.GetCommitsByModelUUID)
-		models.GET("/commits/latest/:uuid", modelHandler.GetLatestCommitByModelUUID)
-		models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
-		models.GET("/children/:uuid", modelHandler.GetModelChildren)
+		models.GET("/commits/:tag", modelHandler.GetCommitsByModelTag)
+		models.GET("/commits/latest/:tag", modelHandler.GetLatestCommitByModelTag)
+		models.GET("/lineage/:tag", modelHandler.GetModelLineage)
+		models.GET("/children/:tag", modelHandler.GetModelChildren)
 		models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
 		models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
@@ -185,7 +180,7 @@ func TestUploadModelNoUUID(t *testing.T) {
 	assert.NotEmpty(t, resultModel.Meta.UUID)
 
 	// should not be any commits
-	getReq, _ := http.NewRequest("GET", "/v0/models/commits/"+resultModel.Meta.UUID, nil)
+	getReq, _ := http.NewRequest("GET", "/v0/models/commits/new-model:1.0", nil)
 	getReq.Header.Set("Authorization", "Bearer "+token)
 	getW := httptest.NewRecorder()
 	router.ServeHTTP(getW, getReq)
@@ -193,7 +188,7 @@ func TestUploadModelNoUUID(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, getW.Code)
 
 	// check the latest commit, which should not exist
-	getReq, _ = http.NewRequest("GET", "/v0/models/commits/latest"+resultModel.Meta.UUID, nil)
+	getReq, _ = http.NewRequest("GET", "/v0/models/commits/latest/new-model:1.0", nil)
 	getReq.Header.Set("Authorization", "Bearer "+token)
 	getW = httptest.NewRecorder()
 	router.ServeHTTP(getW, getReq)
@@ -240,7 +235,7 @@ func TestUploadModelBadUUID(t *testing.T) {
 	assert.NotEqual(t, meta.UUID, resultModel.Meta.UUID)
 
 	// should not be any commits
-	getReq, _ := http.NewRequest("GET", "/v0/models/commits/"+resultModel.Meta.UUID, nil)
+	getReq, _ := http.NewRequest("GET", "/v0/models/commits/new-model:1.0", nil)
 	getReq.Header.Set("Authorization", "Bearer "+token)
 	getW := httptest.NewRecorder()
 	router.ServeHTTP(getW, getReq)
@@ -248,7 +243,7 @@ func TestUploadModelBadUUID(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, getW.Code)
 
 	// check the latest commit, which should not exist
-	getReq, _ = http.NewRequest("GET", "/v0/models/commits/latest"+resultModel.Meta.UUID, nil)
+	getReq, _ = http.NewRequest("GET", "/v0/models/commits/latest/new-model:1.0", nil)
 	getReq.Header.Set("Authorization", "Bearer "+token)
 	getW = httptest.NewRecorder()
 	router.ServeHTTP(getW, getReq)
@@ -295,7 +290,7 @@ func TestUploadModelExistingModel(t *testing.T) {
 	assert.Equal(t, "This is an updated test model", resultModel.Meta.Summary)
 
 	// we should have a single commit
-	getReq, _ := http.NewRequest("GET", "/v0/models/commits/"+resultModel.Meta.UUID, nil)
+	getReq, _ := http.NewRequest("GET", "/v0/models/commits/test-model:2.0", nil)
 	getReq.Header.Set("Authorization", "Bearer "+token)
 	getW := httptest.NewRecorder()
 	router.ServeHTTP(getW, getReq)
@@ -309,7 +304,7 @@ func TestUploadModelExistingModel(t *testing.T) {
 	assert.Equal(t, 1, response1[0].UserID)
 
 	// check the latest commit, which should exist
-	getReq, _ = http.NewRequest("GET", "/v0/models/commits/latest/"+resultModel.Meta.UUID, nil)
+	getReq, _ = http.NewRequest("GET", "/v0/models/commits/latest/test-model:2.0", nil)
 	getReq.Header.Set("Authorization", "Bearer "+token)
 	getW = httptest.NewRecorder()
 	router.ServeHTTP(getW, getReq)
@@ -432,7 +427,7 @@ func TestGetModelLineage(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleData()
 	//tests if the handler returns a 200 OK status code when the model exists for the model lineage
-	req, _ := http.NewRequest("GET", "/v0/models/lineage/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e", nil)
+	req, _ := http.NewRequest("GET", "/v0/models/lineage/test-child-model:1.0", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -445,7 +440,7 @@ func TestGetModelChildren(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleData()
 
-	req, _ := http.NewRequest("GET", "/v0/models/children/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	req, _ := http.NewRequest("GET", "/v0/models/children/test-model:1.0", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)

@@ -64,10 +64,10 @@ func main() {
 	}
 
 	//initialize handlers
-	modelHandler, _ := handlers.NewModelHandler()
+	modelHandler := handlers.NewModelHandler(*engMode)
 	var authHandler *handlers.AuthHandler
 	if !*engMode {
-		authHandler, _ = handlers.NewAuthHandler(
+		authHandler = handlers.NewAuthHandler(
 			os.Getenv("GOOGLE_CLIENT_ID"),
 			os.Getenv("GOOGLE_CLIENT_SECRET"),
 		)
@@ -87,17 +87,17 @@ func main() {
 			models.GET("", modelHandler.GetModels)
 			models.POST("", modelHandler.UploadModel)
 			models.GET("/tag/:tag", modelHandler.GetModelByTag)
-			models.GET("/commits/:uuid", modelHandler.GetCommitsByModelUUID)
-			models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
+			models.GET("/commits/:tag", modelHandler.GetCommitsByModelTag)
+			models.GET("/lineage/:tag", modelHandler.GetModelLineage)
 		} else {
 			models.GET("", modelHandler.GetModels)
 			models.POST("", modelHandler.UploadModel)
 			models.GET("/:uuid", modelHandler.GetModelByUUID)
 			models.GET("/tag/:tag", modelHandler.GetModelByTag)
-			models.GET("/commits/:uuid", modelHandler.GetCommitsByModelUUID)
-			models.GET("/commits/latest/:uuid", modelHandler.GetLatestCommitByModelUUID)
-			models.GET("/lineage/:uuid", modelHandler.GetModelLineage)
-			models.GET("/children/:uuid", modelHandler.GetModelChildren)
+			models.GET("/commits/:tag", modelHandler.GetCommitsByModelTag)
+			models.GET("/commits/latest/:tag", modelHandler.GetLatestCommitByModelTag)
+			models.GET("/lineage/:tag", modelHandler.GetModelLineage)
+			models.GET("/children/:tag", modelHandler.GetModelChildren)
 			models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
 			models.GET("/search/:type/:name", modelHandler.ModelSearch)
 			models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)

@@ -114,7 +114,7 @@ func GetDBInstance() *gorm.DB {
 }
 
 // function for getting all models in Go struct  - remember, in Go, public methods have to be capitalized
-func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
+func GetAllModels() ([]apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
 	// Updated query to preload associated fields
 	if err := dbInstance.
@@ -128,10 +128,10 @@ func GetAllModels() (int, []apiTypes.CausalDecisionModel, error) {
 		Preload("Meta.Creator").
 		Preload("Meta.Updaters").
 		Find(&models).Error; err != nil {
-		return http.StatusInternalServerError, nil, err
+		return nil, err
 	}
 
-	return http.StatusOK, models, nil
+	return models, nil
 }
 
 // GetModelByUUID encapsulates the GORM functionality for getting a model by its UUID
@@ -274,7 +274,7 @@ func GetModelLineage(uuid string) ([]apiTypes.CausalDecisionModel, error) {
 }
 
 // get the children of this model.
-func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) {
+func GetModelChildren(uuid string) ([]apiTypes.CausalDecisionModel, error) {
 	var children []apiTypes.CausalDecisionModel
 	if err := dbInstance.
 		Preload("Meta").
@@ -294,10 +294,10 @@ func GetModelChildren(uuid string) (int, []apiTypes.CausalDecisionModel, error) 
 		Preload("Diagrams.Dependencies.Meta.Updaters").
 		Where("JSON_EXTRACT(addons, '$.parentUUID') = ?", uuid).
 		Find(&children).Error; err != nil {
-		return http.StatusNotFound, nil, err
+		return nil, err
 	}
 
-	return http.StatusOK, children, nil
+	return children, nil
 }
 
 func UpdateModelPrivacyByUUID(uuid string, isPublic bool, shares []apiTypes.Share) error {
