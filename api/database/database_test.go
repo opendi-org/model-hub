@@ -711,9 +711,9 @@ func TestSearchModelsByName(t *testing.T) {
 	CreateExampleData()
 
 	// Search for models by name
-	status, models, err := SearchModelsByName("Child")
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	models, err := SearchModelsByName("Child")
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	if len(models) != 1 {
 		t.Errorf("Expected 1 model, got %d", len(models))
@@ -726,9 +726,9 @@ func TestSearchModelsByUser(t *testing.T) {
 	CreateExampleData()
 
 	// Search for models by name
-	status, models, err := SearchModelsByUser("Child")
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	models, err := SearchModelsByUser("Child")
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	if len(models) != 1 {
 		t.Errorf("Expected 1 model, got %d", len(models))
@@ -742,8 +742,8 @@ func TestUpdateModelPrivacyByUUID(t *testing.T) {
 
 	shares := []apiTypes.Share{
 		{
-			UserID: 2,
-			Level:  "write",
+			Email: "childcreator@gmail.com",
+			Level: "write",
 		},
 	}
 
@@ -755,7 +755,7 @@ func TestUpdateModelPrivacyByUUID(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, true, model.Addons.IsPublic)
 	assert.Equal(t, 1, len(model.Addons.Shares))
-	assert.Equal(t, 2, model.Addons.Shares[0].UserID)
+	assert.Equal(t, "childcreator@gmail.com", model.Addons.Shares[0].Email)
 	assert.Equal(t, "write", model.Addons.Shares[0].Level)
 }
 

@@ -75,11 +75,11 @@ func SetUpRouter() *gin.Engine {
 		models.GET("/children/:tag", modelHandler.GetModelChildren)
 		models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
 		models.GET("/search/:type/:name", modelHandler.ModelSearch)
-		models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
-		models.PUT("/privacy/:uuid", modelHandler.PutModelPrivacy)
-		models.GET("/transfer/:uuid", modelHandler.GetTransfer)
-		models.POST("/transfer/:uuid", modelHandler.PostTransfer)
-		models.DELETE("/transfer/:uuid", modelHandler.DeleteTransfer)
+		models.GET("/privacy/:tag", modelHandler.GetModelPrivacy)
+		models.PUT("/privacy/:tag", modelHandler.PutModelPrivacy)
+		models.GET("/transfer/:tag", modelHandler.GetTransfer)
+		models.POST("/transfer/:tag", modelHandler.PostTransfer)
+		models.DELETE("/transfer/:tag", modelHandler.DeleteTransfer)
 	}
 
 	auth := r.Group("/auth")
@@ -357,8 +357,8 @@ func TestUploadModelInvalidPermissions(t *testing.T) {
 
 	database.UpdateModelPrivacyByUUID("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", false, []apiTypes.Share{
 		{
-			UserID: 2,
-			Level:  "read",
+			Email: "childcreator@gmail.com",
+			Level: "read",
 		},
 	})
 
@@ -478,7 +478,7 @@ func TestModelSearch(t *testing.T) {
 
 	assert.Equal(t, len(responseBody), 1)
 	assert.Contains(t, responseBody2[0]["meta"].(map[string]interface{})["name"], "Test")
-	assert.Contains(t, responseBody2[1]["meta"].(map[string]interface{})["creator"].(map[string]interface{})["username"], "childcreator")
+	assert.Contains(t, responseBody2[1]["meta"].(map[string]interface{})["creator"].(map[string]interface{})["email"], "creator@gmail.com")
 
 	// try a type of search that doesnt exist
 	req3, _ := http.NewRequest("GET", "/v0/models/search/fake/summary", nil)
@@ -624,13 +624,13 @@ func TestPutAndGetModelPrivacy(t *testing.T) {
 		IsPublic: true,
 		Shares: []apiTypes.Share{
 			{
-				UserID: 2,
-				Level:  "write",
+				Email: "childcreator@gmail.com",
+				Level: "write",
 			},
 		},
 	}
 	jsonBody, _ := json.Marshal(putBody)
-	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", bytes.NewBuffer(jsonBody))
+	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/test-model:1.0", bytes.NewBuffer(jsonBody))
 	putReq.Header.Set("Content-Type", "application/json")
 	putReq.Header.Set("Authorization", "Bearer "+token)
 	putW := httptest.NewRecorder()
@@ -640,7 +640,7 @@ func TestPutAndGetModelPrivacy(t *testing.T) {
 	assert.Equal(t, http.StatusOK, putW.Code)
 
 	// get the privacy settings to check
-	getReq, _ := http.NewRequest("GET", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq, _ := http.NewRequest("GET", "/v0/models/privacy/test-model:1.0", nil)
 	getReq.Header.Set("Authorization", "Bearer "+token)
 	getW := httptest.NewRecorder()
 	router.ServeHTTP(getW, getReq)
@@ -652,7 +652,7 @@ func TestPutAndGetModelPrivacy(t *testing.T) {
 
 	assert.Equal(t, true, response.IsPublic)
 	assert.Equal(t, 1, len(response.Shares))
-	assert.Equal(t, 2, response.Shares[0].UserID)
+	assert.Equal(t, "childcreator@gmail.com", response.Shares[0].Email)
 	assert.Equal(t, "write", response.Shares[0].Level)
 }
 
@@ -674,7 +674,7 @@ func TestPutModelPrivacyInvalidPermissions(t *testing.T) {
 	}
 
 	jsonBody, _ := json.Marshal(putBody)
-	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", bytes.NewReader(jsonBody))
+	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/test-model:1.0", bytes.NewReader(jsonBody))
 	putReq.Header.Set("Content-Type", "application/json")
 	putReq.Header.Set("Authorization", "Bearer "+token)
 	putW := httptest.NewRecorder()
@@ -683,7 +683,7 @@ func TestPutModelPrivacyInvalidPermissions(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, putW.Code)
 }
 
-func TestPutModelPrivacyInvalidUUID(t *testing.T) {
+func TestPutModelPrivacyInvalidTag(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleData()
 
@@ -699,9 +699,9 @@ func TestPutModelPrivacyInvalidUUID(t *testing.T) {
 		Shares:   []apiTypes.Share{},
 	}
 
-	// bad uuid for request
+	// bad tag for request
 	jsonBody, _ := json.Marshal(putBody)
-	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/baduuid", bytes.NewReader(jsonBody))
+	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/badtag", bytes.NewReader(jsonBody))
 	putReq.Header.Set("Content-Type", "application/json")
 	putReq.Header.Set("Authorization", "Bearer "+token)
 	putW := httptest.NewRecorder()
@@ -726,14 +726,14 @@ func TestPutModelPrivacyInvalidShares(t *testing.T) {
 		IsPublic: true,
 		Shares: []apiTypes.Share{
 			{
-				UserID: 2,
-				Level:  "read",
+				Email: "childcreator@gmail.com",
+				Level: "read",
 			},
 		},
 	}
 
 	jsonBody, _ := json.Marshal(putBody)
-	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", bytes.NewReader(jsonBody))
+	putReq, _ := http.NewRequest("PUT", "/v0/models/privacy/test-model:1.0", bytes.NewReader(jsonBody))
 	putReq.Header.Set("Content-Type", "application/json")
 	putReq.Header.Set("Authorization", "Bearer "+token)
 	putW := httptest.NewRecorder()
@@ -749,7 +749,7 @@ func TestGetModelPrivacyInvalidPermissions(t *testing.T) {
 	// userID 2 does not have owner access to this model
 	token := getTestToken(2)
 
-	getReq, _ := http.NewRequest("GET", "/v0/models/privacy/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq, _ := http.NewRequest("GET", "/v0/models/privacy/test-model:1.0", nil)
 	getReq.Header.Set("Authorization", "Bearer "+token)
 	getW := httptest.NewRecorder()
 	router.ServeHTTP(getW, getReq)
@@ -757,14 +757,14 @@ func TestGetModelPrivacyInvalidPermissions(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, getW.Code)
 }
 
-func TestGetModelPrivacyInvalidUUID(t *testing.T) {
+func TestGetModelPrivacyInvalidTag(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleData()
 
 	token := getTestToken(1)
 
-	// bad uuid for request
-	getReq, _ := http.NewRequest("GET", "/v0/models/privacy/baduuid", nil)
+	// bad tag for request
+	getReq, _ := http.NewRequest("GET", "/v0/models/privacy/badtag", nil)
 	getReq.Header.Set("Authorization", "Bearer "+token)
 	getW := httptest.NewRecorder()
 	router.ServeHTTP(getW, getReq)
@@ -778,7 +778,7 @@ func TestPostTransfer(t *testing.T) {
 
 	token := getTestToken(1)
 
-	req, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	req, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0?owner=childcreator@gmail.com", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -800,7 +800,7 @@ func TestPostTransferInvalidPermissions(t *testing.T) {
 	// user should not be able to create a ownership transfer request for a model they do not own
 	token := getTestToken(2)
 
-	req, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=1", nil)
+	req, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0?owner=creator@gmail.com", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -815,7 +815,7 @@ func TestPostTransferMissingOwnerParam(t *testing.T) {
 	token := getTestToken(1)
 
 	// missing owner query parameter
-	req, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	req, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -830,7 +830,7 @@ func TestPostTransferAlreadyExists(t *testing.T) {
 	token := getTestToken(1)
 
 	// create first transfer
-	req1, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	req1, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0?owner=childcreator@gmail.com", nil)
 	req1.Header.Set("Authorization", "Bearer "+token)
 	w1 := httptest.NewRecorder()
 	router.ServeHTTP(w1, req1)
@@ -838,7 +838,7 @@ func TestPostTransferAlreadyExists(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w1.Code)
 
 	// try to create another transfer on the same model
-	req2, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	req2, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0?owner=childcreator@gmail.com", nil)
 	req2.Header.Set("Authorization", "Bearer "+token)
 	w2 := httptest.NewRecorder()
 	router.ServeHTTP(w2, req2)
@@ -851,13 +851,13 @@ func TestGetTransfer(t *testing.T) {
 	database.CreateExampleData()
 
 	token1 := getTestToken(1)
-	postReq1, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq1, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0?owner=childcreator@gmail.com", nil)
 	postReq1.Header.Set("Authorization", "Bearer "+token1)
 	postW1 := httptest.NewRecorder()
 	router.ServeHTTP(postW1, postReq1)
 
 	// should be able to see the transfer as the sending user
-	getReq1, _ := http.NewRequest("GET", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq1, _ := http.NewRequest("GET", "/v0/models/transfer/test-model:1.0", nil)
 	getReq1.Header.Set("Authorization", "Bearer "+token1)
 	getW1 := httptest.NewRecorder()
 	router.ServeHTTP(getW1, getReq1)
@@ -873,7 +873,7 @@ func TestGetTransfer(t *testing.T) {
 
 	// should be able to see the transfer as the receiving user
 	token2 := getTestToken(2)
-	getReq2, _ := http.NewRequest("GET", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq2, _ := http.NewRequest("GET", "/v0/models/transfer/test-model:1.0", nil)
 	getReq2.Header.Set("Authorization", "Bearer "+token2)
 	getW2 := httptest.NewRecorder()
 	router.ServeHTTP(getW2, getReq2)
@@ -882,7 +882,7 @@ func TestGetTransfer(t *testing.T) {
 
 	// should not be able to see the transfer as the alternate user
 	token3 := getTestToken(3)
-	getReq3, _ := http.NewRequest("GET", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	getReq3, _ := http.NewRequest("GET", "/v0/models/transfer/test-model:1.0", nil)
 	getReq3.Header.Set("Authorization", "Bearer "+token3)
 	getW3 := httptest.NewRecorder()
 	router.ServeHTTP(getW3, getReq3)
@@ -896,7 +896,7 @@ func TestDeleteTransferAccept(t *testing.T) {
 
 	// user 1 makes ownership transfer request to user 2
 	token1 := getTestToken(1)
-	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0?owner=childcreator@gmail.com", nil)
 	postReq.Header.Set("Authorization", "Bearer "+token1)
 	postW := httptest.NewRecorder()
 	router.ServeHTTP(postW, postReq)
@@ -905,7 +905,7 @@ func TestDeleteTransferAccept(t *testing.T) {
 
 	// user 2 accepts transfer
 	token2 := getTestToken(2)
-	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?accept=true", nil)
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/test-model:1.0?accept=true", nil)
 	deleteReq.Header.Set("Authorization", "Bearer "+token2)
 	deleteW := httptest.NewRecorder()
 	router.ServeHTTP(deleteW, deleteReq)
@@ -926,7 +926,7 @@ func TestDeleteTransferDecline(t *testing.T) {
 
 	// user 1 makes ownership transfer request to user 2
 	token1 := getTestToken(1)
-	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0?owner=childcreator@gmail.com", nil)
 	postReq.Header.Set("Authorization", "Bearer "+token1)
 	postW := httptest.NewRecorder()
 	router.ServeHTTP(postW, postReq)
@@ -935,7 +935,7 @@ func TestDeleteTransferDecline(t *testing.T) {
 
 	// user 2 declines transfer
 	token2 := getTestToken(2)
-	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?accept=false", nil)
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/test-model:1.0?accept=false", nil)
 	deleteReq.Header.Set("Authorization", "Bearer "+token2)
 	deleteW := httptest.NewRecorder()
 	router.ServeHTTP(deleteW, deleteReq)
@@ -956,7 +956,7 @@ func TestDeleteTransferInvalidPermissions(t *testing.T) {
 
 	// user 1 makes ownership transfer request to user 2
 	token1 := getTestToken(1)
-	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0?owner=childcreator@gmail.com", nil)
 	postReq.Header.Set("Authorization", "Bearer "+token1)
 	postW := httptest.NewRecorder()
 	router.ServeHTTP(postW, postReq)
@@ -964,7 +964,7 @@ func TestDeleteTransferInvalidPermissions(t *testing.T) {
 	assert.Equal(t, http.StatusOK, postW.Code)
 
 	// user 1 tries to accept their own transfer request
-	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?accept=true", nil)
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/test-model:1.0?accept=true", nil)
 	deleteReq.Header.Set("Authorization", "Bearer "+token1)
 	deleteW := httptest.NewRecorder()
 	router.ServeHTTP(deleteW, deleteReq)
@@ -977,7 +977,7 @@ func TestDeleteTransferNotFound(t *testing.T) {
 	database.CreateExampleData()
 
 	token := getTestToken(2)
-	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?accept=true", nil)
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/test-model:1.0?accept=true", nil)
 	deleteReq.Header.Set("Authorization", "Bearer "+token)
 	deleteW := httptest.NewRecorder()
 	router.ServeHTTP(deleteW, deleteReq)
@@ -992,14 +992,14 @@ func TestDeleteTransferMissingAcceptParam(t *testing.T) {
 
 	// user 1 makes ownership transfer request to user 2
 	token1 := getTestToken(1)
-	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d?owner=2", nil)
+	postReq, _ := http.NewRequest("POST", "/v0/models/transfer/test-model:1.0?owner=childcreator@gmail.com", nil)
 	postReq.Header.Set("Authorization", "Bearer "+token1)
 	postW := httptest.NewRecorder()
 	router.ServeHTTP(postW, postReq)
 
 	// missing accept param
 	token2 := getTestToken(2)
-	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", nil)
+	deleteReq, _ := http.NewRequest("DELETE", "/v0/models/transfer/test-model:1.0", nil)
 	deleteReq.Header.Set("Authorization", "Bearer "+token2)
 	deleteW := httptest.NewRecorder()
 	router.ServeHTTP(deleteW, deleteReq)

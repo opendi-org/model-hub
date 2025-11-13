@@ -104,8 +104,8 @@ type Commit struct {
 }
 
 type Share struct {
-	UserID int    `json:"userID"`
-	Level  string `json:"level"`
+	Email string `json:"email"`
+	Level string `json:"level"`
 }
 
 type Transfer struct {

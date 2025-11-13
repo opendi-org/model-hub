@@ -195,7 +195,7 @@ func GetModelByTag(tag string) (*apiTypes.CausalDecisionModel, error) {
 	return &model, nil
 }
 
-func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error) {
+func SearchModelsByName(name string) ([]apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
 
 	// Use GORM's query builder to work with Full-Text Search
@@ -212,19 +212,19 @@ func SearchModelsByName(name string) (int, []apiTypes.CausalDecisionModel, error
 		Preload("Meta.Creator").
 		Preload("Meta.Updaters").
 		Find(&models).Error; err != nil {
-		return http.StatusInternalServerError, nil, err
+		return nil, err
 	}
 
-	return http.StatusOK, models, nil
+	return models, nil
 }
 
-func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, error) {
+func SearchModelsByUser(email string) ([]apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
 
 	if err := dbInstance.
 		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
 		Joins("JOIN users ON meta.creator_id = users.id").
-		Where("users.username LIKE ?", "%"+username+"%").
+		Where("users.email LIKE ?", "%"+email+"%").
 		Preload("Meta").
 		Preload("Diagrams").
 		Preload("Diagrams.Meta").
@@ -235,10 +235,10 @@ func SearchModelsByUser(username string) (int, []apiTypes.CausalDecisionModel, e
 		Preload("Meta.Creator").
 		Preload("Meta.Updaters").
 		Find(&models).Error; err != nil {
-		return http.StatusInternalServerError, nil, err
+		return nil, err
 	}
 
-	return http.StatusOK, models, nil
+	return models, nil
 }
 
 // / GetModelLineage returns the ancestry of a model given its UUID.
@@ -550,6 +550,7 @@ func UpdateModelAndCreateCommit(uploadedModel *apiTypes.CausalDecisionModel, old
 	}
 
 	// update the tag
+	uploadedModel.Addons = oldModel.Addons
 	uploadedModel.Addons.Tag = generateTag(uploadedModel.Meta.Name, uploadedModel.Meta.Version)
 
 	// update the model
@@ -968,8 +969,9 @@ func CreateExampleData() {
 		MetaID:    1,
 		Meta:      meta,
 		Addons: apiTypes.Addons{
-			OwnerID: creator.ID,
-			Tag:     "test-model:1.0",
+			OwnerID:  creator.ID,
+			Tag:      "test-model:1.0",
+			IsPublic: true,
 		},
 	}
 
@@ -1003,6 +1005,38 @@ func CreateExampleData() {
 			Parent:     &model,
 			OwnerID:    childCreator.ID,
 			Tag:        "test-child-model:1.0",
+			IsPublic:   true,
+		},
+	}
+
+	privateMeta := apiTypes.Meta{
+		ID:            3,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		UUID:          "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6f",
+		Name:          "Private Model",
+		Summary:       "This is a private model",
+		Documentation: nil,
+		Version:       "1.0",
+		Draft:         false,
+		CreatorID:     creator.ID,
+		Creator:       creator,
+		CreatedDate:   "2021-07-01",
+		Updaters:      []apiTypes.User{},
+		UpdatedDate:   "2021-07-01",
+	}
+
+	privateModel := apiTypes.CausalDecisionModel{
+		ID:        3,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Schema:    "Private Schema",
+		MetaID:    3,
+		Meta:      privateMeta,
+		Addons: apiTypes.Addons{
+			OwnerID:  creator.ID,
+			Tag:      "private-model:1.0",
+			IsPublic: false,
 		},
 	}
 
@@ -1012,6 +1046,10 @@ func CreateExampleData() {
 
 	if err := dbInstance.Create(&childModel).Error; err != nil {
 		fmt.Println("Error creating child model: ", err)
+	}
+
+	if err := dbInstance.Create(&privateModel).Error; err != nil {
+		fmt.Println("Error creating private model: ", err)
 	}
 
 }

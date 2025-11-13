@@ -100,11 +100,11 @@ func main() {
 			models.GET("/children/:tag", modelHandler.GetModelChildren)
 			models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
 			models.GET("/search/:type/:name", modelHandler.ModelSearch)
-			models.GET("/privacy/:uuid", modelHandler.GetModelPrivacy)
-			models.PUT("/privacy/:uuid", modelHandler.PutModelPrivacy)
-			models.GET("/transfer/:uuid", modelHandler.GetTransfer)
-			models.POST("/transfer/:uuid", modelHandler.PostTransfer)
-			models.DELETE("/transfer/:uuid", modelHandler.DeleteTransfer)
+			models.GET("/privacy/:tag", modelHandler.GetModelPrivacy)
+			models.PUT("/privacy/:tag", modelHandler.PutModelPrivacy)
+			models.GET("/transfer/:tag", modelHandler.GetTransfer)
+			models.POST("/transfer/:tag", modelHandler.PostTransfer)
+			models.DELETE("/transfer/:tag", modelHandler.DeleteTransfer)
 		}
 	}
 
