@@ -13,9 +13,12 @@ import (
 	"opendi/model-hub/api/apiTypes"
 	"opendi/model-hub/api/database"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 )
@@ -92,6 +95,8 @@ func SetUpRouter() *gin.Engine {
 		auth.GET("/google/login", authHandler.GoogleLogin)
 		auth.GET("/google/callback", authHandler.GoogleCallback)
 		auth.GET("/testlogin", authHandler.TestLogin)
+		auth.GET("/me", authHandler.GetCurrentUser)
+		auth.POST("/logout", authHandler.Logout)
 	}
 
 	return r
@@ -1010,4 +1015,247 @@ func TestDeleteTransferMissingAcceptParam(t *testing.T) {
 	router.ServeHTTP(deleteW, deleteReq)
 
 	assert.Equal(t, http.StatusBadRequest, deleteW.Code)
+}
+
+func TestGetCurrentUser(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	token := getTestToken(1)
+	req, _ := http.NewRequest("GET", "/auth/me", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "auth_token",
+		Value: token,
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	var response apiTypes.User
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err)
+
+	// Verify user data is returned (ID is not included in JSON response)
+	assert.NotEmpty(t, response.Username)
+	assert.NotEmpty(t, response.Email)
+	assert.Equal(t, "creator", response.Username)
+	assert.Equal(t, "creator@gmail.com", response.Email)
+}
+
+func TestGetCurrentUserMissingToken(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	req, _ := http.NewRequest("GET", "/auth/me", nil)
+
+	// No cookie added
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.Contains(t, response["error"], "Not authenticated")
+}
+
+func TestGetCurrentUserInvalidToken(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	req, _ := http.NewRequest("GET", "/auth/me", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "auth_token",
+		Value: "invalid.token.string",
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.Contains(t, response["error"], "Invalid token")
+}
+
+func TestGetCurrentUserExpiredToken(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	secret, _ := os.LookupEnv("JWT_SECRET")
+
+	// Create an expired token
+	expiredToken, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": 1,
+		"email":   "test@test.com",
+		"exp":     time.Now().Add(-1 * time.Hour).Unix(),
+	}).SignedString([]byte(secret))
+	req, _ := http.NewRequest("GET", "/auth/me", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "auth_token",
+		Value: expiredToken,
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.Contains(t, response["error"], "Invalid token")
+}
+
+func TestGetCurrentUserNonExistentUser(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	secret, _ := os.LookupEnv("JWT_SECRET")
+
+	// Create token with non-existent user ID
+	nonExistentToken, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": 9999,
+		"email":   "nonexistent@test.com",
+		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+	}).SignedString([]byte(secret))
+	req, _ := http.NewRequest("GET", "/auth/me", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "auth_token",
+		Value: nonExistentToken,
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.Contains(t, response["error"], "User not found")
+}
+
+func TestGetCurrentUserMissingUserIDClaim(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	secret, _ := os.LookupEnv("JWT_SECRET")
+
+	// Create token without user_id claim
+	invalidClaimsToken, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"email": "test@test.com",
+		"exp":   time.Now().Add(24 * time.Hour).Unix(),
+	}).SignedString([]byte(secret))
+	req, _ := http.NewRequest("GET", "/auth/me", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "auth_token",
+		Value: invalidClaimsToken,
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.Contains(t, response["error"], "Invalid user_id in token")
+}
+
+func TestLogout(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	token := getTestToken(1)
+	req, _ := http.NewRequest("POST", "/auth/logout", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "auth_token",
+		Value: token,
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.Equal(t, "Logged out successfully", response["message"])
+
+	// Check that cookie is cleared
+	cookies := w.Result().Cookies()
+	var authCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == "auth_token" {
+			authCookie = cookie
+			break
+		}
+	}
+	assert.NotNil(t, authCookie)
+	assert.Equal(t, "", authCookie.Value)
+	assert.True(t, authCookie.MaxAge < 0)
+}
+
+func TestLogoutWithoutCookie(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	req, _ := http.NewRequest("POST", "/auth/logout", nil)
+
+	// No cookie provided
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.Equal(t, "Logged out successfully", response["message"])
+
+	// Cookie should still be set to clear
+	cookies := w.Result().Cookies()
+	var authCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == "auth_token" {
+			authCookie = cookie
+			break
+		}
+	}
+	assert.NotNil(t, authCookie)
+	assert.Equal(t, "", authCookie.Value)
+}
+
+func TestLogoutCookieProperties(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+	req, _ := http.NewRequest("POST", "/auth/logout", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	cookies := w.Result().Cookies()
+	var authCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == "auth_token" {
+			authCookie = cookie
+			break
+		}
+	}
+	assert.NotNil(t, authCookie)
+	assert.Equal(t, "auth_token", authCookie.Name)
+	assert.Equal(t, "/", authCookie.Path)
+	assert.True(t, authCookie.HttpOnly)
+	assert.Equal(t, -1, authCookie.MaxAge)
+}
+
+func TestGoogleCallbackInvalidAuthCode(t *testing.T) {
+	database.ResetTables()
+	database.CreateExampleData()
+
+	// Creates a mock Google OAuth server that rejects the auth code
+	mockGoogleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/token") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":             "invalid_grant",
+				"error_description": "Invalid authorization code",
+			})
+		}
+	}))
+	defer mockGoogleServer.Close()
+
+	// Creates a custom AuthHandler with OAuth config pointing to mock server
+	testAuthHandler, _ := NewAuthHandler("test-client-id", "test-client-secret")
+	testAuthHandler.googleConfig.Endpoint.TokenURL = mockGoogleServer.URL + "/token"
+
+	// Set up a test router
+	testRouter := gin.Default()
+	testRouter.GET("/auth/google/callback", testAuthHandler.GoogleCallback)
+
+	// Creates request with valid state but invalid code
+	state := "test-state-token"
+	req, _ := http.NewRequest("GET", "/auth/google/callback?code=invalid-code&state="+state, nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "oauth_state",
+		Value: state,
+	})
+	w := httptest.NewRecorder()
+	testRouter.ServeHTTP(w, req)
+
+	// Should return error
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NotNil(t, response["error"])
 }
