@@ -70,7 +70,7 @@ func TestGetModelByUUID(t *testing.T) {
 	CreateExampleData()
 
 	//gets all models in the database
-	_, models, _ := GetAllModels()
+	models, _ := GetAllModels()
 
 	if len(models) != 2 {
 		t.Errorf("Expected 2 model, got %d", len(models))
@@ -303,9 +303,9 @@ func TestGetAllModels(t *testing.T) {
 
 	CreateExampleData()
 
-	ret, models, error := GetAllModels()
-	if ret != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
+	models, err := GetAllModels()
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	if len(models) != 2 {
 		t.Errorf("Expected 2 models, got %d", len(models))
@@ -339,15 +339,15 @@ func TestGetModelLineage(t *testing.T) {
 }
 
 // TestGetModelChildren tests the GetModelChildren function
-// This function is used to get the children of a model given its UUID
+// This function is used to get the children of a model given its tag
 func TestGetModelChildren(t *testing.T) {
 	ResetTables()
 	//example model is a parent-child pair.
 	CreateExampleData()
 
-	ret, models, error := GetModelChildren("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
-	if ret != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, ret, error)
+	models, err := GetModelChildren("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d")
+	if err != nil {
+		t.Errorf("Expected to find model children, err: %s", err)
 	}
 	if len(models) != 1 {
 		t.Errorf("Expected 1 child model, got %d", len(models))
@@ -508,9 +508,9 @@ func TestGetAllCommits(t *testing.T) {
 	}
 
 	// create a commit
-	status, models, err := GetAllModels()
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	models, err := GetAllModels()
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	expectedModel := models[0]
 	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
@@ -667,9 +667,9 @@ func TestGetCommitById(t *testing.T) {
 	CreateExampleData()
 
 	// create a commit
-	status, models, err := GetAllModels()
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	models, err := GetAllModels()
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	expectedModel := models[0]
 	if expectedModel.Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" {
@@ -711,9 +711,9 @@ func TestSearchModelsByName(t *testing.T) {
 	CreateExampleData()
 
 	// Search for models by name
-	status, models, err := SearchModelsByName("Child")
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	models, err := SearchModelsByName("Child")
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	if len(models) != 1 {
 		t.Errorf("Expected 1 model, got %d", len(models))
@@ -726,9 +726,9 @@ func TestSearchModelsByUser(t *testing.T) {
 	CreateExampleData()
 
 	// Search for models by name
-	status, models, err := SearchModelsByUser("Child")
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d, err: %s", http.StatusOK, status, err)
+	models, err := SearchModelsByUser("Child")
+	if err != nil {
+		t.Errorf("Expected no error: %s", err)
 	}
 	if len(models) != 1 {
 		t.Errorf("Expected 1 model, got %d", len(models))
@@ -742,8 +742,8 @@ func TestUpdateModelPrivacyByUUID(t *testing.T) {
 
 	shares := []apiTypes.Share{
 		{
-			UserID: 2,
-			Level:  "write",
+			Email: "childcreator@gmail.com",
+			Level: "write",
 		},
 	}
 
@@ -755,7 +755,7 @@ func TestUpdateModelPrivacyByUUID(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, true, model.Addons.IsPublic)
 	assert.Equal(t, 1, len(model.Addons.Shares))
-	assert.Equal(t, 2, model.Addons.Shares[0].UserID)
+	assert.Equal(t, "childcreator@gmail.com", model.Addons.Shares[0].Email)
 	assert.Equal(t, "write", model.Addons.Shares[0].Level)
 }
 

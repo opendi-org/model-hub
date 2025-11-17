@@ -29,10 +29,9 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-//note - we technically don't need these structs for now. However, they could be useful in the future.
-
 // ModelHandler struct for handling model requests
 type ModelHandler struct {
+	engMode bool
 }
 
 // AuthHandler struct for handling user login/auth requests
@@ -41,12 +40,14 @@ type AuthHandler struct {
 }
 
 // method for getting an instance of ModelHandler
-func NewModelHandler() (*ModelHandler, error) {
-	return &ModelHandler{}, nil
+func NewModelHandler(engMode bool) *ModelHandler {
+	return &ModelHandler{
+		engMode: engMode,
+	}
 }
 
 // method for getting an instance of AuthHandler
-func NewAuthHandler(id, secret string) (*AuthHandler, error) {
+func NewAuthHandler(id, secret string) *AuthHandler {
 	return &AuthHandler{
 		googleConfig: &oauth2.Config{
 			ClientID:     id,
@@ -58,24 +59,28 @@ func NewAuthHandler(id, secret string) (*AuthHandler, error) {
 			},
 			Endpoint: google.Endpoint,
 		},
-	}, nil
+	}
 }
 
-func getUserIDFromToken(c *gin.Context) (int, error) {
+func getUserIDFromToken(c *gin.Context, engMode bool) (int, error) {
+	if engMode {
+		return 0, nil
+	}
+
 	// get authorization header and extract token
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
-		return 0, fmt.Errorf("authorization header required")
+		return -1, fmt.Errorf("authorization header required")
 	}
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 	if tokenString == authHeader {
-		return 0, fmt.Errorf("invalid authorization format")
+		return -1, fmt.Errorf("invalid authorization format")
 	}
 
 	// get the secret from environment
 	secret, ok := os.LookupEnv("JWT_SECRET")
 	if !ok || secret == "" {
-		return 0, fmt.Errorf("environment variable JWT_SECRET is not set or empty")
+		return -1, fmt.Errorf("environment variable JWT_SECRET is not set or empty")
 	}
 
 	// parse token
@@ -83,21 +88,87 @@ func getUserIDFromToken(c *gin.Context) (int, error) {
 		return []byte(secret), nil
 	})
 	if err != nil || !token.Valid {
-		return 0, fmt.Errorf("invalid or expired token")
+		return -1, fmt.Errorf("invalid or expired token")
 	}
 
 	// extract claims from token
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return 0, fmt.Errorf("invalid or expired token")
+		return -1, fmt.Errorf("invalid or expired token")
 	}
 
 	// get and return the userID from the token
 	userID, ok := claims["user_id"].(float64)
 	if !ok {
-		return 0, fmt.Errorf("user_id not found in token")
+		return -1, fmt.Errorf("user_id not found in token")
 	}
 	return int(userID), nil
+}
+
+func addAddonsFields(model apiTypes.CausalDecisionModel) gin.H {
+	jsonData, _ := json.Marshal(model)
+	var result gin.H
+	json.Unmarshal(jsonData, &result)
+
+	result["addons"] = gin.H{
+		"ownerID": model.Addons.OwnerID,
+		"tag":     model.Addons.Tag,
+	}
+
+	return result
+}
+
+func filterModelsForActingUser(actingUserID int, models []apiTypes.CausalDecisionModel) []apiTypes.CausalDecisionModel {
+	// get user if authenticated
+	var actingUser *apiTypes.User
+	if actingUserID != -1 {
+		actingUser, _ = database.GetUserByID(actingUserID)
+	}
+
+	// filter models based on permissions
+	filteredModels := make([]apiTypes.CausalDecisionModel, 0)
+	for _, model := range models {
+		if model.Addons.IsPublic {
+			filteredModels = append(filteredModels, model)
+			continue
+		}
+
+		if actingUserID == -1 {
+			continue
+		}
+
+		if model.Addons.OwnerID == actingUserID {
+			filteredModels = append(filteredModels, model)
+			continue
+		}
+
+		hasAccess := false
+		for _, share := range model.Addons.Shares {
+			if share.Email == actingUser.Email {
+				hasAccess = true
+				break
+			}
+		}
+		if hasAccess {
+			filteredModels = append(filteredModels, model)
+		}
+	}
+
+	return filteredModels
+}
+
+func checkIfUserHasAccessToModel(actingUserID int, model apiTypes.CausalDecisionModel) bool {
+	hasAccess := model.Addons.IsPublic || model.Addons.OwnerID == actingUserID
+	if actingUserID != -1 && !hasAccess {
+		actingUser, _ := database.GetUserByID(actingUserID)
+		for _, share := range model.Addons.Shares {
+			if share.Email == actingUser.Email {
+				hasAccess = true
+				break
+			}
+		}
+	}
+	return hasAccess
 }
 
 // @Router /auth/testlogin [get]
@@ -167,13 +238,13 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 
 // GoogleCallback godoc
 // @Summary      Handle Google OAuth callback
-// @Description  Processes Callback and returns user info
+// @Description  Processes callback and returns user info
 // @Tags         auth
-// @Param        code   query
-// @Param        state  query
-// @Success      200
-// @Failure      400
-// @Failure      500
+// @Param        code   query  string  true  "Authorization code from Google"
+// @Param        state  query  string  true  "State token for validation"
+// @Success      200    {object}  gin.H  "User info"
+// @Failure      400    {object}  gin.H  "Invalid state token or missing parameters"
+// @Failure      500    {object}  gin.H  "Internal server error"
 // @Router       /auth/google/callback [get]
 func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	code := c.Query("code")
@@ -322,23 +393,24 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 // @Description  Get privacy settings for model
 // @Tags         models
 // @Produce      json
-// @Success      200
-// @Failure      401
-// @Failure      403
-// @Failure      500
-// @Router       /v0/models/privacy/{uuid} [get]
+// @Param        tag  path  string  true  "Model tag"
+// @Success      200   {object}  gin.H  "Privacy settings"
+// @Failure      401   {object}  gin.H  "Unauthorized"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      500   {object}  gin.H  "Internal server error"
+// @Router       /v0/models/privacy/{tag} [get]
 func (h *ModelHandler) GetModelPrivacy(c *gin.Context) {
-	uuid := c.Param("uuid")
+	tag := c.Param("tag")
 
 	// make sure the user has authorization
-	actingUserID, err := getUserIDFromToken(c)
+	actingUserID, err := getUserIDFromToken(c, h.engMode)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Get the model from database
-	model, err := database.GetModelByUUID(uuid)
+	model, err := database.GetModelByTag(tag)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -359,29 +431,32 @@ func (h *ModelHandler) GetModelPrivacy(c *gin.Context) {
 }
 
 // PutModelPrivacy godoc
-// @Summary      Get privacy settings for model
-// @Description  Get privacy settings for model
+// @Summary      Update privacy settings for model
+// @Description  Update privacy settings for model
 // @Tags         models
+// @Accept       json
 // @Produce      json
-// @Success      200
-// @Failure      400
-// @Failure      401
-// @Failure      403
-// @Failure      404
-// @Failure      500
-// @Router       /v0/models/privacy/{uuid} [put]
+// @Param        tag  path  string  true  "Model tag"
+// @Param        privacy  body  object  true  "Privacy settings"
+// @Success      200   {object}  gin.H  "Privacy settings updated"
+// @Failure      400   {object}  gin.H  "Bad request"
+// @Failure      401   {object}  gin.H  "Unauthorized"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      404   {object}  gin.H  "Model not found"
+// @Failure      500   {object}  gin.H  "Internal server error"
+// @Router       /v0/models/privacy/{tag} [put]
 func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
-	uuid := c.Param("uuid")
+	tag := c.Param("tag")
 
 	// make sure the user has authorization
-	actingUserID, err := getUserIDFromToken(c)
+	actingUserID, err := getUserIDFromToken(c, h.engMode)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
 	// make sure the model exists
-	model, err := database.GetModelByUUID(uuid)
+	model, err := database.GetModelByTag(tag)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -405,19 +480,19 @@ func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
 
 	// make sure the shares object is valid
 	for _, share := range req.Shares {
-		_, err := database.GetUserByID(share.UserID)
+		_, err := database.GetUserByEmail(share.Email)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
 		if (share.Level != "read" && share.Level != "write") || (req.IsPublic && share.Level == "read") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid share level for userID: %d", share.UserID)})
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid share level for user: %s", share.Email)})
 			return
 		}
 	}
 
 	// now update the model's privacy settings
-	err = database.UpdateModelPrivacyByUUID(uuid, req.IsPublic, req.Shares)
+	err = database.UpdateModelPrivacyByUUID(model.Meta.UUID, req.IsPublic, req.Shares)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -431,23 +506,29 @@ func (h *ModelHandler) PutModelPrivacy(c *gin.Context) {
 // @Description  Get ownership transfer request for model
 // @Tags         models
 // @Produce      json
-// @Success      200
-// @Failure      401
-// @Failure      403
-// @Failure      404
-// @Router       /v0/models/transfer/{uuid} [get]
+// @Param        tag  path  string  true  "Model tag"
+// @Success      200   {object}  gin.H  "Transfer request details"
+// @Failure      401   {object}  gin.H  "Unauthorized"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      404   {object}  gin.H  "Transfer request not found"
+// @Router       /v0/models/transfer/{tag} [get]
 func (h *ModelHandler) GetTransfer(c *gin.Context) {
-	uuid := c.Param("uuid")
+	tag := c.Param("tag")
 
 	// make sure the user has authorization
-	actingUserID, err := getUserIDFromToken(c)
+	actingUserID, err := getUserIDFromToken(c, h.engMode)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
 	// get the transfer
-	transfer, err := database.GetTransferByModelUUID(uuid)
+	model, err := database.GetModelByTag(tag)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	transfer, err := database.GetTransferByModelUUID(model.Meta.UUID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -467,18 +548,20 @@ func (h *ModelHandler) GetTransfer(c *gin.Context) {
 // @Description  Create ownership transfer request for model
 // @Tags         models
 // @Produce      json
-// @Success      200
-// @Failure      400
-// @Failure      403
-// @Failure      404
-// @Failure      500
-// @Router       /v0/models/transfer/{uuid} [post]
+// @Param        tag  path  string  true  "Model tag"
+// @Param        transfer  body  object  true  "Transfer request details"
+// @Success      200   {object}  gin.H  "Transfer request created"
+// @Failure      400   {object}  gin.H  "Bad request"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      404   {object}  gin.H  "Model not found"
+// @Failure      500   {object}  gin.H  "Internal server error"
+// @Router       /v0/models/transfer/{tag} [post]
 func (h *ModelHandler) PostTransfer(c *gin.Context) {
-	uuid := c.Param("uuid")
+	tag := c.Param("tag")
 	owner := c.Query("owner")
 
 	// make sure the user has authorization
-	actingUserID, err := getUserIDFromToken(c)
+	actingUserID, err := getUserIDFromToken(c, h.engMode)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -489,14 +572,14 @@ func (h *ModelHandler) PostTransfer(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "owner parameter is required"})
 		return
 	}
-	toUserID, err := strconv.Atoi(owner)
+	toUser, err := database.GetUserByEmail(owner)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid owner ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid new owner email"})
 		return
 	}
 
 	// make sure the model exists
-	model, err := database.GetModelByUUID(uuid)
+	model, err := database.GetModelByTag(tag)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -509,7 +592,7 @@ func (h *ModelHandler) PostTransfer(c *gin.Context) {
 	}
 
 	// make sure an existing transfer does not exist
-	existingTransfer, err := database.GetTransferByModelUUID(uuid)
+	existingTransfer, err := database.GetTransferByModelUUID(model.Meta.UUID)
 	if err == nil && existingTransfer != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "transfer request already exists for this model"})
 		return
@@ -517,8 +600,8 @@ func (h *ModelHandler) PostTransfer(c *gin.Context) {
 
 	// create the transfer
 	transfer := &apiTypes.Transfer{
-		CDMUUID:    uuid,
-		ToUserID:   toUserID,
+		CDMUUID:    model.Meta.UUID,
+		ToUserID:   toUser.ID,
 		FromUserID: actingUserID,
 		CreatedAt:  time.Now(),
 	}
@@ -534,18 +617,20 @@ func (h *ModelHandler) PostTransfer(c *gin.Context) {
 // @Summary      Accept/decline ownership transfer request for model
 // @Description  Accept/decline ownership transfer request for model
 // @Tags         models
-// @Success      200
-// @Failure      400
-// @Failure      403
-// @Failure      404
-// @Failure      500
-// @Router       /v0/models/transfer/{uuid} [delete]
+// @Produce      json
+// @Param        tag  path  string  true  "Model tag"
+// @Success      200   {object}  gin.H  "Transfer request processed"
+// @Failure      400   {object}  gin.H  "Bad request"
+// @Failure      403   {object}  gin.H  "Forbidden"
+// @Failure      404   {object}  gin.H  "Transfer request not found"
+// @Failure      500   {object}  gin.H  "Internal server error"
+// @Router       /v0/models/transfer/{tag} [delete]
 func (h *ModelHandler) DeleteTransfer(c *gin.Context) {
-	uuid := c.Param("uuid")
+	tag := c.Param("tag")
 	accept := c.Query("accept")
 
 	// make sure the user has authorization
-	actingUserID, err := getUserIDFromToken(c)
+	actingUserID, err := getUserIDFromToken(c, h.engMode)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -563,7 +648,12 @@ func (h *ModelHandler) DeleteTransfer(c *gin.Context) {
 	}
 
 	// make sure the transfer exists
-	transfer, err := database.GetTransferByModelUUID(uuid)
+	model, err := database.GetModelByTag(tag)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	transfer, err := database.GetTransferByModelUUID(model.Meta.UUID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -589,16 +679,25 @@ func (h *ModelHandler) DeleteTransfer(c *gin.Context) {
 // @Description  Gets all models
 // @Tags         models
 // @Produce      json
-// @Success      200
-// @Failure      500
+// @Success      200  {array}   gin.H  "List of models"
+// @Failure      500  {object}  gin.H  "Internal server error"
 // @Router       /v0/models/ [get]
 func (h *ModelHandler) GetModels(c *gin.Context) {
-	status, models, err := database.GetAllModels()
+	models, err := database.GetAllModels()
 	if err != nil {
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(status, models)
+
+	actingUserID, _ := getUserIDFromToken(c, h.engMode)
+	filteredModels := filterModelsForActingUser(actingUserID, models)
+
+	result := make([]gin.H, len(filteredModels))
+	for i, model := range filteredModels {
+		result[i] = addAddonsFields(model)
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // GetModelByUUID godoc
@@ -607,23 +706,27 @@ func (h *ModelHandler) GetModels(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid path string true "Model UUID"
-// @Success      200
-// @Failure      404 {object} gin.H "Model not found"
+// @Param        uuid  path  string  true  "Model UUID"
+// @Success      200   {object}  gin.H  "Model"
+// @Failure      404   {object}  gin.H  "Model not found"
 // @Router       /v0/models/{uuid} [get]
 func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 	uuid := c.Param("uuid")
 
-	// Call the encapsulated GetModelByUUID function from the database package
 	model, err := database.GetModelByUUID(uuid)
 	if err != nil {
-		// If error, return an appropriate response based on the error
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Return the model if found
-	c.JSON(http.StatusOK, model)
+	actingUserID, _ := getUserIDFromToken(c, h.engMode)
+	hasAccess := checkIfUserHasAccessToModel(actingUserID, *model)
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
+
+	c.JSON(http.StatusOK, addAddonsFields(*model))
 }
 
 // GetModelByTag godoc
@@ -632,9 +735,9 @@ func (h *ModelHandler) GetModelByUUID(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        tag
-// @Success      200
-// @Failure      404
+// @Param        tag   path  string  true  "Model tag"
+// @Success      200   {object}  gin.H  "Model"
+// @Failure      404   {object}  gin.H  "Model not found"
 // @Router       /v0/models/tag/{tag} [get]
 func (h *ModelHandler) GetModelByTag(c *gin.Context) {
 	tag := c.Param("tag")
@@ -645,8 +748,14 @@ func (h *ModelHandler) GetModelByTag(c *gin.Context) {
 		return
 	}
 
-	// Return the model if found
-	c.JSON(http.StatusOK, model)
+	actingUserID, _ := getUserIDFromToken(c, h.engMode)
+	hasAccess := checkIfUserHasAccessToModel(actingUserID, *model)
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
+
+	c.JSON(http.StatusOK, addAddonsFields(*model))
 }
 
 // UploadModel godoc
@@ -655,11 +764,12 @@ func (h *ModelHandler) GetModelByTag(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Success      200
-// @Failure      400
-// @Failure      401
-// @Failure      403
-// @Failure      500
+// @Param        model  body  object  true  "Model"
+// @Success      200    {object}  gin.H  "Model created or updated"
+// @Failure      400    {object}  gin.H  "Bad request"
+// @Failure      401    {object}  gin.H  "Unauthorized"
+// @Failure      403    {object}  gin.H  "Forbidden"
+// @Failure      500    {object}  gin.H  "Internal server error"
 // @Router       /v0/models [post]
 func (h *ModelHandler) UploadModel(c *gin.Context) {
 	var uploadedModel apiTypes.CausalDecisionModel
@@ -669,7 +779,7 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 		return
 	}
 
-	actingUserID, err := getUserIDFromToken(c)
+	actingUserID, err := getUserIDFromToken(c, h.engMode)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -687,9 +797,10 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 		} else {
 			// we found a model with a matching UUID, make sure the user has permissions to update
 			canWrite := retrievedModel.Addons.OwnerID == actingUserID
+			actingUser, _ := database.GetUserByID(actingUserID)
 			if !canWrite {
 				for _, share := range retrievedModel.Addons.Shares {
-					if share.UserID == actingUserID && share.Level == "write" {
+					if share.Email == actingUser.Email && share.Level == "write" {
 						canWrite = true
 						break
 					}
@@ -710,20 +821,21 @@ func (h *ModelHandler) UploadModel(c *gin.Context) {
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, resultModel)
+	c.JSON(http.StatusOK, addAddonsFields(*resultModel))
 }
 
+// TODO adjust this so it looks at the version and the first part of the tag separately
 // GetVersionOfModel godoc
 // @Summary      Get version of model
 // @Description  Get version of model
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid
-// @Param        version
-// @Success      200
-// @Failure      404
-// @Failure      500
+// @Param        uuid     path  string  true  "Model UUID"
+// @Param        version  path  string  true  "Version number"
+// @Success      200      {object}  gin.H  "Model version details"
+// @Failure      404      {object}  gin.H  "Version not found"
+// @Failure      500      {object}  gin.H  "Internal server error"
 // @Router       /v0/models/version/{uuid}/{version} [get]
 func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 	version := c.Param("version")
@@ -736,8 +848,15 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		return
 	}
 
+	actingUserID, _ := getUserIDFromToken(c, h.engMode)
+	hasAccess := checkIfUserHasAccessToModel(actingUserID, *latestVersionOfModel)
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
+
 	if latestVersionOfModel.Meta.Version == version {
-		c.JSON(http.StatusOK, latestVersionOfModel)
+		c.JSON(http.StatusOK, addAddonsFields(*latestVersionOfModel))
 		return
 	}
 
@@ -779,7 +898,7 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model does not have version: %s", version)})
 		return
 	}
-	c.JSON(http.StatusOK, finalModel)
+	c.JSON(http.StatusOK, addAddonsFields(finalModel))
 
 }
 
@@ -789,38 +908,70 @@ func (h *ModelHandler) GetVersionOfModel(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid
-// @Success      200
-// @Failure      404
-// @Router       /v0/models/lineage/{uuid} [get]
+// @Param        tag  path  string  true  "Model tag"
+// @Success      200   {object}  gin.H  "Model lineage"
+// @Failure      404   {object}  gin.H  "Model not found"
+// @Router       /v0/models/lineage/{tag} [get]
 func (h *ModelHandler) GetModelLineage(c *gin.Context) {
-	uuid := c.Param("uuid")
-	lineage, err := database.GetModelLineage(uuid)
+	tag := c.Param("tag")
+
+	model, err := database.GetModelByTag(tag)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, lineage)
+
+	lineage, err := database.GetModelLineage(model.Meta.UUID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	actingUserID, _ := getUserIDFromToken(c, h.engMode)
+	filteredLineage := filterModelsForActingUser(actingUserID, lineage)
+
+	result := make([]gin.H, len(filteredLineage))
+	for i, model := range filteredLineage {
+		result[i] = addAddonsFields(model)
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // GetModelChildren godoc
 // @Summary      Get model children
-// @Description  gets models using its uuid
+// @Description  Gets models using its UUID
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid path string true "Model UUID"
-// @Success      200
-// @Failure      404 {object} gin.H "Model not found"
-// @Router       /v0/models/children/{uuid} [get]
+// @Param        tag  path  string  true  "Model tag"
+// @Success      200   {array}   gin.H  "List of child models"
+// @Failure      404   {object}  gin.H  "Model not found"
+// @Router       /v0/models/children/{tag} [get]
 func (h *ModelHandler) GetModelChildren(c *gin.Context) {
-	uuid := c.Param("uuid")
-	status, children, err := database.GetModelChildren(uuid)
+	tag := c.Param("tag")
+
+	model, err := database.GetModelByTag(tag)
 	if err != nil {
-		c.JSON(status, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(status, children)
+
+	children, err := database.GetModelChildren(model.Meta.UUID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	actingUserID, _ := getUserIDFromToken(c, h.engMode)
+	filteredChildren := filterModelsForActingUser(actingUserID, children)
+
+	result := make([]gin.H, len(filteredChildren))
+	for i, model := range filteredChildren {
+		result[i] = addAddonsFields(model)
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // ModelSearch godoc
@@ -829,53 +980,73 @@ func (h *ModelHandler) GetModelChildren(c *gin.Context) {
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        type path string true "Search type (model or user)"
-// @Param        name path string true "Search name"
-// @Success      200 {object} []apiTypes.CausalDecisionModel "List of models"
-// @Failure      404 {object} gin.H "Model not found"
-// @Failure      500 {object} gin.H "Internal Server Error"
+// @Param        type  path  string  true  "Search type (model or user)"
+// @Param        name  path  string  true  "Search name"
+// @Success      200   {array}   apiTypes.CausalDecisionModel  "List of models"
+// @Failure      404   {object}  gin.H  "Models not found"
+// @Failure      500   {object}  gin.H  "Internal server error"
 // @Router       /v0/models/search/{type}/{name} [get]
 func (h *ModelHandler) ModelSearch(c *gin.Context) {
 	searchType := c.Param("type")
 	name := c.Param("name")
+
+	var models []apiTypes.CausalDecisionModel
+	var err error
 	switch searchType {
 	case "model":
-		status, models, err := database.SearchModelsByName(name)
-		if err != nil {
-			c.JSON(status, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(status, models)
+		models, err = database.SearchModelsByName(name)
 	case "user":
-		status, models, err := database.SearchModelsByUser(name)
-		if err != nil {
-			c.JSON(status, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(status, models)
+		models, err = database.SearchModelsByUser(name)
 	default:
 		c.JSON(http.StatusNotFound, gin.H{"error": "This type of search does not exist"})
 		return
 	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	actingUserID, _ := getUserIDFromToken(c, h.engMode)
+	filteredModels := filterModelsForActingUser(actingUserID, models)
+
+	result := make([]gin.H, len(filteredModels))
+	for i, model := range filteredModels {
+		result[i] = addAddonsFields(model)
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
-// GetCommitsByModelUUID godoc
+// GetCommitsByModelTag godoc
 // @Summary      Get all commits for a model
 // @Description  Get all commits for a model
 // @Tags         models
 // @Produce      json
-// @Param        uuid
-// @Success      200
-// @Failure      404
-// @Router       /v0/models/commits/{uuid} [get]
-func (h *ModelHandler) GetCommitsByModelUUID(c *gin.Context) {
-	uuid := c.Param("uuid")
+// @Param        tag  path  string  true  "Model tag"
+// @Success      200   {array}   gin.H  "List of commits"
+// @Failure      404   {object}  gin.H  "Model not found"
+// @Router       /v0/models/commits/{tag} [get]
+func (h *ModelHandler) GetCommitsByModelTag(c *gin.Context) {
+	tag := c.Param("tag")
+
+	model, err := database.GetModelByTag(tag)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	actingUserID, _ := getUserIDFromToken(c, h.engMode)
+	hasAccess := checkIfUserHasAccessToModel(actingUserID, *model)
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
 
 	// Call the database function to get all commits for the model
-	commits, err := database.GetCommitsByModelUUID(uuid)
+	commits, err := database.GetCommitsByModelUUID(model.Meta.UUID)
 	if err != nil {
-		// If error, return an appropriate response
-		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -883,21 +1054,34 @@ func (h *ModelHandler) GetCommitsByModelUUID(c *gin.Context) {
 	c.JSON(http.StatusOK, commits)
 }
 
-// GetLatestCommitByModelUUID godoc
+// GetLatestCommitByModelTag godoc
 // @Summary      Get latest commit for a model
 // @Description  Get latest commit for a model
 // @Tags         models
 // @Accept       json
 // @Produce      json
-// @Param        uuid
-// @Success      200
-// @Failure      404
-// @Router       /v0/models/commmits/latest/{uuid} [get]
-func (h *ModelHandler) GetLatestCommitByModelUUID(c *gin.Context) {
-	uuid := c.Param("uuid")
+// @Param        tag  path  string  true  "Model tag"
+// @Success      200   {object}  gin.H  "Latest commit"
+// @Failure      404   {object}  gin.H  "Model not found"
+// @Router       /v0/models/commits/latest/{tag} [get]
+func (h *ModelHandler) GetLatestCommitByModelTag(c *gin.Context) {
+	tag := c.Param("tag")
+
+	model, err := database.GetModelByTag(tag)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	actingUserID, _ := getUserIDFromToken(c, h.engMode)
+	hasAccess := checkIfUserHasAccessToModel(actingUserID, *model)
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid permissions for this action"})
+		return
+	}
 
 	// Call the encapsulated GetModelByUUID function from the database package
-	commit, err := database.GetLatestCommitForModelUUID(uuid)
+	commit, err := database.GetLatestCommitForModelUUID(model.Meta.UUID)
 	if err != nil {
 		// If error, return an appropriate response based on the error
 		c.JSON(http.StatusNotFound, gin.H{"Error": err.Error()})

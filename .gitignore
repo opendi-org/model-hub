@@ -70,3 +70,9 @@ node_modules
 
 #ssh key to VM
 ssh-key-2025-02-28.key
+
+# Python bytecode cache
+**/__pycache__/
+
+# Repo-local CLI config
+.opendi_cli/
