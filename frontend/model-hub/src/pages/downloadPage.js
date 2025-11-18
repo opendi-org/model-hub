@@ -2,11 +2,9 @@
 // COPYRIGHT OpenDI
 //
 
-import { NavLink } from "react-router-dom";
 import * as React from 'react';
 import { useEffect } from 'react';
 import { useState } from 'react';
-import JsonPatchViewer from "../components/JsonPatchViewer";
 import opendiIcon from '../opendi-icon.png';
 import API_URL from '../config';
 import { useMemo } from 'react';
@@ -22,7 +20,6 @@ import {
     Stack,
     Breadcrumbs,
     Chip,
-    Checkbox,
     FormControlLabel,
     FormGroup,
     Card,
@@ -31,18 +28,179 @@ import {
     FormControl,
     InputLabel,
     Select,
-    MenuItem
+    MenuItem,
+    Switch,
+    IconButton,
+    List,
+    ListItem,
+    ListItemText,
+    Modal,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle
 } from "@mui/material";
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogContentText from '@mui/material/DialogContentText';
-import DialogTitle from '@mui/material/DialogTitle';
+import ShareIcon from '@mui/icons-material/Share'; // Import the Share icon
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useParams } from "react-router-dom";
 import { useDropzone } from "react-dropzone";
 import { useCallback } from "react";
 import JsonDiffViewer from "../components/JsonDiffViewer";
 
+
+function Ownership({ 
+    uuid, 
+    jwtToken, 
+    isOwner, 
+    isTargetUser, 
+    pendingTransfer, 
+    onTransferUpdate, 
+    fetchStatus 
+} = {}) {
+    const [status, setStatus] = useState('idle'); // 'idle', 'pending', 'success', 'error'
+    const [message, setMessage] = useState('');
+    const [newOwnerEmail, setNewOwnerEmail] = useState('');
+    const handleNewOwnerEmailChange = (event) => {
+        setNewOwnerEmail(event.target.value);
+    };
+
+    const handleTransfer = async () => {
+        if (!uuid || !newOwnerEmail) { 
+            setMessage('New owner email must be provided.');
+            setStatus('error');
+            return;
+        }
+
+        setStatus('pending');
+        setMessage('Sending ownership transfer request...');
+
+        try {
+            const url = `${API_URL}/v0/models/transfer/${uuid}?email=${newOwnerEmail}`;
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setStatus('success');
+                setMessage(`Ownership transfer request sent successfully to ${newOwnerEmail}.`);
+                // The actual ToUserID is returned, but we show the email for user confirmation
+                onTransferUpdate(data); 
+                setNewOwnerEmail(''); 
+            } else {
+                const errorData = await response.json();
+                setStatus('error');
+                setMessage(errorData.error || 'An unexpected error occurred.');
+            }
+        } catch (error) {
+            console.error('Error during ownership transfer:', error);
+            setStatus('error');
+            setMessage('An error occurred during the API call.');
+        }
+    };
+
+    const handleAcceptDecline = async (accept) => {
+        setStatus('pending');
+        const action = accept ? 'Accepting' : 'Declining';
+        setMessage(`${action} ownership transfer request...`);
+
+        try {
+            // API Endpoint: DELETE /v0/models/transfer/{uuid}?accept={boolean}
+            const acceptValue = accept ? 'true' : 'false';
+            const url = `${API_URL}/v0/models/transfer/${uuid}?accept=${acceptValue}`;
+
+            const response = await fetch(url, {
+                method: 'DELETE', // Method is DELETE as per documentation
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                },
+                // Body is not needed for a DELETE request with query params
+            });
+
+            if (response.ok) {
+                setStatus('success');
+                const successMsg = accept 
+                    ? 'Ownership transfer accepted successfully.' 
+                    : 'Ownership transfer declined successfully.';
+                setMessage(successMsg);
+                onTransferUpdate(null);
+            } else {
+                // Read the error body for a specific message
+                const errorData = await response.json();
+                setStatus('error');
+                // Use the error message from the API or a fallback
+                setMessage(errorData.error || `Error (${response.status}): Could not complete the action.`);
+            }
+        } catch (error) {
+            console.error('Error during accept/decline:', error);
+            setStatus('error');
+            setMessage('A network error occurred during the accept/decline API call.');
+        }
+    };
+
+    return (
+        <div>
+            <Stack spacing={2}>
+                {isOwner && (
+                    <>
+                        {/* The TextField and its handler now live here, in the component that owns the state */}
+                        <TextField
+                            label="Transfer Email"
+                            variant="outlined"
+                            value={newOwnerEmail} 
+                            onChange={handleNewOwnerEmailChange} 
+                            sx={{ width: "30%" }}
+                        />
+                        
+                        {/* The button that triggers the API call */}
+                        <Button 
+                            variant="outlined" 
+                            sx={{ width: "30%" }} 
+                            onClick={handleTransfer} 
+                            disabled={status === 'pending' || !!pendingTransfer}
+                        >
+                            Transfer Ownership
+                        </Button>
+                    </>
+                )}
+                
+                {!!pendingTransfer && (
+                    // Display the ToUserID (which we temporarily set to email on success, or the ID from GET)
+                    <p>A transfer request is currently pending to user ID: <strong>{pendingTransfer.ToUserID}</strong></p>
+                )}
+
+                {fetchStatus === 'loading' && <p>Checking for pending transfer...</p>}
+                {fetchStatus === 'failed' && <p style={{ color: 'red' }}>Could not check for pending transfer.</p>}
+
+                {isTargetUser && (
+                    <>
+                        <h3>Accept or Decline Pending Transfer</h3>
+                        <Button onClick={() => handleAcceptDecline(true)} disabled={status === 'pending'}>
+                            Accept Transfer Request
+                        </Button>
+                        <Button onClick={() => handleAcceptDecline(false)} disabled={status === 'pending'}>
+                            Decline Transfer Request
+                        </Button>
+                    </>
+                )}
+
+                {/* Display the status and messages */}
+                {status === 'pending' && <p>{message}</p>}
+                {status === 'success' && <p style={{ color: 'green' }}>{message}</p>}
+                {status === 'error' && <p style={{ color: 'red' }}>{message}</p>}
+            </Stack>
+        </div>
+    );
+}
+
+const MemoizedOwnership = React.memo(Ownership);
 
 const DownloadPage = () => {
     const [uploadStatus, setUploadStatus] = useState(null);
@@ -70,6 +228,7 @@ const DownloadPage = () => {
     //hook that extract route parameters from URL
     const { uuid } = useParams();
     // console.log( uuid );
+    
 
     //useState returns an array of two elements that contain a state variable and a method to change the variable (and in doing so, re-render)
     const [model, setModel] = useState({})
@@ -84,6 +243,96 @@ const DownloadPage = () => {
     If uuid changes, useEffect runs again (because uuid is in the dependency array).
 
     */
+    // For testing purposes TODO
+    const [jwtToken, setJwtToken] = useState(null);
+
+    const [pendingTransfer, setPendingTransfer] = useState(null);
+    const [fetchStatus, setFetchStatus] = useState('idle'); // 'idle', 'loading', 'loaded', 'failed'
+
+    useEffect(() => {
+        // Don't run if we don't have a token or uuid
+        if (!uuid || !jwtToken) return;
+
+        const fetchTransfer = async () => {
+            setFetchStatus('loading');
+            try {
+                const url = `${API_URL}/v0/models/transfer/${uuid}`;
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${jwtToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setPendingTransfer(data);
+                    setFetchStatus('loaded');
+                } else if (response.status === 404) {
+                    // This is expected if no transfer is pending
+                    setPendingTransfer(null);
+                    setFetchStatus('loaded');
+                } else {
+                    // Handle other errors (401, 403, 500, etc.)
+                    const errorData = await response.json();
+                    console.error('Error fetching transfer:', errorData.error);
+                    setFetchStatus('failed');
+                }
+            } catch (error) {
+                console.error('Network error fetching transfer:', error);
+                setFetchStatus('failed');
+            }
+        }; 
+
+        fetchTransfer();
+    }, [uuid, jwtToken]); // Re-run effect if UUID or token changes
+
+    const currentUserID = useMemo(() => {
+        if (!jwtToken) return null;
+        try {
+            // Get the payload (the middle part of the token)
+            const base64Url = jwtToken.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            // Decode and parse the JSON payload
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            
+            const payload = JSON.parse(jsonPayload);
+            // Receive 'user_id'
+            return payload.user_id; 
+        } catch (error) {
+            console.error("Failed to parse JWT:", error);
+            return null;
+        }
+    }, [jwtToken]);
+
+    useEffect(() => {
+        // Define an async function inside the effect
+        const fetchToken = async () => {
+        try {
+            const response = await fetch(`${API_URL}/auth/testlogin?id=1`);
+            // Check if the response was successful
+            if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            // Extract the JSON data from the response
+            const data = await response.json();
+
+            // Use the state setter function to update the state
+            setJwtToken(data.token);
+        } catch (error) {
+            console.error("Failed to fetch token:", error);
+        }
+        };
+
+        // Call the async function
+        fetchToken();
+        
+    }, []);
+    
+    // setHeader("Authorization", `Bearer ${jwtToken}`);
 
     useEffect(() => {
         fetch(`${API_URL}/v0/models/${uuid}`)
@@ -280,6 +529,269 @@ const DownloadPage = () => {
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
+    const [isPrivate, setIsPrivate] = useState(false); //Privacy Toggle
+
+    const handlePrivacyToggle = async (event) => {
+        let data;
+        const newIsPublic = event.target.checked;
+        const previousIsPrivate = isPrivate; // Store the old value to revert to
+
+        setIsPrivate(newIsPublic); // Optimistically update the state
+
+        try {
+            const response = await fetch(apiEndpoint, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to fetch share settings.');
+            }
+
+            data = await response.json();
+        } catch (err) {
+            setError(err.message);
+            setIsPrivate(previousIsPrivate); // Revert on GET failure
+            return; // <-- Stop execution
+        }
+
+        const currentShares = data.shares || [];
+
+        try {
+            const response = await fetch(`${API_URL}/v0/models/privacy/${uuid}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    isPublic: newIsPublic,
+                    shares: currentShares
+                 })
+            });
+
+            if (!response.ok) {
+                // Revert the state change if the API call fails
+                setIsPrivate(previousIsPrivate); // Revert on PUT failure
+                const error = await response.json();
+                console.error("Failed to update privacy settings:", error.error);
+                setError(error.error || "Failed to update privacy.");
+            } else {
+                setError(null); // Clear any previous errors on success
+            }
+        } catch (error) {
+            // Revert the state change if the API call fails
+            setIsPrivate(previousIsPrivate); // Revert on PUT network error
+            console.error("An error occurred during the API call:", error);
+            setError("An network error occurred.");
+        }
+    };
+
+
+    const [modalIsOpen, setModalIsOpen] = useState(false);
+    const [shares, setShares] = useState([]); // [{email: "...", level: "..."}, ...]
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    const apiEndpoint = `${API_URL}/v0/models/privacy/${uuid}`;
+
+    const style = {
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: 400,
+        bgcolor: 'background.paper',
+        border: '2px solid #000',
+        boxShadow: 24,
+        p: 4,
+    };
+
+    const handleShareClick = () => {
+        setModalIsOpen(true);
+    };
+
+    const closeModal = () => {
+        setModalIsOpen(false);
+        setSearchTerm('');
+    };
+
+    const handleSearchChange = (event) => {
+        setSearchTerm(event.target.value);
+    };
+
+    const [permissionLevel, setPermissionLevel] = useState('read');
+
+    const handlePermissionChange = (event) => {
+        setPermissionLevel(event.target.value);
+    };
+
+    const handleSave = async () => {
+        let data;
+
+        try {
+            const response = await fetch(apiEndpoint, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to fetch share settings.');
+            }
+
+
+            data = await response.json();
+        } catch (err) {
+            setError(err.message);
+            return;
+        }
+        const url = `${API_URL}/v0/models/privacy/${uuid}`;
+        // searchTerm is now the new user's email
+        const newEmail = searchTerm; 
+        
+        if (!newEmail) {
+            console.error("Email cannot be empty.");
+            setError("Email cannot be empty.");
+            return;
+        }
+
+        const newShare = {
+            email: newEmail, // Use email field
+            level: permissionLevel
+        }
+        
+        // Filter out the new share if the email already exists to prevent duplicates
+        const existingShares = (data.shares || []).filter(share => share.email !== newShare.email);
+        
+        const bodyData = {
+            'isPublic': !isPrivate,
+            'shares': [ 
+                ...existingShares,
+                newShare
+            ]
+        };
+        
+
+        try {
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(bodyData)
+            });
+
+            if (response.ok) {
+                console.log("Share settings updated successfully.");
+                closeModal();
+            } else {
+                const errorData = await response.json();
+                console.error("API Error:", errorData.error);
+                setError(errorData.error || "Failed to save share settings.");
+                // Handle specific error messages based on status codes (e.g., show a user-friendly message)
+            }
+        } catch (error) {
+            console.error("Network or other error:", error);
+            setError("A network error occurred.");
+            // Handle network errors
+        }
+    };
+
+    const handleRemoveShare = async (emailToRemove) => {
+        // Create the new list of shares by filtering out the user to remove
+        const newSharesList = shares.filter(share => share.email !== emailToRemove);
+        
+        const bodyData = {
+            'isPublic': !isPrivate, // Use the current state of the public/private toggle
+            'shares': newSharesList
+        };
+
+        try {
+            const response = await fetch(apiEndpoint, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(bodyData)
+            });
+
+            if (response.ok) {
+                console.log("Share removed successfully.");
+                // Update the local state to reflect the change immediately
+                setShares(newSharesList); 
+            } else {
+                const errorData = await response.json();
+                console.error("API Error removing share:", errorData.error);
+                // Optionally, set an error message to display to the user
+                setError("Failed to remove share."); 
+            }
+        } catch (error) {
+            console.error("Network or other error:", error);
+            // Optionally, set an error message
+            setError("A network error occurred.");
+        }
+    };
+
+    // Fetch data from the API when the modal is opened
+    useEffect(() => {
+        if (modalIsOpen) {
+            const fetchShares = async () => {
+                setIsLoading(true);
+                setError(null);
+                try {
+                    const response = await fetch(apiEndpoint, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${jwtToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Failed to fetch share settings.');
+                    }
+
+                    const data = await response.json();
+                    setShares(data.shares || []); // data.shares now contains email
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+            fetchShares();
+        }
+    }, [modalIsOpen, apiEndpoint, jwtToken]);
+
+    const modalStyle = {
+        content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            width: '400px',
+            padding: '20px'
+        },
+        overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.75)'
+        }
+    };
+
+
     function displayUploadMenu() {
         return (
             <Box
@@ -345,6 +857,13 @@ const DownloadPage = () => {
     const handleChange = (event, newValue) => {
         setValue(newValue);
     };
+
+    const ownerID = model?.addons?.ownerID;
+    const isOwner = currentUserID && ownerID && currentUserID === ownerID;
+    const isTargetUser = currentUserID && pendingTransfer && pendingTransfer.ToUserID === currentUserID;
+    
+    // The tab should only show if you are the owner OR the target of a transfer
+    const showOwnershipTab = isOwner || isTargetUser;
 
     function CollapsedParentLineage() {
         const [lineage, setLineage] = React.useState(null);
@@ -471,21 +990,109 @@ const DownloadPage = () => {
 
 
 
-                    <Typography variant="h4" sx={{ pb: 1 }}>   {model.meta ? model.meta.name : ""} </Typography>
+                    <Typography variant="h4" sx={{ pb: 1 }}>{model.meta ? model.meta.name : ""}</Typography>
                     <Typography variant="subtitle1" sx={{ pb: 2 }}> By: {model && model.meta && model.meta.creator ? model.meta.creator.username : ""} </Typography>
-                
+
+
+
                     <Stack direction="row" spacing={1} sx={{ pb: 8 }}>
-                        <Chip label="Tag 1" />
-                        <Chip label="Tag 2" />
-                        <Chip label="Tag 3" />
-                        <Chip label="Tag 4" />
+                    <Chip label="Tag 1" />
+                    <Chip label="Tag 2" />
+                    <Chip label="Tag 3" />
+                    <Chip label="Tag 4" />
                     </Stack>
 
+                    {/*  Privacy Toggle  */}
+                    <div>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            <FormGroup>
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={isPrivate}
+                                            // onChange={(event) => setIsPrivate(event.target.checked)}
+                                            onChange={handlePrivacyToggle}
+                                            
+                                        />
+                                    }
+                                    label={isPrivate ? "Privacy: Private" : "Privacy: Public"}
+                                />
+                            </FormGroup>
+
+                            <IconButton
+                                aria-label="share"
+                                onClick={handleShareClick}
+                                sx={{ ml: 2 }}
+                            >
+                                <ShareIcon />
+                            </IconButton>
+                        </Box>
+
+                        <Modal
+                            open={modalIsOpen}
+                            onClose={closeModal}
+                            // contentLabel="Share Modal"
+                        >
+                            <Box sx={style}>
+                                <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
+                                    Share Settings
+                                </Typography>
+                                <TextField
+                                    fullWidth
+                                    label="Search users"
+                                    variant="outlined"
+                                    value={searchTerm}
+                                    onChange={handleSearchChange}
+                                    sx={{ mb: 2 }}
+                                />
+                                <FormControl sx={{ minWidth: 120 }}>
+                                    <InputLabel>Permissions</InputLabel>
+                                    <Select
+                                        value={permissionLevel}
+                                        label="Permissions"
+                                        onChange={handlePermissionChange}
+                                    >
+                                        <MenuItem value="read">Read</MenuItem>
+                                        <MenuItem value="write">Read/Write</MenuItem>
+                                    </Select>
+                                </FormControl>
+                                <div>
+                                    <div>Current Shares</div>
+                                    <List>
+                                        {shares.length > 0 ? (
+                                        shares.map((share, index) => (
+                                            <ListItem 
+                                                key={index}
+                                                secondaryAction={
+                                                    <IconButton edge="end" aria-label="delete" onClick={() => handleRemoveShare(share.email)}>
+                                                        <DeleteIcon />
+                                                    </IconButton>
+                                                }
+                                            >
+                                            <ListItemText
+                                                primary={share.email}
+                                                secondary={`Level: ${share.level}`}
+                                            />
+                                            </ListItem>
+                                        ))
+                                        ) : (
+                                            <Typography>No shared users found.</Typography>
+                                        )}
+                                    </List>
+                                </div>
+                                <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                                    <Button onClick={handleSave}>Share</Button>
+                                    <Button onClick={closeModal}>Close</Button>
+                                </Box>
+                            </Box>
+                        </Modal>
+                    </div>
+                    
                     <Button
                         variant="outlined"
                         sx={{ width: "30%" }}
                         onClick={getCDM}
-                    >
+                        >
                         Download
                     </Button>
                     <Button
@@ -496,16 +1103,16 @@ const DownloadPage = () => {
                         Update
                     </Button>
                     <Dialog
-                        open={open}
-                        onClose={handleClose}
+                    open={open}
+                    onClose={handleClose}
                     >
-                        <DialogTitle>Update Model</DialogTitle>
-                        <DialogContent>
-                            {displayUploadMenu()}
-                        </DialogContent>
-                        <DialogActions>
-                            <Button onClick={handleClose}>Cancel</Button>
-                        </DialogActions>
+                    <DialogTitle>Update Model</DialogTitle>
+                    <DialogContent>
+                        {displayUploadMenu()}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={handleClose}>Cancel</Button>
+                    </DialogActions>
                     </Dialog>
                 </Box>
             </Box>
@@ -517,6 +1124,7 @@ const DownloadPage = () => {
                         <Tab label="Documentation" />
                         <Tab label="Commit Diff" />
                         <Tab label="Fork Info" />
+                        {showOwnershipTab && <Tab label="Ownership" />}
                     </Tabs>
                 </Box>
                 <CustomTabPanel value={value} index={0}>
@@ -573,6 +1181,20 @@ const DownloadPage = () => {
                     {CollapsedParentLineage()}
                     {ModelChildren()}
                 </CustomTabPanel>
+                {showOwnershipTab && (
+                    <CustomTabPanel value={value} index={4}>
+                        <MemoizedOwnership 
+                            uuid={uuid} 
+                            jwtToken={jwtToken}
+                            isOwner={isOwner}
+                            isTargetUser={isTargetUser}
+                            pendingTransfer={pendingTransfer}
+                            // Pass the setter so the child can update the parent's state
+                            onTransferUpdate={setPendingTransfer} 
+                            fetchStatus={fetchStatus}
+                        />
+                    </CustomTabPanel>
+                )}
             </Box>
         </Box>
     );
