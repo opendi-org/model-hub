@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Container, TextField, IconButton, List, ListItem, ListItemText, Box } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import AddIcon from '@mui/icons-material/Add';
 import API_URL from '../config';
 import { FormControl, InputLabel, MenuItem, Select } from '@mui/material';
 import ModelMinicard from '../components/ModelMinicard'

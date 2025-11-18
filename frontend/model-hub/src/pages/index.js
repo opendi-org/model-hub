@@ -5,8 +5,6 @@
 import { Button, Container, Typography, Stack } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import Paper from '@mui/material/Paper';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
 import ModelMinicard from '../components/ModelMinicard';
 import { useEffect } from 'react';
 import { useState } from 'react';
@@ -25,17 +23,17 @@ const Home = () => {
                 return response.json();
             })
             .then(data => {
-                setModels(data)})
+                setModels(data);})
             .catch(error => console.error('There was a problem with the fetch operation:', error));
     }, []);
 
-    function typeRenderer(category, model) {
-        if (model.meta.summary.includes(category)) {
+    // function typeRenderer(category, model) {
+    //     if (model.meta.summary.includes(category)) {
                                         
-            return <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator.username} summary={model.meta.summary} 
-            version={model.meta.version} updatedDate={model.meta.updatedDate}/> 
-        }
-    }
+    //         return <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator.username} summary={model.meta.summary} 
+    //         version={model.meta.version} updatedDate={model.meta.updatedDate}/> 
+    //     }
+    // }
     return (
         <Container maxWidth={false} sx={{ width: '100%', height: '100vh', alignItems: 'center', justifyContent: 'center', padding: 0, margin: 0 }}>
             <Stack sx={{ height: "100%", width: '100%', alignItems: 'center', justifyContent: 'center', display: 'block' }}>
@@ -60,7 +58,7 @@ const Home = () => {
                         </Grid>
                         <Grid xs={12} container spacing={2}>
                             {
-                                models.map((model) => <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator.username} summary={model.meta.summary} 
+                                models.map((model) => <ModelMinicard key={model.meta.UUID} name={model.meta.name} id = {model.meta.UUID} author={model.meta.creator.username} summary={model.meta.summary} 
                                 version={model.meta.version} updatedDate={model.meta.updatedDate}/> )
                             }
                         </Grid>
