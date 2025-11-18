@@ -45,12 +45,12 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useParams } from "react-router-dom";
 import { useDropzone } from "react-dropzone";
 import { useCallback } from "react";
+import { useUser } from '../context/UserContext';
 import JsonDiffViewer from "../components/JsonDiffViewer";
 
 
 function Ownership({ 
     uuid, 
-    jwtToken, 
     isOwner, 
     isTargetUser, 
     pendingTransfer, 
@@ -79,8 +79,8 @@ function Ownership({
 
             const response = await fetch(url, {
                 method: 'POST',
+                credentials: 'include', 
                 headers: {
-                    'Authorization': `Bearer ${jwtToken}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({})
@@ -116,12 +116,11 @@ function Ownership({
             const url = `${API_URL}/v0/models/transfer/${uuid}?accept=${acceptValue}`;
 
             const response = await fetch(url, {
-                method: 'DELETE', // Method is DELETE as per documentation
+                method: 'DELETE', 
+                credentials: 'include',
                 headers: {
-                    'Authorization': `Bearer ${jwtToken}`,
                     'Content-Type': 'application/json'
                 },
-                // Body is not needed for a DELETE request with query params
             });
 
             if (response.ok) {
@@ -203,6 +202,7 @@ function Ownership({
 const MemoizedOwnership = React.memo(Ownership);
 
 const DownloadPage = () => {
+    const { user } = useUser();
     const [uploadStatus, setUploadStatus] = useState(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [open, setOpen] = React.useState(false);
@@ -243,15 +243,13 @@ const DownloadPage = () => {
     If uuid changes, useEffect runs again (because uuid is in the dependency array).
 
     */
-    // For testing purposes TODO
-    const [jwtToken, setJwtToken] = useState(null);
 
     const [pendingTransfer, setPendingTransfer] = useState(null);
     const [fetchStatus, setFetchStatus] = useState('idle'); // 'idle', 'loading', 'loaded', 'failed'
 
     useEffect(() => {
         // Don't run if we don't have a token or uuid
-        if (!uuid || !jwtToken) return;
+        if (!uuid) return;
 
         const fetchTransfer = async () => {
             setFetchStatus('loading');
@@ -259,8 +257,8 @@ const DownloadPage = () => {
                 const url = `${API_URL}/v0/models/transfer/${uuid}`;
                 const response = await fetch(url, {
                     method: 'GET',
+                    credentials: 'include',
                     headers: {
-                        'Authorization': `Bearer ${jwtToken}`,
                         'Content-Type': 'application/json'
                     }
                 });
@@ -286,56 +284,14 @@ const DownloadPage = () => {
         }; 
 
         fetchTransfer();
-    }, [uuid, jwtToken]); // Re-run effect if UUID or token changes
+    }, [uuid]); // Re-run effect if UUID or token changes
 
-    const currentUserID = useMemo(() => {
-        if (!jwtToken) return null;
-        try {
-            // Get the payload (the middle part of the token)
-            const base64Url = jwtToken.split('.')[1];
-            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-            // Decode and parse the JSON payload
-            const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join(''));
-            
-            const payload = JSON.parse(jsonPayload);
-            // Receive 'user_id'
-            return payload.user_id; 
-        } catch (error) {
-            console.error("Failed to parse JWT:", error);
-            return null;
-        }
-    }, [jwtToken]);
-
-    useEffect(() => {
-        // Define an async function inside the effect
-        const fetchToken = async () => {
-        try {
-            const response = await fetch(`${API_URL}/auth/testlogin?id=1`);
-            // Check if the response was successful
-            if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            // Extract the JSON data from the response
-            const data = await response.json();
-
-            // Use the state setter function to update the state
-            setJwtToken(data.token);
-        } catch (error) {
-            console.error("Failed to fetch token:", error);
-        }
-        };
-
-        // Call the async function
-        fetchToken();
-        
-    }, []);
+    const currentUserID = user ? user.id : null;
     
     // setHeader("Authorization", `Bearer ${jwtToken}`);
 
     useEffect(() => {
-        fetch(`${API_URL}/v0/models/${uuid}`)
+        fetch(`${API_URL}/v0/models/${uuid}`, { credentials: 'include' })
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
@@ -343,7 +299,6 @@ const DownloadPage = () => {
                 return response.json();
             })
             .then(data => {
-                // console.log(data);
                 setModel(data);
             })
             .catch(error => console.error('There was a problem with the fetch operation:', error));
@@ -502,6 +457,7 @@ const DownloadPage = () => {
             // const fileText = await file.text();
             const response = await fetch(`${API_URL}/v0/models`, {
                 method: "PUT",
+                credentials: 'include',
                 headers: {
                     "Content-Type": "application/json"
                 },
@@ -541,8 +497,8 @@ const DownloadPage = () => {
         try {
             const response = await fetch(apiEndpoint, {
                 method: 'GET',
+                credentials: 'include',
                 headers: {
-                    'Authorization': `Bearer ${jwtToken}`,
                     'Content-Type': 'application/json',
                 },
             });
@@ -564,8 +520,8 @@ const DownloadPage = () => {
         try {
             const response = await fetch(`${API_URL}/v0/models/privacy/${uuid}`, {
                 method: 'PUT',
+                credentials: 'include',
                 headers: {
-                    'Authorization': `Bearer ${jwtToken}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ 
@@ -637,8 +593,8 @@ const DownloadPage = () => {
         try {
             const response = await fetch(apiEndpoint, {
                 method: 'GET',
+                credentials: 'include',
                 headers: {
-                    'Authorization': `Bearer ${jwtToken}`,
                     'Content-Type': 'application/json',
                 },
             });
@@ -684,8 +640,8 @@ const DownloadPage = () => {
         try {
             const response = await fetch(url, {
                 method: 'PUT',
+                credentials: 'include',
                 headers: {
-                    'Authorization': `Bearer ${jwtToken}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(bodyData)
@@ -719,8 +675,8 @@ const DownloadPage = () => {
         try {
             const response = await fetch(apiEndpoint, {
                 method: 'PUT',
+                credentials: 'include',
                 headers: {
-                    'Authorization': `Bearer ${jwtToken}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(bodyData)
@@ -752,8 +708,8 @@ const DownloadPage = () => {
                 try {
                     const response = await fetch(apiEndpoint, {
                         method: 'GET',
+                        credentials: 'include',
                         headers: {
-                            'Authorization': `Bearer ${jwtToken}`,
                             'Content-Type': 'application/json',
                         },
                     });
@@ -773,24 +729,7 @@ const DownloadPage = () => {
             };
             fetchShares();
         }
-    }, [modalIsOpen, apiEndpoint, jwtToken]);
-
-    const modalStyle = {
-        content: {
-            top: '50%',
-            left: '50%',
-            right: 'auto',
-            bottom: 'auto',
-            marginRight: '-50%',
-            transform: 'translate(-50%, -50%)',
-            width: '400px',
-            padding: '20px'
-        },
-        overlay: {
-            backgroundColor: 'rgba(0, 0, 0, 0.75)'
-        }
-    };
-
+    }, [modalIsOpen, apiEndpoint]);
 
     function displayUploadMenu() {
         return (
@@ -871,7 +810,7 @@ const DownloadPage = () => {
         React.useEffect(() => {
             async function fetchLineage() {
                 try {
-                    const res = await fetch(`${API_URL}/v0/models/lineage/${uuid}`);
+                    const res = await fetch(`${API_URL}/v0/models/lineage/${uuid}`, { credentials: 'include' });
                     if (!res.ok) {
                         throw new Error('Failed to fetch lineage');
                     }
@@ -915,7 +854,7 @@ const DownloadPage = () => {
         React.useEffect(() => {
             async function fetchChildren() {
                 try {
-                    const res = await fetch(`${API_URL}/v0/models/children/${uuid}`);
+                    const res = await fetch(`${API_URL}/v0/models/children/${uuid}`, { credentials: 'include' });
                     if (!res.ok) {
                         throw new Error('Failed to fetch children');
                     }
@@ -928,7 +867,7 @@ const DownloadPage = () => {
             fetchChildren();
         }, [uuid]);
 
-        if (!children || children.length == 0) {
+        if (!children || children.length === 0) {
             return;
         }
 
@@ -1185,7 +1124,6 @@ const DownloadPage = () => {
                     <CustomTabPanel value={value} index={4}>
                         <MemoizedOwnership 
                             uuid={uuid} 
-                            jwtToken={jwtToken}
                             isOwner={isOwner}
                             isTargetUser={isTargetUser}
                             pendingTransfer={pendingTransfer}

@@ -86,7 +86,7 @@ type CausalDependency struct {
 }
 
 type User struct {
-	ID       int    `gorm:"primaryKey" json:"-"`
+	ID       int    `gorm:"primaryKey" json:"id"`
 	Username string `json:"username"`
 	Email    string `gorm:"unique" json:"email"`
 	GoogleID string `gorm:"unique" json:"-"`
