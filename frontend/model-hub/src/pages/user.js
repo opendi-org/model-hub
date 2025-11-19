@@ -35,7 +35,7 @@ const UserPage = () => {
                 setUser(userData);
 
                 if(userData && userData.username) {
-                    const modelsResponse = await fetch(`${API_URL}/v0/models/search/user/${userData.id}`);
+                    const modelsResponse = await fetch(`${API_URL}/v0/models/search/user/${userData.email}`, {credentials: 'include',});
 
                     if (!modelsResponse.ok) {
                         throw new Error('Could not fetch user models.');
@@ -87,15 +87,8 @@ const UserPage = () => {
             {ownedModels.length > 0 ? (
                 <Grid container spacing={3}>
                     {ownedModels.map(model => (
-                        <ModelMinicard
-                            key={model.meta.uuid}
-                            id={model.meta.uuid}
-                            name={model.meta.name}
-                            author={model.meta.creator.username}
-                            summary={model.meta.summary}
-                            version={model.meta.version}
-                            updatedDate={new Date(model.meta.updatedAt).toLocaleDateString()}
-                        />
+                        <ModelMinicard key={model.meta.UUID} name={model.meta.name} id = {model.meta.UUID} author={model.meta.creator.username} summary={model.meta.summary} 
+                                version={model.meta.version} updatedDate={model.meta.updatedDate}/>
                     ))}
                 </Grid>
             ) : (

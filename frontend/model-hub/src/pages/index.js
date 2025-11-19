@@ -15,7 +15,7 @@ const Home = () => {
     const theme = useTheme();
     const keywords = ["Financial", "Medical", "Business", "Technical"];
     useEffect(() => {
-        fetch(`${API_URL}/v0/models`)
+        fetch(`${API_URL}/v0/models`, {credentials: 'include',})
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');

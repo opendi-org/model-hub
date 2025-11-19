@@ -50,7 +50,7 @@ import JsonDiffViewer from "../components/JsonDiffViewer";
 
 
 function Ownership({ 
-    uuid, 
+    tag, 
     isOwner, 
     isTargetUser, 
     pendingTransfer, 
@@ -65,7 +65,7 @@ function Ownership({
     };
 
     const handleTransfer = async () => {
-        if (!uuid || !newOwnerEmail) { 
+        if (!tag || !newOwnerEmail) { 
             setMessage('New owner email must be provided.');
             setStatus('error');
             return;
@@ -75,7 +75,7 @@ function Ownership({
         setMessage('Sending ownership transfer request...');
 
         try {
-            const url = `${API_URL}/v0/models/transfer/${uuid}?email=${newOwnerEmail}`;
+            const url = `${API_URL}/v0/models/transfer/${tag}?email=${newOwnerEmail}`;
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -111,9 +111,9 @@ function Ownership({
         setMessage(`${action} ownership transfer request...`);
 
         try {
-            // API Endpoint: DELETE /v0/models/transfer/{uuid}?accept={boolean}
+            // API Endpoint: DELETE /v0/models/transfer/{tag}?accept={boolean}
             const acceptValue = accept ? 'true' : 'false';
-            const url = `${API_URL}/v0/models/transfer/${uuid}?accept=${acceptValue}`;
+            const url = `${API_URL}/v0/models/transfer/${tag}?accept=${acceptValue}`;
 
             const response = await fetch(url, {
                 method: 'DELETE', 
@@ -240,7 +240,7 @@ const DownloadPage = () => {
 
     Updates model using setModel(data).
 
-    If uuid changes, useEffect runs again (because uuid is in the dependency array).
+    If tag changes, useEffect runs again (because tag is in the dependency array).
 
     */
 
@@ -248,13 +248,13 @@ const DownloadPage = () => {
     const [fetchStatus, setFetchStatus] = useState('idle'); // 'idle', 'loading', 'loaded', 'failed'
 
     useEffect(() => {
-        // Don't run if we don't have a token or uuid
-        if (!uuid) return;
+        // Don't run if we don't have a token or tag
+        if (!model?.addons?.tag) return;
 
         const fetchTransfer = async () => {
             setFetchStatus('loading');
             try {
-                const url = `${API_URL}/v0/models/transfer/${uuid}`;
+                const url = `${API_URL}/v0/models/transfer/${model?.addons?.tag}`;
                 const response = await fetch(url, {
                     method: 'GET',
                     credentials: 'include',
@@ -284,7 +284,7 @@ const DownloadPage = () => {
         }; 
 
         fetchTransfer();
-    }, [uuid]); // Re-run effect if UUID or token changes
+    }, [model]); // Re-run effect if model or token changes
 
     const currentUserID = user ? user.id : null;
     
@@ -306,7 +306,7 @@ const DownloadPage = () => {
 
     const [commit, setCommit] = useState({})
     useEffect(() => {
-        fetch(`${API_URL}/v0/commits/${uuid}`)
+        fetch(`${API_URL}/v0/models/commits/latest/${model?.addons?.tag}`, { credentials: 'include' })
             .then(response => {
                 if (response.status === 404) {
                     return { version: 0 }; // Exit early if not found
@@ -324,13 +324,13 @@ const DownloadPage = () => {
                     }
             })
             .catch(error => console.error('There was a problem with the fetch operation:', error));
-    }, [uuid, selectedVersion]);
+    }, [model, selectedVersion]);
 
     // Fetch all commits for the model
     useEffect(() => {
-        if (!uuid) return;
+        if (!model?.addons?.tag) return;
         
-        fetch(`${API_URL}/v0/commits/model/${uuid}`)
+        fetch(`${API_URL}/v0/models/commits/${model?.addons?.tag}`, { credentials: 'include' })
             .then(response => {
                 if (response.status === 404) {
                     setAllCommits([]); // Set empty array if no commits found
@@ -345,7 +345,7 @@ const DownloadPage = () => {
                 setAllCommits(data);
             })
             .catch(error => console.error('Error fetching commits:', error));
-    }, [uuid]);
+    }, [model]);
 
     // Get previous version of model
     //note that for development purposes, in react strict mode, useEffect invokes twice. 
@@ -363,7 +363,7 @@ const DownloadPage = () => {
             }
 
             try {
-                const response = await fetch(`${API_URL}/v0/models/modelVersion/${uuid}/${commit.version - 1}`);
+                const response = await fetch(`${API_URL}/v0/models/modelVersion/${model?.addons?.tag}/${commit.version - 1}`);
                 if (!response.ok) {
                     throw new Error('Network response was not ok for getting model version');
                 }
@@ -380,11 +380,11 @@ const DownloadPage = () => {
     
     // Effect for fetching the selected version model
     useEffect(() => {
-        if (!uuid || !selectedVersion) return;
+        if (!model?.addons?.tag || !selectedVersion) return;
         
         const fetchSelectedVersion = async () => {
             try {
-                const response = await fetch(`${API_URL}/v0/models/modelVersion/${uuid}/${selectedVersion}`);
+                const response = await fetch(`${API_URL}/v0/models/modelVersion/${model?.addons?.tag}/${selectedVersion}`);
                 if (!response.ok) {
                     throw new Error('Network response was not ok for getting selected model version');
                 }
@@ -392,7 +392,7 @@ const DownloadPage = () => {
                 setSelectedVersionModel(data);
                 
                 // Always try to fetch the previous version, even for version 1
-                const prevResponse = await fetch(`${API_URL}/v0/models/modelVersion/${uuid}/${selectedVersion - 1}`);
+                const prevResponse = await fetch(`${API_URL}/v0/models/modelVersion/${model?.addons?.tag}/${selectedVersion - 1}`);
                 if (!prevResponse.ok) {
                     // For version 1, we need to handle the special case where version 0 might not be directly accessible
                     if (selectedVersion === 1) {
@@ -412,7 +412,7 @@ const DownloadPage = () => {
         };
         
         fetchSelectedVersion();
-    }, [uuid, selectedVersion]);
+    }, [model, selectedVersion]);
 
     // Handle version selection
     const handleVersionChange = (event) => {
@@ -515,10 +515,14 @@ const DownloadPage = () => {
             return; // <-- Stop execution
         }
 
-        const currentShares = data.shares || [];
+        let currentShares = data.shares || [];
+        console.log(newIsPublic, currentShares);
+        if(newIsPublic) {
+            currentShares = currentShares.filter(share => share.level === 'write');
+        }
 
         try {
-            const response = await fetch(`${API_URL}/v0/models/privacy/${uuid}`, {
+            const response = await fetch(`${API_URL}/v0/models/privacy/${model?.addons?.tag}`, {
                 method: 'PUT',
                 credentials: 'include',
                 headers: {
@@ -554,7 +558,7 @@ const DownloadPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    const apiEndpoint = `${API_URL}/v0/models/privacy/${uuid}`;
+    const apiEndpoint = `${API_URL}/v0/models/privacy/${model?.addons?.tag}`;
 
     const style = {
         position: 'absolute',
@@ -610,7 +614,7 @@ const DownloadPage = () => {
             setError(err.message);
             return;
         }
-        const url = `${API_URL}/v0/models/privacy/${uuid}`;
+        const url = `${API_URL}/v0/models/privacy/${model?.addons?.tag}`;
         // searchTerm is now the new user's email
         const newEmail = searchTerm; 
         
@@ -629,7 +633,7 @@ const DownloadPage = () => {
         const existingShares = (data.shares || []).filter(share => share.email !== newShare.email);
         
         const bodyData = {
-            'isPublic': !isPrivate,
+            'isPublic': isPrivate,
             'shares': [ 
                 ...existingShares,
                 newShare
@@ -810,7 +814,7 @@ const DownloadPage = () => {
         React.useEffect(() => {
             async function fetchLineage() {
                 try {
-                    const res = await fetch(`${API_URL}/v0/models/lineage/${uuid}`, { credentials: 'include' });
+                    const res = await fetch(`${API_URL}/v0/models/lineage/${model?.addons?.tag}`, { credentials: 'include' });
                     if (!res.ok) {
                         throw new Error('Failed to fetch lineage');
                     }
@@ -821,7 +825,7 @@ const DownloadPage = () => {
                 }
             }
             fetchLineage();
-        }, [uuid]);
+        }, [model]);
 
         if (!lineage) {
             return;
@@ -838,7 +842,7 @@ const DownloadPage = () => {
                             key={parent.id || `lineage-${index}`}
                             underline="hover"
                             color="inherit"
-                            href={`/model/${parent.meta?.uuid}`}
+                            href={`/model/${parent?.addons?.tag}`}
                         >
                             {parent.meta ? parent.meta.name : parent.name}
                         </Link>
@@ -854,7 +858,7 @@ const DownloadPage = () => {
         React.useEffect(() => {
             async function fetchChildren() {
                 try {
-                    const res = await fetch(`${API_URL}/v0/models/children/${uuid}`, { credentials: 'include' });
+                    const res = await fetch(`${API_URL}/v0/models/children/${model?.addons?.tag}`, { credentials: 'include' });
                     if (!res.ok) {
                         throw new Error('Failed to fetch children');
                     }
@@ -865,7 +869,7 @@ const DownloadPage = () => {
                 }
             }
             fetchChildren();
-        }, [uuid]);
+        }, [model]);
 
         if (!children || children.length === 0) {
             return;
@@ -882,7 +886,7 @@ const DownloadPage = () => {
                             key={child.id || `children-${index}`}
                             underline="hover"
                             color="gray"
-                            href={`/model/${child.meta?.uuid}`}
+                            href={`/model/${child?.addons?.tag}`}
                         >
                             {child.meta ? child.meta.name : child.name}
                         </Link>
@@ -944,7 +948,7 @@ const DownloadPage = () => {
                     {/*  Privacy Toggle  */}
                     <div>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                            <FormGroup>
+                            {isOwner && (<FormGroup>
                                 <FormControlLabel
                                     control={
                                         <Switch
@@ -954,9 +958,9 @@ const DownloadPage = () => {
                                             
                                         />
                                     }
-                                    label={isPrivate ? "Privacy: Private" : "Privacy: Public"}
+                                    label={isPrivate ? "Privacy: Public" : "Privacy: Private"}
                                 />
-                            </FormGroup>
+                            </FormGroup>)}
 
                             {isOwner && (<IconButton
                                 aria-label="share"
@@ -1123,7 +1127,7 @@ const DownloadPage = () => {
                 {showOwnershipTab && (
                     <CustomTabPanel value={value} index={4}>
                         <MemoizedOwnership 
-                            uuid={uuid} 
+                            tag={model?.addons?.tag} 
                             isOwner={isOwner}
                             isTargetUser={isTargetUser}
                             pendingTransfer={pendingTransfer}
