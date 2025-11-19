@@ -72,8 +72,8 @@ func TestGetModelByUUID(t *testing.T) {
 	//gets all models in the database
 	models, _ := GetAllModels()
 
-	if len(models) != 2 {
-		t.Errorf("Expected 2 model, got %d", len(models))
+	if len(models) != 3 {
+		t.Errorf("Expected 3 model, got %d", len(models))
 
 	}
 
@@ -307,8 +307,8 @@ func TestGetAllModels(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error: %s", err)
 	}
-	if len(models) != 2 {
-		t.Errorf("Expected 2 models, got %d", len(models))
+	if len(models) != 3 {
+		t.Errorf("Expected 3 models, got %d", len(models))
 	}
 
 	if models[0].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" && models[0].Meta.UUID != "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e" {
@@ -319,7 +319,6 @@ func TestGetAllModels(t *testing.T) {
 	}
 }
 
-// TestGetModelLineage tests the GetModelLineage function
 func TestGetModelLineage(t *testing.T) {
 	ResetTables()
 	//example model is a parent-child pair.
@@ -338,8 +337,6 @@ func TestGetModelLineage(t *testing.T) {
 	}
 }
 
-// TestGetModelChildren tests the GetModelChildren function
-// This function is used to get the children of a model given its tag
 func TestGetModelChildren(t *testing.T) {
 	ResetTables()
 	//example model is a parent-child pair.
@@ -359,7 +356,6 @@ func TestGetModelChildren(t *testing.T) {
 
 }
 
-// TestInitializingDBInstance tests the InitializeDBInstance function.
 func TestIinitializingDbInstance(t *testing.T) {
 	// Test that the environment variables are not set up
 	// This test should fail if the environment variables are set up
