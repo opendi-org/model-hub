@@ -958,13 +958,13 @@ const DownloadPage = () => {
                                 />
                             </FormGroup>
 
-                            <IconButton
+                            {isOwner && (<IconButton
                                 aria-label="share"
                                 onClick={handleShareClick}
                                 sx={{ ml: 2 }}
                             >
                                 <ShareIcon />
-                            </IconButton>
+                            </IconButton>)}
                         </Box>
 
                         <Modal
