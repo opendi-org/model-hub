@@ -256,7 +256,7 @@ func TestUploadModelBadUUID(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, getW.Code)
 }
 
-// also functionally tests GetLatestCommitByModelUUID
+// also tests GetLatestCommitByModelUUID
 func TestUploadModelExistingModel(t *testing.T) {
 	database.ResetTables()
 	database.CreateExampleData()
@@ -1231,7 +1231,7 @@ func TestGoogleCallbackInvalidAuthCode(t *testing.T) {
 	defer mockGoogleServer.Close()
 
 	// Creates a custom AuthHandler with OAuth config pointing to mock server
-	testAuthHandler, _ := NewAuthHandler("test-client-id", "test-client-secret")
+	testAuthHandler := NewAuthHandler("test-client-id", "test-client-secret")
 	testAuthHandler.googleConfig.Endpoint.TokenURL = mockGoogleServer.URL + "/token"
 
 	// Set up a test router

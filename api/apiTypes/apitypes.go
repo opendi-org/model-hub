@@ -46,9 +46,9 @@ type Addons struct {
 	ParentUUID string               `json:"parentUUID,omitempty"`
 	ParentID   *int                 `json:"-"`
 	Parent     *CausalDecisionModel `json:"parent,omitempty"`
-	IsPublic   bool                 `json:"isPublic,omitempty"`
-	Shares     []Share              `json:"shares,omitempty"`
-	OwnerID    int                  `json:"ownerID,omitempty"`
+	IsPublic   bool                 `json:"isPublic"`
+	Shares     []Share              `json:"shares"`
+	OwnerID    int                  `json:"ownerID"`
 	Tag        string               `json:"tag"`
 }
 
