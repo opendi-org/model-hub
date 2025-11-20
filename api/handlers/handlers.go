@@ -551,6 +551,31 @@ func (h *ModelHandler) GetTransfer(c *gin.Context) {
 	c.JSON(http.StatusOK, transfer)
 }
 
+// GetUserPendingTransfers godoc
+// @Summary      Get pending transfers for the authenticated user
+// @Description  Get list of models waiting to be transferred to the current user
+// @Tags         user
+// @Produce      json
+// @Success      200  {array}   gin.H
+// @Failure      401  {object}  gin.H  "Unauthorized"
+// @Failure      500  {object}  gin.H  "Internal server error"
+// @Router       /v0/user/transfers [get]
+func (h *ModelHandler) GetUserPendingTransfers(c *gin.Context) {
+	actingUserID, err := getUserIDFromToken(c, h.engMode)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	transfers, err := database.GetTransfersByTargetUserID(actingUserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, transfers)
+}
+
 // PostTransfer godoc
 // @Summary      Create ownership transfer request for model
 // @Description  Create ownership transfer request for model
