@@ -52,7 +52,6 @@ import JsonDiffViewer from "../components/JsonDiffViewer";
 function Ownership({ 
     tag, 
     isOwner, 
-    isTargetUser, 
     pendingTransfer, 
     onTransferUpdate, 
     fetchStatus 
@@ -75,7 +74,7 @@ function Ownership({
         setMessage('Sending ownership transfer request...');
 
         try {
-            const url = `${API_URL}/v0/models/transfer/${tag}?email=${newOwnerEmail}`;
+            const url = `${API_URL}/v0/models/transfer/${tag}?owner=${newOwnerEmail}`;
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -172,23 +171,12 @@ function Ownership({
                 
                 {!!pendingTransfer && (
                     // Display the ToUserID (which we temporarily set to email on success, or the ID from GET)
-                    <p>A transfer request is currently pending to user ID: <strong>{pendingTransfer.ToUserID}</strong></p>
+                    // <p>A transfer request is currently pending to user ID: <strong>{pendingTransfer.toUserID}</strong></p>
+                    <p>A transfer request is currently pending</p>
                 )}
 
                 {fetchStatus === 'loading' && <p>Checking for pending transfer...</p>}
                 {fetchStatus === 'failed' && <p style={{ color: 'red' }}>Could not check for pending transfer.</p>}
-
-                {isTargetUser && (
-                    <>
-                        <h3>Accept or Decline Pending Transfer</h3>
-                        <Button onClick={() => handleAcceptDecline(true)} disabled={status === 'pending'}>
-                            Accept Transfer Request
-                        </Button>
-                        <Button onClick={() => handleAcceptDecline(false)} disabled={status === 'pending'}>
-                            Decline Transfer Request
-                        </Button>
-                    </>
-                )}
 
                 {/* Display the status and messages */}
                 {status === 'pending' && <p>{message}</p>}
@@ -803,10 +791,9 @@ const DownloadPage = () => {
 
     const ownerID = model?.addons?.ownerID;
     const isOwner = currentUserID && ownerID && currentUserID === ownerID;
-    const isTargetUser = currentUserID && pendingTransfer && pendingTransfer.ToUserID === currentUserID;
     
     // The tab should only show if you are the owner OR the target of a transfer
-    const showOwnershipTab = isOwner || isTargetUser;
+    const showOwnershipTab = isOwner;
 
     function CollapsedParentLineage() {
         const [lineage, setLineage] = React.useState(null);
@@ -829,6 +816,19 @@ const DownloadPage = () => {
 
         if (!lineage) {
             return;
+        }
+
+        if (lineage.length === 0) {
+            return (
+                <div role="presentation">
+                    <Typography variant="h6" gutterBottom>
+                        Parent Lineage
+                    </Typography>
+                    <Typography variant="body1">
+                        No parent lineage present. This is a root model.
+                    </Typography>
+                </div>
+            );
         }
 
         return (
@@ -995,7 +995,7 @@ const DownloadPage = () => {
                                         label="Permissions"
                                         onChange={handlePermissionChange}
                                     >
-                                        <MenuItem value="read">Read</MenuItem>
+                                        {!isPrivate && (<MenuItem value="read">Read</MenuItem>)}
                                         <MenuItem value="write">Read/Write</MenuItem>
                                     </Select>
                                 </FormControl>
@@ -1129,7 +1129,6 @@ const DownloadPage = () => {
                         <MemoizedOwnership 
                             tag={model?.addons?.tag} 
                             isOwner={isOwner}
-                            isTargetUser={isTargetUser}
                             pendingTransfer={pendingTransfer}
                             // Pass the setter so the child can update the parent's state
                             onTransferUpdate={setPendingTransfer} 
