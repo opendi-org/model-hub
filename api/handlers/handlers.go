@@ -121,6 +121,7 @@ func addAddonsFields(model apiTypes.CausalDecisionModel) gin.H {
 	result["addons"] = gin.H{
 		"ownerID": model.Addons.OwnerID,
 		"tag":     model.Addons.Tag,
+		"isPublic":model.Addons.IsPublic,
 	}
 
 	return result

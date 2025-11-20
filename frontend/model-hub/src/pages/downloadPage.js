@@ -288,6 +288,9 @@ const DownloadPage = () => {
             })
             .then(data => {
                 setModel(data);
+                if (data.addons && data.addons.hasOwnProperty('isPublic')) {
+                    setIsPrivate(data.addons.isPublic);
+                }
             })
             .catch(error => console.error('There was a problem with the fetch operation:', error));
     }, [uuid]);
