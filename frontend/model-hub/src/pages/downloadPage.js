@@ -889,7 +889,7 @@ const DownloadPage = () => {
                             key={child.id || `children-${index}`}
                             underline="hover"
                             color="gray"
-                            href={`/model/${child?.addons?.tag}`}
+                            href={`/model/${child?.meta.UUID}`}
                         >
                             {child.meta ? child.meta.name : child.name}
                         </Link>
