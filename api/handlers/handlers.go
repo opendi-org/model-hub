@@ -67,14 +67,22 @@ func getUserIDFromToken(c *gin.Context, engMode bool) (int, error) {
 		return 0, nil
 	}
 
+	var tokenString string
+
 	// get authorization header and extract token
 	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		return -1, fmt.Errorf("authorization header required")
-	}
-	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	if tokenString == authHeader {
-		return -1, fmt.Errorf("invalid authorization format")
+	if authHeader != "" {
+		tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader {
+			return -1, fmt.Errorf("invalid authorization format")
+		}
+	} else {
+		// Fallback: Try to get from Cookie (Standard for Google OAuth flow)
+		cookie, err := c.Cookie("auth_token")
+		if err != nil {
+			return -1, fmt.Errorf("authorization header or cookie required")
+		}
+		tokenString = cookie
 	}
 
 	// get the secret from environment
@@ -113,6 +121,7 @@ func addAddonsFields(model apiTypes.CausalDecisionModel) gin.H {
 	result["addons"] = gin.H{
 		"ownerID": model.Addons.OwnerID,
 		"tag":     model.Addons.Tag,
+		"isPublic":model.Addons.IsPublic,
 	}
 
 	return result
@@ -541,6 +550,31 @@ func (h *ModelHandler) GetTransfer(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, transfer)
+}
+
+// GetUserPendingTransfers godoc
+// @Summary      Get pending transfers for the authenticated user
+// @Description  Get list of models waiting to be transferred to the current user
+// @Tags         user
+// @Produce      json
+// @Success      200  {array}   gin.H
+// @Failure      401  {object}  gin.H  "Unauthorized"
+// @Failure      500  {object}  gin.H  "Internal server error"
+// @Router       /v0/user/transfers [get]
+func (h *ModelHandler) GetUserPendingTransfers(c *gin.Context) {
+	actingUserID, err := getUserIDFromToken(c, h.engMode)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	transfers, err := database.GetTransfersByTargetUserID(actingUserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, transfers)
 }
 
 // PostTransfer godoc

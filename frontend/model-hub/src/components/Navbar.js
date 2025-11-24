@@ -129,7 +129,7 @@ export default function Navbar() {
                         <Button color="inherit" component={NavLink} to="/model">Download</Button>
                         <Button color="inherit" component={NavLink} to="/UploadPage">Upload</Button>
                         <Button color="inherit">Popular</Button>
-                        <Button color="inherit">About</Button>
+                        <Button color="inherit" href="https://opendi.org" target="_blank">About</Button>
                         
                         {user ? (
                             <>

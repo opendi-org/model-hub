@@ -222,8 +222,7 @@ func SearchModelsByUser(email string) ([]apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
 
 	if err := dbInstance.
-		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
-		Joins("JOIN users ON meta.creator_id = users.id").
+		Joins("JOIN users ON users.id = CAST(JSON_EXTRACT(causal_decision_models.addons, '$.ownerID') AS UNSIGNED)").
 		Where("users.email LIKE ?", "%"+email+"%").
 		Preload("Meta").
 		Preload("Diagrams").
@@ -326,6 +325,32 @@ func GetTransferByModelUUID(uuid string) (*apiTypes.Transfer, error) {
 		return nil, fmt.Errorf("transfer on uuid %s not found", uuid)
 	}
 	return &transfer, nil
+}
+
+func GetTransfersByTargetUserID(userID int) ([]map[string]interface{}, error) {
+	var transfers []apiTypes.Transfer
+	if err := dbInstance.Where("to_user_id = ?", userID).Find(&transfers).Error; err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+
+	for _, transfer := range transfers {
+		model, err := GetModelByUUID(transfer.CDMUUID)
+		if err != nil {
+			continue
+		}
+
+		result := map[string]interface{}{
+			"transfer":   transfer,
+			"modelName":  model.Meta.Name,
+			"modelTag":   model.Addons.Tag,
+			"fromUserID": transfer.FromUserID,
+		}
+		results = append(results, result)
+	}
+
+	return results, nil
 }
 
 func CreateTransfer(transfer *apiTypes.Transfer) error {

@@ -108,6 +108,12 @@ func main() {
 		}
 	}
 
+	userGroup := router.Group("/v0/user")
+	{
+		// This results in /v0/user/transfers
+		userGroup.GET("/transfers", modelHandler.GetUserPendingTransfers)
+	}
+
 	if !*engMode {
 		auth := router.Group("/auth")
 		{

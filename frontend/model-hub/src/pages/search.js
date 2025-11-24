@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Container, TextField, IconButton, List, ListItem, ListItemText, Box } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import AddIcon from '@mui/icons-material/Add';
 import API_URL from '../config';
 import { FormControl, InputLabel, MenuItem, Select } from '@mui/material';
 import ModelMinicard from '../components/ModelMinicard'
@@ -83,8 +82,8 @@ const SearchPage = () => {
             <Box display="flex" flexDirection="column" alignItems="center" mt={2}>
                 {results.map((result) => (
                     <React.Fragment key={result.meta.uuid}>
-                        <ModelMinicard name={result.meta.name} id = {result.meta.uuid} author={result.meta.creator.username} summary={result.meta.summary}>
-                        </ModelMinicard>
+                        <ModelMinicard key={result.meta.UUID} name={result.meta.name} id = {result.meta.UUID} author={result.meta.creator.username} summary={result.meta.summary} 
+                            version={result.meta.version} updatedDate={result.meta.updatedDate}/>
                         <Box mb={2} /> 
                     </React.Fragment>
                 ))}
