@@ -663,7 +663,7 @@ const DownloadPage = () => {
         const newSharesList = shares.filter(share => share.email !== emailToRemove);
         
         const bodyData = {
-            'isPublic': !isPrivate, // Use the current state of the public/private toggle
+            'isPublic': isPrivate, // Use the current state of the public/private toggle
             'shares': newSharesList
         };
 
