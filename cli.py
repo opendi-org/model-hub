@@ -38,7 +38,7 @@ except Exception:
 # -----------------------------------------------------------------------------
 # Config management
 # -----------------------------------------------------------------------------
-CONFIG_DIR = Path(__file__).resolve().parent / ".opendi_cli"
+CONFIG_DIR = Path.cwd() / ".opendi_cli"
 CONFIG_PATH = CONFIG_DIR / "config.json"
 MAPPINGS_PATH = CONFIG_DIR / "mapping.json"
 DEFAULT_REMOTE_URL = "http://opendi-modelhub.org" # temporary
@@ -130,7 +130,7 @@ def cmd_pull(args, cfg, maps):
   # if we do, make sure the file path is valid, otherwise create a new path
   mapping_index = next((i for i, m in enumerate(maps) if m.get("remote") == model_data.get("meta").get("UUID")), None)
   if mapping_index is None or not Path(maps[mapping_index].get("path")).exists():
-    model_path = Path(__file__).resolve().parent / f"{args.tag.split(":")[0]}.json"
+    model_path = Path.cwd() / f"{args.tag.split(":")[0]}.json"
   else:
     model_path = Path(maps[mapping_index].get("path"))
 
@@ -255,7 +255,7 @@ def cmd_init(args, cfg, maps):
       maps = [m for m in maps if m.get("tag") != model_tag] 
       maps.append({
         "tag": model_tag, 
-        "path": str(Path(__file__).resolve().parent / args.path),
+        "path": str(Path.cwd() / args.path),
         "local": response.json().get("meta").get("UUID"),
         "remote": ""
       })
