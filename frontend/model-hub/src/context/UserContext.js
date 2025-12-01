@@ -16,8 +16,13 @@ export const UserProvider = ({ children }) => {
     setUser(userData);
     if (userData) {
       localStorage.setItem('user', JSON.stringify(userData));
+      // Check if token is in the userData and store it
+      if (userData.token) {
+        sessionStorage.setItem('auth_token', userData.token);
+      }
     } else {
       localStorage.removeItem('user');
+      sessionStorage.removeItem('auth_token');
     }
   };
 
@@ -30,13 +35,13 @@ export const UserProvider = ({ children }) => {
       setUserWithPersistence(null);
     } catch (err) {
       console.error('Logout failed:', err);
-      // Still clear user locally even if backend call fails
+      // Clear user locally even if backend call fails
       setUserWithPersistence(null);
     }
   };
 
   useEffect(() => {
-    // Check if user is already logged in on mount
+    // Check if user is already logged in
     const checkAuth = async () => {
       try {
         const response = await fetch(`${API_URL}/auth/me`, {
@@ -46,15 +51,23 @@ export const UserProvider = ({ children }) => {
         if (response.ok) {
           const userData = await response.json();
           console.log('Loaded user from /auth/me:', userData);
+          
+          // Store the token if its included
+          if (userData.token) {
+            sessionStorage.setItem('auth_token', userData.token);
+          }
+          
           setUserWithPersistence(userData);
         } else {
-          // If auth check fails, clear any stale localStorage
+          console.log('/auth/me failed with status:', response.status);
           localStorage.removeItem('user');
+          sessionStorage.removeItem('auth_token');
         }
       } catch (err) {
         console.error('Auth check failed:', err);
-        // Clear stalelocalStorage on error
+        // Clear stale localStorage on error
         localStorage.removeItem('user');
+        sessionStorage.removeItem('auth_token');
       } finally {
         setLoading(false);
       }

@@ -9,7 +9,8 @@ import {
 } from "react-router-dom";
 import Home from "./pages";
 import UploadPage from "./pages/uploadPage";
-import ModelPage from './pages/downloadPage';
+import ModelPage from './pages/modelPage';
+import CliDownloadPage from './pages/downloadPage';
 import AuthCallback from './pages/AuthCallback';
 import LoginPage from './pages/login'
 import Navbar from './components/Navbar';
@@ -29,6 +30,7 @@ function App() {
           <Routes>
             <Route exact path="/" element={<Home />} />
             <Route path="/uploadpage" element={<UploadPage />} />
+            <Route path="/cli-download" element={<CliDownloadPage />} />
             <Route path="/model/:uuid" element={<ModelPage />} />
             <Route path="/model" element={<ModelPage />} />
             <Route path="/login" element={<LoginPage />} />

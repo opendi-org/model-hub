@@ -9,7 +9,7 @@ const AuthCallback = () => {
   const navigate = useNavigate();
   const { setUser } = useUser();
   const [error, setError] = useState(null);
-  const hasRun = useRef(false); // Prevent double execution in Strict Mode
+  const hasRun = useRef(false);
 
   useEffect(() => {
     if (hasRun.current) return;
@@ -18,12 +18,12 @@ const AuthCallback = () => {
     const handleCallback = async () => {
       const code = searchParams.get('code');
       const state = searchParams.get('state');
-
+    
       if (!code || !state) {
         setError('Missing authentication parameters');
         return;
       }
-
+    
       try {
         const response = await fetch(
           `${API_URL}/auth/google/callback?code=${code}&state=${state}`,
@@ -32,26 +32,31 @@ const AuthCallback = () => {
             credentials: 'include',
           }
         );
-
+    
         const data = await response.json();
-
+    
         if (!response.ok) {
           throw new Error(data.error || 'Authentication failed');
         }
-
+    
         console.log('Full auth response:', data);
+        
+        // Store the token before setting user
+        if (data.token) {
+          sessionStorage.setItem('auth_token', data.token);
+          console.log('Token stored in sessionStorage');
+        }
         
         const userData = data.user || data;
         console.log('Setting user:', userData);
         setUser(userData);
         
-        // Navigate to home
-        navigate('/', { replace: true });
+        // Navigate back to cli download
+        navigate('/cli-download', { replace: true });
       } catch (err) {
         console.error('Auth error:', err);
         setError(err.message);
         
-        // Redirect to login after 3 seconds
         setTimeout(() => {
           navigate('/login', { replace: true });
         }, 3000);
