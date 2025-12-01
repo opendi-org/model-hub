@@ -4,11 +4,11 @@ services:
       context: ./frontend/model-hub/
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       REACT_APP_MODEL_HUB_ADDRESS: localhost
       REACT_APP_MODEL_HUB_PORT: 8080
-      WATCHPACK_POLLING: true  # For React hot reloading (if necessary)
+      WATCHPACK_POLLING: true # For React hot reloading (if necessary)
     volumes:
       - ./frontend/model-hub/src:/webapp/src
   api:
@@ -33,15 +33,13 @@ services:
 
     #For debugging purposes, may be able to not expose this port later (unsure)
     ports:
-      - "8080:8080"
+      - '8080:8080'
     #volumes:
     #  - ./api/:/app/
     restart: unless-stopped
-  
+
   db:
     image: mysql:latest
-    ports:
-    - "3306:3306" 
     environment:
       MYSQL_ROOT_PASSWORD: temp_pass
       MYSQL_DATABASE: open_di_model_hub
