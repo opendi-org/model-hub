@@ -178,20 +178,7 @@ const CliDownloadPage = () => {
                 </Typography>
 
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    <strong>Step 2:</strong> Make sure Python is installed on your system
-                </Typography>
-
-                <Alert severity="info" sx={{ mb: 3 }}>
-                    <Typography variant="body2">
-                        The CLI requires the <code>requests</code> library. Install it with:
-                    </Typography>
-                    <Box sx={{ bgcolor: 'grey.900', color: 'white', p: 1, borderRadius: 1, mt: 1, fontFamily: 'monospace' }}>
-                        py -m pip install requests
-                    </Box>
-                </Alert>
-
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    <strong>Step 3:</strong> Place the CLI executable in your working directory
+                    <strong>Step 2:</strong> Place the CLI executable in your working directory
                 </Typography>
 
                 <Divider sx={{ my: 4 }} />
