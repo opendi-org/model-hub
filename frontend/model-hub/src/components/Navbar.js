@@ -126,7 +126,7 @@ export default function Navbar() {
 
                     <Box sx={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <Button color="inherit" component={NavLink} to="/search">Search</Button>
-                        <Button color="inherit" component={NavLink} to="/model">Download</Button>
+                        <Button color="inherit" component={NavLink} to="/cli-download">Download</Button>
                         <Button color="inherit" component={NavLink} to="/UploadPage">Upload</Button>
                         <Button color="inherit">Popular</Button>
                         <Button color="inherit" href="https://opendi.org" target="_blank">About</Button>

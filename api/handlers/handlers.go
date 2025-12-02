@@ -119,9 +119,9 @@ func addAddonsFields(model apiTypes.CausalDecisionModel) gin.H {
 	json.Unmarshal(jsonData, &result)
 
 	result["addons"] = gin.H{
-		"ownerID": model.Addons.OwnerID,
-		"tag":     model.Addons.Tag,
-		"isPublic":model.Addons.IsPublic,
+		"ownerID":  model.Addons.OwnerID,
+		"tag":      model.Addons.Tag,
+		"isPublic": model.Addons.IsPublic,
 	}
 
 	return result
@@ -328,6 +328,7 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 			"email":    user.Email,
 			"picture":  user.Picture,
 		},
+		"token": jwtToken,
 	})
 }
 
@@ -383,7 +384,14 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, user)
+	// Return user data along with the token
+	c.JSON(http.StatusOK, gin.H{
+		"id":       user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+		"picture":  user.Picture,
+		"token":    cookie,
+	})
 }
 
 // Logout godoc
