@@ -51,8 +51,8 @@ const AuthCallback = () => {
         console.log('Setting user:', userData);
         setUser(userData);
         
-        // Navigate back to cli download
-        navigate('/cli-download', { replace: true });
+        // Navigate back to home page
+        navigate('/', { replace: true });
       } catch (err) {
         console.error('Auth error:', err);
         setError(err.message);
