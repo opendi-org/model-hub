@@ -1,43 +1,24 @@
-# Deployment Instructions for OpenDI Model Hub
-If you already have the up-to-date containers pushed to the container registry, skip to Step X. Make sure you have an Oracle Cloud account setup
+# **OpenDI Model Hub \- Deployment Guide**
 
-### Step 1: Setup Container Repository
-Click on the menu in the upper left corner of Oracle Cloud Infrastructure, and go to Developer Services -> Container Regsitry. Click "Create repository", 
-and make one repository for the API container, and one for the frontend container. Make sure the repositories are public.
+The following instructions describe how to deploy the OpenDI Model Hub using Oracle Cloud Infrastructure (OCI). These steps assume that you already have an OCI account, access to the Model Hub container images, and the necessary credentials for database connections and Google OAuth authentication, which is now required for user login.
 
-You will also need an auth token to access these repositories. Go to User -> User Settings -> Auth Tokens, and generate a token. Make sure to save this somewhere!
+**1\. Set Up OCI Container Repositories**  
+Begin by navigating to *Developer Services → Container Registry* in the OCI dashboard. Create two private repositories—one dedicated to the backend API container and another for the frontend web application. Make sure the repositories are accessible within your tenancy. Next, generate an Auth Token by visiting *User Settings → Auth Tokens*. This token will serve as your Docker password when pushing container images. Keep this token stored safely, as you will need it each time you authenticate for image uploads.
 
-### Step 2: Push Containers to Registry
-Make sure your containers are all up to date by running "docker compose --build". Then, login to OCI Registry in docker with
-"docker login (region-key).ocir.io", where your region key is likely iad for US-East.
+**2\. Build, Tag, and Push Containers to OCI**  
+Ensure your images are up to date by running docker compose build or the appropriate build command for your environment. Log into the OCI registry using docker login with your tenancy namespace and Auth Token. Tag both the backend and frontend images according to the required OCI format, which includes your region key, tenancy namespace, and repository name. Push each image to its respective repository with docker push. After pushing, verify that the images appear inside OCI Container Registry. If a conflict or outdated tag error occurs, simply re-tag and push again.
 
-When prompted, enter your username as (tenancy-namespace)/(username), where tenancy namespace is found under Profile -> Tenancy, listed as "Object Storage Namespace".
-It should look something like idkpm9sketnr. For your password, use the auth token we created in step 1.
+**3\. Create and Configure a Compute Instance**  
+Navigate to *Compute → Instances* and create a new virtual machine. Choose an Ubuntu image and allocate at least 4 GB of RAM (8 GB provides smoother performance). During creation, upload or generate an SSH key for remote access. Once the instance is deployed, obtain its public IP address and connect via SSH to perform the remainder of the setup. This VM will host and run both the backend and frontend containers.
 
-You need to tag the images you created in step 1 with "docker tag (image-name) (region-key).ocir.io/(tenancy-namespace)/(repo-name):(tag)". Once you have tagged both 
-the api and the frontend, run "docker push (region-key).ocir.io/(tenancy-namespace)/(repo-name):(tag)". Check the Container Registry on Oracle Cloud 
-to make sure they are showing up. I found that on my first push I would get a conflict error, so simply pushing again with the same command fixed that issue.
+**4\. Open Required Network Ports and Security Rules**  
+To make the Model Hub accessible externally, open the VM’s subnet configuration under its attached Virtual Cloud Network. Modify the security list to allow inbound traffic on port **8080** (backend API) and port **3000** (frontend UI). Set the allowed source to 0.0.0.0/0 unless tighter access control is desired. These firewall rules enable users and developers to interact with the deployed frontend interface and API endpoints.
 
-### Step 3: Create Compute Instance
-From the menu, go to Compute -> Instances and click Create Instance. Select your Image to be the Ubuntu version you are using, and the shape to be anything with 
-at least 4 Gb of memory (I personally have been using one with 8 Gb). Make sure to generate an SSH key so you can access the VM, and same it somewhere. Once you have done so,
-SSH into the VM.
+**5\. Install Docker and Prepare the Environment**  
+Install Docker on the VM using the official Ubuntu installation instructions or Docker’s convenience script. This tutorial from the official Docker page works well: [https://docs.docker.com/engine/install/ubuntu/](https://docs.docker.com/engine/install/ubuntu/). After installation, verify that Docker is working by running basic commands. At this stage, you should also prepare any environment variables required by the backend, including database credentials, JWT signing secrets, and Google OAuth client information. The backend relies on these values to correctly authenticate users and communicate with the Model Hub database.
 
-### Step 4: Expose Necessary Endpoints
-From your Instances page, click on the instance you just created, then click on the "Virtual Cloud Network" link. Next, click on the subnet that is associated with your 
-VM (should be the only subnet there). Finally, click on the Default Security List. Once there, click on "Add Ingress Rule".
+**6\. Pull and Run the Model Hub Containers**  
+Locate your images inside OCI Registry and use the “Copy Pull Command” option to pull each one onto your VM. Once both containers are present, you may either run them directly via individual Docker commands or use a simple docker-compose file to manage them together. Ensure that ports 8080 and 3000 are properly mapped and that the backend container can reach your MySQL instance. After verifying your configuration, run docker compose up \-d (or equivalent) to start the Model Hub services in detached mode.
 
-For Source, type 0.0.0.0/0 for all sources, and for destination port type 3000. Do the same thing again, except for destination port type 8080. These expose the endpoints 
-for the OpenDI model hub to the open web for the frontend and API respectively.
-
-### Step 5: Install Docker
-This tutorial from the official Docker page works well: https://docs.docker.com/engine/install/ubuntu/
-
-### Step 6: Pull Containers and Run Them
-Go to your container registry, find the most up to date container for each service, and click "Copy pull command". Mine looks like this:
-"docker pull iad.ocir.io/idkpm9sketnr/opendi-api:1.1" (Feel free to use this api, as my repository is public so you should be able to run this command).
-Ensure that you have pulled images for both the API and the frontend. 
-
-Next, copy over compose.prod.yaml, I found that the simplest way to do this was to copy the entire file to my clipboard, and then use vim to paste it into the
-file system on the VM. So run "touch prod.compose.yaml", then run "vim prod.compose.yaml". Once in vim, click the i key, paste the file in, and then type ":wq" to 
-save and exit. Now, you should be able to run "docker compose up", and access 
+**7\. Verify Deployment and Test Core Functionality**  
+After deployment, access the frontend through your VM’s public IP on port 3000\. You should be able to log in using Google OAuth, which will redirect you through the authenticated flow and return you to the Model Hub interface. From there, confirm that models can be viewed and that privacy settings, sharing controls, and ownership transfer behave as expected. Additionally, the CLI should be able to authenticate using its token and interact with the backend via push, pull, commit, and lineage commands.
