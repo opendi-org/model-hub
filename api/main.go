@@ -58,9 +58,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Insert test data if we are in development mode
+	// Insert example data depending on mode when in development
 	if os.Getenv("DEV_MODE") == "true" {
-		database.CreateExampleData()
+		database.ResetTables()
+		if *engMode {
+			database.CreateExampleDataLocal()
+		} else {
+			database.CreateExampleDataRemote()
+		}
 	}
 
 	//initialize handlers
@@ -129,23 +134,19 @@ func main() {
 
 	modelHubAddress := "localhost"
 	modelHubPort := "8080"
-	if *engMode {
-		modelHubPort = "7070" // engine mode should always use 7070
+	val, ok := os.LookupEnv("OPENDI_MODEL_HUB_ADDRESS")
+	if ok && val != "" {
+		modelHubAddress = val
 	} else {
-		val, ok := os.LookupEnv("OPENDI_MODEL_HUB_ADDRESS")
-		if ok && val != "" {
-			modelHubAddress = val
-		} else {
-			// note that value is empty, but just use default
-			fmt.Println("Environment variable OPENDI_MODEL_HUB_ADDRESS is not set or empty")
-		}
-		val, ok = os.LookupEnv("OPENDI_MODEL_HUB_PORT")
-		if ok && val != "" {
-			modelHubPort = val
-		} else {
-			// note that value is empty, but just use default
-			fmt.Println("Environment variable OPENDI_MODEL_HUB_PORT is not set or empty")
-		}
+		// note that value is empty, but just use default
+		fmt.Println("Environment variable OPENDI_MODEL_HUB_ADDRESS is not set or empty")
+	}
+	val, ok = os.LookupEnv("OPENDI_MODEL_HUB_PORT")
+	if ok && val != "" {
+		modelHubPort = val
+	} else {
+		// note that value is empty, but just use default
+		fmt.Println("Environment variable OPENDI_MODEL_HUB_PORT is not set or empty")
 	}
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

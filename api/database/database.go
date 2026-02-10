@@ -943,7 +943,7 @@ func generateUUID() (string, error) {
 // Example method that creates sample models in the database
 // creates 2 models, parent and child.
 // also creates creators for those models
-func CreateExampleData() {
+func CreateExampleDataRemote() {
 	creator := apiTypes.User{
 		ID:       1,
 		Username: "creator",
@@ -1077,4 +1077,142 @@ func CreateExampleData() {
 		fmt.Println("Error creating private model: ", err)
 	}
 
+}
+
+// Example method for engine-specific sample data
+// Mirrors CreateExampleData but uses distinct users, UUIDs, and tags
+// to avoid conflicts when pushing/pulling between local (engine) and remote.
+func CreateExampleDataLocal() {
+	engineCreator := apiTypes.User{
+		ID:       11,
+		Username: "engine_creator",
+		Email:    "engine.creator@example.com",
+		GoogleID: "engine-creator-googleid",
+	}
+
+	engineChildCreator := apiTypes.User{
+		ID:       12,
+		Username: "engine_childcreator",
+		Email:    "engine.childcreator@example.com",
+		GoogleID: "engine-childcreator-googleid",
+	}
+
+	engineAlternate := apiTypes.User{
+		ID:       13,
+		Username: "engine_alternate",
+		Email:    "engine.alternate@example.com",
+		GoogleID: "engine-alternate-googleid",
+	}
+
+	CreateUser(engineCreator)
+	CreateUser(engineChildCreator)
+	CreateUser(engineAlternate)
+
+	engineMeta := apiTypes.Meta{
+		ID:            21,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		UUID:          "9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d",
+		Name:          "CLI Model",
+		Summary:       "Engine-local seeded model for CLI workflows",
+		Documentation: nil,
+		Version:       "1.0",
+		Draft:         false,
+		CreatorID:     engineCreator.ID,
+		Creator:       engineCreator,
+		CreatedDate:   "2026-02-10",
+		Updaters:      []apiTypes.User{},
+		UpdatedDate:   "2026-02-10",
+	}
+
+	engineModel := apiTypes.CausalDecisionModel{
+		ID:        21,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Schema:    "CLI Schema",
+		MetaID:    21,
+		Meta:      engineMeta,
+		Addons: apiTypes.Addons{
+			OwnerID:  engineCreator.ID,
+			Tag:      "cli-model:1.0",
+			IsPublic: true,
+		},
+	}
+
+	engineChildMeta := apiTypes.Meta{
+		ID:            22,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		UUID:          "7c6d5e4f-3a2b-1c0d-9e8f-7a6b5c4d3e2f",
+		Name:          "CLI Child Model",
+		Summary:       "Engine-local child model seeded to test lineage and pulls",
+		Documentation: nil,
+		Version:       "1.0",
+		Draft:         false,
+		CreatorID:     engineChildCreator.ID,
+		Creator:       engineChildCreator,
+		CreatedDate:   "2026-02-10",
+		Updaters:      []apiTypes.User{},
+		UpdatedDate:   "2026-02-10",
+	}
+
+	engineChildModel := apiTypes.CausalDecisionModel{
+		ID:        22,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Schema:    "CLI Child Schema",
+		MetaID:    22,
+		Meta:      engineChildMeta,
+		Addons: apiTypes.Addons{
+			ParentUUID: engineModel.Meta.UUID,
+			ParentID:   &engineModel.ID,
+			Parent:     &engineModel,
+			OwnerID:    engineChildCreator.ID,
+			Tag:        "cli-child-model:1.0",
+			IsPublic:   true,
+		},
+	}
+
+	enginePrivateMeta := apiTypes.Meta{
+		ID:            23,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		UUID:          "5e4f3a2b-1c0d-9e8f-7a6b-5c4d3e2f1a0b",
+		Name:          "CLI Private Model",
+		Summary:       "Engine-local private model for privacy tests",
+		Documentation: nil,
+		Version:       "1.0",
+		Draft:         false,
+		CreatorID:     engineCreator.ID,
+		Creator:       engineCreator,
+		CreatedDate:   "2026-02-10",
+		Updaters:      []apiTypes.User{},
+		UpdatedDate:   "2026-02-10",
+	}
+
+	enginePrivateModel := apiTypes.CausalDecisionModel{
+		ID:        23,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Schema:    "CLI Private Schema",
+		MetaID:    23,
+		Meta:      enginePrivateMeta,
+		Addons: apiTypes.Addons{
+			OwnerID:  engineCreator.ID,
+			Tag:      "cli-private-model:1.0",
+			IsPublic: false,
+		},
+	}
+
+	if err := dbInstance.Create(&engineModel).Error; err != nil {
+		fmt.Println("Error creating engine model: ", err)
+	}
+
+	if err := dbInstance.Create(&engineChildModel).Error; err != nil {
+		fmt.Println("Error creating engine child model: ", err)
+	}
+
+	if err := dbInstance.Create(&enginePrivateModel).Error; err != nil {
+		fmt.Println("Error creating engine private model: ", err)
+	}
 }

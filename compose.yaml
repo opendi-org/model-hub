@@ -1,5 +1,6 @@
 services:
-  web:
+  # Remote hub frontend, runs at 3000 and connects to backend
+  frontend:
     build:
       context: ./frontend/model-hub/
       dockerfile: Dockerfile
@@ -11,35 +12,90 @@ services:
       WATCHPACK_POLLING: true # For React hot reloading (if necessary)
     volumes:
       - ./frontend/model-hub/src:/webapp/src
-  api:
+
+  # Remote hub backend, runs at 8080 and connects to db_remote
+  backend_remote:
     build:
       context: ./api/
       dockerfile: Dockerfile
     depends_on:
-      - db
+      db_remote:
+        condition: service_healthy
     environment:
       OPEN_DI_DB_NAME: open_di_model_hub
       OPEN_DI_DB_PORT: 3306
-      OPEN_DI_DB_HOSTNAME: db
+      OPEN_DI_DB_HOSTNAME: db_remote
       OPEN_DI_DB_PASSWORD: temp_pass
       OPEN_DI_DB_USERNAME: root
-      OPENDI_MODEL_HUB_ADDRESS: api
+      OPENDI_MODEL_HUB_ADDRESS: 0.0.0.0
       OPENDI_MODEL_HUB_PORT: 8080
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
       JWT_SECRET: ${JWT_SECRET}
       DEV_MODE: true
-
-    #For debugging purposes, may be able to not expose this port later (unsure)
     ports:
       - '8080:8080'
-    #volumes:
-    #  - ./api/:/app/
     restart: unless-stopped
+    networks:
+      - modelhub_net
 
-  db:
+  # Local engine instance for CLI testing, runs at 7070 and connects to db_local
+  backend_local:
+    build:
+      context: ./api/
+      dockerfile: Dockerfile
+    depends_on:
+      db_local:
+        condition: service_healthy
+    environment:
+      OPEN_DI_DB_NAME: open_di_engine
+      OPEN_DI_DB_PORT: 3306
+      OPEN_DI_DB_HOSTNAME: db_local
+      OPEN_DI_DB_PASSWORD: temp_pass
+      OPEN_DI_DB_USERNAME: root
+      OPENDI_MODEL_HUB_ADDRESS: 0.0.0.0
+      OPENDI_MODEL_HUB_PORT: 7070
+      DEV_MODE: true
+    command: ["/api-server", "-e"]
+    ports:
+      - '7070:7070'
+    restart: unless-stopped
+    networks:
+      - engine_net
+
+  # MySQL database for remote hub
+  db_remote:
     image: mysql:latest
     environment:
       MYSQL_ROOT_PASSWORD: temp_pass
       MYSQL_DATABASE: open_di_model_hub
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ptemp_pass"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    networks:
+      - modelhub_net
+
+  # MySQL database for local engine
+  db_local:
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: temp_pass
+      MYSQL_DATABASE: open_di_engine
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ptemp_pass"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    networks:
+      - engine_net
+
+networks:
+  modelhub_net:
+    driver: bridge
+  engine_net:
+    driver: bridge
