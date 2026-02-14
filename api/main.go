@@ -5,7 +5,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"opendi/model-hub/api/handlers"
 	"os"
@@ -24,15 +23,7 @@ import (
 )
 
 func main() {
-	// running the server using "go run main.go -e" runs the server in engine mode,
-	// which registers only certain routes needed for the CLI
-	engMode := flag.Bool("e", false, "Runs the Model Hub in engine mode for the CLI")
-	flag.Parse()
-
 	fmt.Println("Starting Model Hub API")
-	if *engMode {
-		fmt.Println("Running in engine mode")
-	}
 
 	router := gin.Default()
 
@@ -58,25 +49,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Insert example data depending on mode when in development
+	// Insert example data when in development
 	if os.Getenv("DEV_MODE") == "true" {
 		database.ResetTables()
-		if *engMode {
-			database.CreateExampleDataLocal()
-		} else {
-			database.CreateExampleDataRemote()
-		}
+		database.CreateExampleDataRemote()
 	}
 
 	//initialize handlers
-	modelHandler := handlers.NewModelHandler(*engMode)
-	var authHandler *handlers.AuthHandler
-	if !*engMode {
-		authHandler = handlers.NewAuthHandler(
-			os.Getenv("GOOGLE_CLIENT_ID"),
-			os.Getenv("GOOGLE_CLIENT_SECRET"),
-		)
-	}
+	modelHandler := handlers.NewModelHandler(false)
+	authHandler := handlers.NewAuthHandler(
+		os.Getenv("GOOGLE_CLIENT_ID"),
+		os.Getenv("GOOGLE_CLIENT_SECRET"),
+	)
 
 	// TODO fix this logic
 	// Handle any errors that occur during initialization of the API endpoint handling logic
@@ -88,29 +72,21 @@ func main() {
 	//router group for all endpoints related to models
 	models := router.Group("/v0/models")
 	{
-		if *engMode {
-			models.GET("", modelHandler.GetModels)
-			models.POST("", modelHandler.UploadModel)
-			models.GET("/tag/:tag", modelHandler.GetModelByTag)
-			models.GET("/commits/:tag", modelHandler.GetCommitsByModelTag)
-			models.GET("/lineage/:tag", modelHandler.GetModelLineage)
-		} else {
-			models.GET("", modelHandler.GetModels)
-			models.POST("", modelHandler.UploadModel)
-			models.GET("/:uuid", modelHandler.GetModelByUUID)
-			models.GET("/tag/:tag", modelHandler.GetModelByTag)
-			models.GET("/commits/:tag", modelHandler.GetCommitsByModelTag)
-			models.GET("/commits/latest/:tag", modelHandler.GetLatestCommitByModelTag)
-			models.GET("/lineage/:tag", modelHandler.GetModelLineage)
-			models.GET("/children/:tag", modelHandler.GetModelChildren)
-			models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
-			models.GET("/search/:type/:name", modelHandler.ModelSearch)
-			models.GET("/privacy/:tag", modelHandler.GetModelPrivacy)
-			models.PUT("/privacy/:tag", modelHandler.PutModelPrivacy)
-			models.GET("/transfer/:tag", modelHandler.GetTransfer)
-			models.POST("/transfer/:tag", modelHandler.PostTransfer)
-			models.DELETE("/transfer/:tag", modelHandler.DeleteTransfer)
-		}
+		models.GET("", modelHandler.GetModels)
+		models.POST("", modelHandler.UploadModel)
+		models.GET("/:uuid", modelHandler.GetModelByUUID)
+		models.GET("/tag/:tag", modelHandler.GetModelByTag)
+		models.GET("/commits/:tag", modelHandler.GetCommitsByModelTag)
+		models.GET("/commits/latest/:tag", modelHandler.GetLatestCommitByModelTag)
+		models.GET("/lineage/:tag", modelHandler.GetModelLineage)
+		models.GET("/children/:tag", modelHandler.GetModelChildren)
+		models.GET("/version/:uuid/:version", modelHandler.GetVersionOfModel)
+		models.GET("/search/:type/:name", modelHandler.ModelSearch)
+		models.GET("/privacy/:tag", modelHandler.GetModelPrivacy)
+		models.PUT("/privacy/:tag", modelHandler.PutModelPrivacy)
+		models.GET("/transfer/:tag", modelHandler.GetTransfer)
+		models.POST("/transfer/:tag", modelHandler.PostTransfer)
+		models.DELETE("/transfer/:tag", modelHandler.DeleteTransfer)
 	}
 
 	userGroup := router.Group("/v0/user")
@@ -119,16 +95,14 @@ func main() {
 		userGroup.GET("/transfers", modelHandler.GetUserPendingTransfers)
 	}
 
-	if !*engMode {
-		auth := router.Group("/auth")
-		{
-			auth.GET("/google/login", authHandler.GoogleLogin)
-			auth.GET("/google/callback", authHandler.GoogleCallback)
-			auth.GET("/me", authHandler.GetCurrentUser)
-			auth.POST("/logout", authHandler.Logout)
-			if os.Getenv("DEV_MODE") == "true" {
-				auth.GET("/testlogin", authHandler.TestLogin)
-			}
+	auth := router.Group("/auth")
+	{
+		auth.GET("/google/login", authHandler.GoogleLogin)
+		auth.GET("/google/callback", authHandler.GoogleCallback)
+		auth.GET("/me", authHandler.GetCurrentUser)
+		auth.POST("/logout", authHandler.Logout)
+		if os.Getenv("DEV_MODE") == "true" {
+			auth.GET("/testlogin", authHandler.TestLogin)
 		}
 	}
 
