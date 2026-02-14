@@ -7,3 +7,6 @@ build/
 dist/
 *.egg-info/
 *.egg
+
+# OAuth client secrets (bundled at build time, never committed)
+client_secret.json
