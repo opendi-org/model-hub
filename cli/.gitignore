@@ -1,0 +1,9 @@
+# virtual environment
+.venv/
+venv/
+
+# build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
