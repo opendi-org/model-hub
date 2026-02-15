@@ -3,7 +3,7 @@
 //
 import React, { useState } from 'react';
 import { CardActions, Typography} from '@mui/material';
-import Grid from '@mui/material/Grid2';
+import Grid from '@mui/material/Grid';
 import Card from '@mui/material/Card';
 import CardHeader from '@mui/material/CardHeader';
 import CardContent from '@mui/material/CardContent';
