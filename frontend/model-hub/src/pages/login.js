@@ -5,11 +5,11 @@ import {
   Typography, 
 } from '@mui/material';
 import { Google } from '@mui/icons-material';
-import API_URL from '../config';
+import APIClient from '../util/ApiClient';
 
 const Login = () => {
   const handleGoogleLogin = () => {
-    window.location.href = `${API_URL}/auth/google/login`;
+    window.location.href = APIClient.getGoogleLoginUrl();
   };
 
   return (

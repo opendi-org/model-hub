@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Container, TextField, IconButton, Box } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import API_URL from '../config';
 import { FormControl, InputLabel, MenuItem, Select } from '@mui/material';
 import ModelMinicard from '../components/ModelMinicard'
 import { useSearchParams } from "react-router-dom";
+import APIClient from '../util/ApiClient';
 
 
 const SearchPage = () => {
@@ -33,18 +33,8 @@ const SearchPage = () => {
         }
         setSearchParams(newParams);
 
-        // URL encode the search term for the API call
-        const encodedTerm = encodeURIComponent(searchTerm.trim());
-        fetch(`${API_URL}/v0/models/search/${searchType}/${encodedTerm}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                setResults(data || []);
-            })
+        APIClient.searchModels(searchType, searchTerm.trim())
+            .then(data => setResults(data || []))
             .catch(error => {
                 console.error('There was an error fetching search results:', error);
                 setResults([]);
@@ -62,17 +52,8 @@ const SearchPage = () => {
         
         // Trigger search if there's a term
         if (termFromUrl.trim()) {
-            const encodedTerm = encodeURIComponent(termFromUrl.trim());
-            fetch(`${API_URL}/v0/models/search/${typeFromUrl}/${encodedTerm}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    setResults(data || []);
-                })
+            APIClient.searchModels(typeFromUrl, termFromUrl.trim())
+                .then(data => setResults(data || []))
                 .catch(error => {
                     console.error('There was an error fetching search results:', error);
                     setResults([]);
