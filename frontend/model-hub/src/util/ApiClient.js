@@ -18,11 +18,9 @@ export default class APIClient {
     return response.json().catch(() => ({}));
   }
 
-  /** Full URL for Google OAuth login redirect. */
+  /** Full URL for Google OAuth login redirect. Backend serves /auth/... at root (no /api prefix). */
   static getGoogleLoginUrl() {
-    const base = (HTTPClient.baseURL || "").replace(/\/+$/, "");
-    const apiBase = base.endsWith("/api") ? base : base ? `${base}/api` : "/api";
-    return `${apiBase}/auth/google/login`;
+    return `${HTTPClient.baseURL}/auth/google/login`;
   }
 
   /** GET /auth/google/callback - exchange code/state for user; throws with error message on failure. */
