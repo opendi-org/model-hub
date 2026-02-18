@@ -943,7 +943,7 @@ func generateUUID() (string, error) {
 // Example method that creates sample models in the database
 // creates 2 models, parent and child.
 // also creates creators for those models
-func CreateExampleDataRemote() {
+func CreateExampleData() {
 	creator := apiTypes.User{
 		ID:       1,
 		Username: "creator",

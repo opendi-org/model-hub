@@ -52,7 +52,7 @@ func main() {
 	// Insert example data when in development
 	if os.Getenv("DEV_MODE") == "true" {
 		database.ResetTables()
-		database.CreateExampleDataRemote()
+		database.CreateExampleData()
 	}
 
 	//initialize handlers
