@@ -198,10 +198,9 @@ func GetModelByTag(tag string) (*apiTypes.CausalDecisionModel, error) {
 func SearchModelsByName(name string) ([]apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
 
-	// Use GORM's query builder to work with Full-Text Search
 	if err := dbInstance.
 		Joins("JOIN meta ON causal_decision_models.meta_id = meta.id").
-		Where("MATCH(meta.name, meta.summary) AGAINST(? IN NATURAL LANGUAGE MODE)", name).
+		Where("meta.name LIKE ?", "%"+name+"%").
 		Preload("Meta").
 		Preload("Diagrams").
 		Preload("Diagrams.Meta").

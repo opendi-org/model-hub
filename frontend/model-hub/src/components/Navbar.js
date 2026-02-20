@@ -2,7 +2,7 @@
 // COPYRIGHT OpenDI
 //
 
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import opendiIcon from '../opendi-icon.png';
 import * as React from 'react';
 import { styled, alpha } from '@mui/material/styles';
@@ -18,7 +18,14 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Avatar from '@mui/material/Avatar';
 import Divider from '@mui/material/Divider';
+import Paper from '@mui/material/Paper';
+import List from '@mui/material/List';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
+import CircularProgress from '@mui/material/CircularProgress';
+import ClickAwayListener from '@mui/material/ClickAwayListener';
 import { useUser } from '../context/UserContext';
+import API_URL from '../config';
 
 const Search = styled('div')(({ theme }) => ({
     position: 'relative',
@@ -65,6 +72,50 @@ export default function Navbar() {
     const [anchorEl, setAnchorEl] = React.useState(null);
     const [imageError, setImageError] = React.useState(false);
     const location = useLocation();
+    const navigate = useNavigate();
+
+    const [navSearchTerm, setNavSearchTerm] = React.useState('');
+    const [navResults, setNavResults] = React.useState([]);
+    const [dropdownOpen, setDropdownOpen] = React.useState(false);
+    const [loading, setLoading] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!navSearchTerm.trim()) {
+            setNavResults([]);
+            setDropdownOpen(false);
+            return;
+        }
+        const timer = setTimeout(() => {
+            setLoading(true);
+            fetch(`${API_URL}/v0/models/search/model/${navSearchTerm}`)
+                .then(res => res.ok ? res.json() : [])
+                .then(data => {
+                    setNavResults(Array.isArray(data) ? data : []);
+                    setDropdownOpen(true);
+                })
+                .catch(() => setNavResults([]))
+                .finally(() => setLoading(false));
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [navSearchTerm]);
+
+    const handleResultClick = (uuid) => {
+        setNavSearchTerm('');
+        setNavResults([]);
+        setDropdownOpen(false);
+        navigate(`/model/${uuid}`);
+    };
+
+    const handleSearchKeyDown = (e) => {
+        if (e.key === 'Enter' && navSearchTerm.trim()) {
+            setDropdownOpen(false);
+            navigate(`/search?term=${navSearchTerm}`);
+        }
+    };
+
+    const handleClickAway = () => {
+        setDropdownOpen(false);
+    };
 
     const activeStyle = (path) => ({
         fontWeight: location.pathname === path ? 'bold' : 'normal',
@@ -113,22 +164,64 @@ export default function Navbar() {
                     >
                         OpenDI
                     </Typography>
-                    <Search>
-                        <SearchIconWrapper>
-                            <SearchIcon />
-                        </SearchIconWrapper>
-                        <StyledInputBase
-                            placeholder="Search…"
-                            inputProps={{ 'aria-label': 'search' }}
-                            sx={{ width: '25em' }}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    const searchTerm = e.target.value;
-                                    window.location.href = `/search?term=${searchTerm}`;
-                                }
-                            }}
-                        />
-                    </Search>
+                    <ClickAwayListener onClickAway={handleClickAway}>
+                        <Box sx={{ position: 'relative' }}>
+                            <Search>
+                                <SearchIconWrapper>
+                                    {loading ? (
+                                        <CircularProgress size={18} color="inherit" />
+                                    ) : (
+                                        <SearchIcon />
+                                    )}
+                                </SearchIconWrapper>
+                                <StyledInputBase
+                                    placeholder="Search…"
+                                    inputProps={{ 'aria-label': 'search' }}
+                                    sx={{ width: '25em' }}
+                                    value={navSearchTerm}
+                                    onChange={(e) => setNavSearchTerm(e.target.value)}
+                                    onKeyDown={handleSearchKeyDown}
+                                    onFocus={() => navResults.length > 0 && setDropdownOpen(true)}
+                                />
+                            </Search>
+                            {dropdownOpen && (
+                                <Paper
+                                    sx={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        left: 0,
+                                        right: 0,
+                                        zIndex: 1300,
+                                        maxHeight: 360,
+                                        overflowY: 'auto',
+                                        mt: 0.5,
+                                        boxShadow: 3,
+                                    }}
+                                >
+                                    <List dense disablePadding>
+                                        {navResults.length === 0 ? (
+                                            <ListItemButton disabled>
+                                                <ListItemText primary="No results found" />
+                                            </ListItemButton>
+                                        ) : (
+                                            navResults.map((result) => (
+                                                <ListItemButton
+                                                    key={result.meta.UUID}
+                                                    onClick={() => handleResultClick(result.meta.UUID)}
+                                                    divider
+                                                >
+                                                    <ListItemText
+                                                        primary={result.meta.name}
+                                                        secondary={result.meta.creator?.username}
+                                                    />
+                                                </ListItemButton>
+                                            ))
+                                        )}
+                                    </List>
+                                </Paper>
+                            )}
+                        </Box>
+                    </ClickAwayListener>
                     <Box sx={{ flexGrow: 1 }} />
 
                     <Box sx={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
