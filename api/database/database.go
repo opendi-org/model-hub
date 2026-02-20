@@ -217,12 +217,12 @@ func SearchModelsByName(name string) ([]apiTypes.CausalDecisionModel, error) {
 	return models, nil
 }
 
-func SearchModelsByUser(email string) ([]apiTypes.CausalDecisionModel, error) {
+func SearchModelsByUser(username string) ([]apiTypes.CausalDecisionModel, error) {
 	var models []apiTypes.CausalDecisionModel
 
 	if err := dbInstance.
 		Joins("JOIN users ON users.id = CAST(JSON_EXTRACT(causal_decision_models.addons, '$.ownerID') AS UNSIGNED)").
-		Where("users.email LIKE ?", "%"+email+"%").
+		Where("users.username LIKE ?", "%"+username+"%").
 		Preload("Meta").
 		Preload("Diagrams").
 		Preload("Diagrams.Meta").

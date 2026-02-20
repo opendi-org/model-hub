@@ -22,6 +22,7 @@ import Paper from '@mui/material/Paper';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
+import ListSubheader from '@mui/material/ListSubheader';
 import CircularProgress from '@mui/material/CircularProgress';
 import ClickAwayListener from '@mui/material/ClickAwayListener';
 import { useUser } from '../context/UserContext';
@@ -75,25 +76,44 @@ export default function Navbar() {
     const navigate = useNavigate();
 
     const [navSearchTerm, setNavSearchTerm] = React.useState('');
-    const [navResults, setNavResults] = React.useState([]);
+    const [navModelResults, setNavModelResults] = React.useState([]);
+    const [navOwnerResults, setNavOwnerResults] = React.useState([]);
     const [dropdownOpen, setDropdownOpen] = React.useState(false);
     const [loading, setLoading] = React.useState(false);
 
     React.useEffect(() => {
         if (!navSearchTerm.trim()) {
-            setNavResults([]);
+            setNavModelResults([]);
+            setNavOwnerResults([]);
             setDropdownOpen(false);
             return;
         }
         const timer = setTimeout(() => {
             setLoading(true);
-            fetch(`${API_URL}/v0/models/search/model/${navSearchTerm}`)
-                .then(res => res.ok ? res.json() : [])
-                .then(data => {
-                    setNavResults(Array.isArray(data) ? data : []);
-                    setDropdownOpen(true);
+            Promise.all([
+                fetch(`${API_URL}/v0/models/search/model/${navSearchTerm}`).then(res => res.ok ? res.json() : []),
+                fetch(`${API_URL}/v0/models/search/user/${navSearchTerm}`).then(res => res.ok ? res.json() : []),
+            ])
+                .then(([modelData, userData]) => {
+                    const models = Array.isArray(modelData) ? modelData : [];
+                    const userModels = Array.isArray(userData) ? userData : [];
+                    const seenUsernames = new Set();
+                    const uniqueOwners = [];
+                    for (const result of userModels) {
+                        const username = result.meta?.creator?.username;
+                        if (username && !seenUsernames.has(username)) {
+                            seenUsernames.add(username);
+                            uniqueOwners.push(username);
+                        }
+                    }
+                    setNavModelResults(models);
+                    setNavOwnerResults(uniqueOwners);
+                    setDropdownOpen(models.length > 0 || uniqueOwners.length > 0);
                 })
-                .catch(() => setNavResults([]))
+                .catch(() => {
+                    setNavModelResults([]);
+                    setNavOwnerResults([]);
+                })
                 .finally(() => setLoading(false));
         }, 300);
         return () => clearTimeout(timer);
@@ -101,9 +121,18 @@ export default function Navbar() {
 
     const handleResultClick = (uuid) => {
         setNavSearchTerm('');
-        setNavResults([]);
+        setNavModelResults([]);
+        setNavOwnerResults([]);
         setDropdownOpen(false);
         navigate(`/model/${uuid}`);
+    };
+
+    const handleOwnerClick = (username) => {
+        setNavSearchTerm('');
+        setNavModelResults([]);
+        setNavOwnerResults([]);
+        setDropdownOpen(false);
+        navigate(`/search?term=${username}&type=user`);
     };
 
     const handleSearchKeyDown = (e) => {
@@ -181,7 +210,7 @@ export default function Navbar() {
                                     value={navSearchTerm}
                                     onChange={(e) => setNavSearchTerm(e.target.value)}
                                     onKeyDown={handleSearchKeyDown}
-                                    onFocus={() => navResults.length > 0 && setDropdownOpen(true)}
+                                    onFocus={() => (navModelResults.length > 0 || navOwnerResults.length > 0) && setDropdownOpen(true)}
                                 />
                             </Search>
                             {dropdownOpen && (
@@ -199,23 +228,49 @@ export default function Navbar() {
                                     }}
                                 >
                                     <List dense disablePadding>
-                                        {navResults.length === 0 ? (
+                                        {navModelResults.length === 0 && navOwnerResults.length === 0 ? (
                                             <ListItemButton disabled>
                                                 <ListItemText primary="No results found" />
                                             </ListItemButton>
                                         ) : (
-                                            navResults.map((result) => (
-                                                <ListItemButton
-                                                    key={result.meta.UUID}
-                                                    onClick={() => handleResultClick(result.meta.UUID)}
-                                                    divider
-                                                >
-                                                    <ListItemText
-                                                        primary={result.meta.name}
-                                                        secondary={result.meta.creator?.username}
-                                                    />
-                                                </ListItemButton>
-                                            ))
+                                            <>
+                                                {navModelResults.length > 0 && (
+                                                    <>
+                                                        <ListSubheader sx={{ lineHeight: '32px', bgcolor: 'background.paper' }}>
+                                                            Models
+                                                        </ListSubheader>
+                                                        {navModelResults.map((result) => (
+                                                            <ListItemButton
+                                                                key={result.meta.UUID}
+                                                                onClick={() => handleResultClick(result.meta.UUID)}
+                                                                divider
+                                                            >
+                                                                <ListItemText
+                                                                    primary={result.meta.name}
+                                                                    secondary={result.meta.creator?.username}
+                                                                />
+                                                            </ListItemButton>
+                                                        ))}
+                                                    </>
+                                                )}
+                                                {navOwnerResults.length > 0 && (
+                                                    <>
+                                                        <Divider />
+                                                        <ListSubheader sx={{ lineHeight: '32px', bgcolor: 'background.paper' }}>
+                                                            Creators
+                                                        </ListSubheader>
+                                                        {navOwnerResults.map((username) => (
+                                                            <ListItemButton
+                                                                key={username}
+                                                                onClick={() => handleOwnerClick(username)}
+                                                                divider
+                                                            >
+                                                                <ListItemText primary={username} />
+                                                            </ListItemButton>
+                                                        ))}
+                                                    </>
+                                                )}
+                                            </>
                                         )}
                                     </List>
                                 </Paper>
