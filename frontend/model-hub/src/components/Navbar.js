@@ -2,7 +2,7 @@
 // COPYRIGHT OpenDI
 //
 
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import opendiIcon from '../opendi-icon.png';
 import * as React from 'react';
 import { styled, alpha } from '@mui/material/styles';
@@ -64,6 +64,13 @@ export default function Navbar() {
     const { user, logout } = useUser();
     const [anchorEl, setAnchorEl] = React.useState(null);
     const [imageError, setImageError] = React.useState(false);
+    const location = useLocation();
+
+    const activeStyle = (path) => ({
+        fontWeight: location.pathname === path ? 'bold' : 'normal',
+        borderBottom: location.pathname === path ? '2px solid black' : 'none',
+        borderRadius: 0,
+    });
 
     const handleMenuOpen = (event) => {
         setAnchorEl(event.currentTarget);
@@ -125,10 +132,9 @@ export default function Navbar() {
                     <Box sx={{ flexGrow: 1 }} />
 
                     <Box sx={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <Button color="inherit" component={NavLink} to="/search">Search</Button>
-                        <Button color="inherit" component={NavLink} to="/cli-download">Download</Button>
-                        <Button color="inherit" component={NavLink} to="/UploadPage">Upload</Button>
-                        <Button color="inherit">Popular</Button>
+                        <Button color="inherit" component={NavLink} to="/search" sx={activeStyle('/search')}>Search</Button>
+                        <Button color="inherit" component={NavLink} to="/cli-download" sx={activeStyle('/cli-download')}>Download</Button>
+                        <Button color="inherit" component={NavLink} to="/upload" sx={activeStyle('/upload')}>Upload</Button>
                         <Button color="inherit" href="https://opendi.org" target="_blank">About</Button>
                         
                         {user ? (
@@ -179,7 +185,7 @@ export default function Navbar() {
                                 </Menu>
                             </>
                         ) : (
-                            <Button color="inherit" component={NavLink} to="/login">
+                            <Button color="inherit" component={NavLink} to="/login" sx={activeStyle('/login')}>
                                 Login
                             </Button>
                         )}
