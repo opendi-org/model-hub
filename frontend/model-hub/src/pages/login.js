@@ -5,9 +5,12 @@ import {
   Typography, 
 } from '@mui/material';
 import { Google } from '@mui/icons-material';
+import { useTheme } from '@mui/material/styles';
 import API_URL from '../config';
 
 const Login = () => {
+  const theme = useTheme();
+
   const handleGoogleLogin = () => {
     window.location.href = `${API_URL}/auth/google/login`;
   };
@@ -20,12 +23,13 @@ const Login = () => {
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          backgroundColor: '#f5f5f5',
+          backgroundColor: theme.palette.background.paper,
+          border: `1px solid ${theme.palette.divider}`,
           padding: 4,
           borderRadius: 1
         }}
       >
-        <Typography component="h1" variant="h5" mb={4}>
+        <Typography component="h1" variant="h5" mb={4} color="text.primary">
           OpenDI Model Hub
         </Typography>
         

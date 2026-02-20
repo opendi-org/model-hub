@@ -2,70 +2,133 @@
 // COPYRIGHT OpenDI
 //
 
-import { Button, Container, Typography, Stack } from '@mui/material';
-import Grid from '@mui/material/Grid2';
-import Paper from '@mui/material/Paper';
+import { Button, Container, Typography, Box } from '@mui/material';
+import Grid from '@mui/material/Grid';
 import ModelMinicard from '../components/ModelMinicard';
-import { useEffect } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTheme } from '@mui/material/styles';
 import API_URL from '../config';
+
 const Home = () => {
-    const [models, setModels] = useState([])
+    const [models, setModels] = useState([]);
     const theme = useTheme();
-    const keywords = ["Financial", "Medical", "Business", "Technical"];
+
     useEffect(() => {
-        fetch(`${API_URL}/v0/models`, {credentials: 'include',})
+        fetch(`${API_URL}/v0/models`, { credentials: 'include' })
             .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
+                if (!response.ok) throw new Error('Network response was not ok');
                 return response.json();
             })
-            .then(data => {
-                setModels(data);})
+            .then(data => setModels(data))
             .catch(error => console.error('There was a problem with the fetch operation:', error));
     }, []);
 
-    // function typeRenderer(category, model) {
-    //     if (model.meta.summary.includes(category)) {
-                                        
-    //         return <ModelMinicard key={model.meta.uuid} name={model.meta.name} id = {model.meta.uuid} author={model.meta.creator.username} summary={model.meta.summary} 
-    //         version={model.meta.version} updatedDate={model.meta.updatedDate}/> 
-    //     }
-    // }
     return (
-        <Container maxWidth={false} sx={{ width: '100%', height: '100vh', alignItems: 'center', justifyContent: 'center', padding: 0, margin: 0 }}>
-            <Stack sx={{ height: "100%", width: '100%', alignItems: 'center', justifyContent: 'center', display: 'block' }}>
-                <Paper elevation={1} sx={{ height: "30%", width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 2, backgroundColor: theme.palette.secondary.main}}>
-                    <Typography variant="h4" gutterBottom sx={{textAlign:"center"}}>
+        <Box sx={{ minHeight: '100vh', backgroundColor: theme.palette.background.default }}>
+            {/* Hero section */}
+            <Box
+                sx={{
+                    background: theme.palette.mode === 'light'
+                        ? 'linear-gradient(135deg, #1E2130 0%, #0D2B55 100%)'
+                        : 'linear-gradient(135deg, #0D1117 0%, #0D2244 100%)',
+                    color: '#ffffff',
+                    py: { xs: 6, md: 8 },
+                    px: 3,
+                    textAlign: 'center',
+                }}
+            >
+                <Container maxWidth="md">
+                    <Typography
+                        variant="h4"
+                        fontWeight={700}
+                        gutterBottom
+                        sx={{ letterSpacing: '-0.02em', mb: 2 }}
+                    >
                         Get started with OpenDI
                     </Typography>
-                    <Typography variant="subtitle1" gutterBottom sx={{textAlign:"center"}}>
-                    The purpose of the OpenDI initiative is to foster a vibrant and healthy ecosystem for decision intelligence (DI), which supports innovative DI research, <br />
-                    a healthy vendor market, and — ultimately — better decisions in many domains worldwide.
+                    <Typography
+                        variant="subtitle1"
+                        sx={{
+                            color: 'rgba(255,255,255,0.75)',
+                            maxWidth: 680,
+                            mx: 'auto',
+                            lineHeight: 1.7,
+                            mb: 3,
+                        }}
+                    >
+                        The purpose of the OpenDI initiative is to foster a vibrant and healthy
+                        ecosystem for decision intelligence (DI), which supports innovative DI
+                        research, a healthy vendor market, and — ultimately — better decisions
+                        in many domains worldwide.
                     </Typography>
-                    <Button variant="contained" color="primary" href="https://opendi.org" target="_blank" sx={{mt: 2}}>
+                    <Button
+                        variant="contained"
+                        size="large"
+                        href="https://opendi.org"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{
+                            backgroundColor: '#086DD7',
+                            '&:hover': { backgroundColor: '#0558AE' },
+                            px: 4,
+                            py: 1.25,
+                            fontWeight: 700,
+                            fontSize: '0.95rem',
+                        }}
+                    >
                         Start Here
                     </Button>
-                </Paper>
-                <Stack sx={{ width: '100%', display: 'block', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 2 }}>
-                    <Stack spacing={4}>
-                        <Grid xs={12}>
-                            <Typography variant="h6">
-                                All Models
-                            </Typography>
-                        </Grid>
-                        <Grid xs={12} container spacing={2}>
-                            {
-                                models.map((model) => <ModelMinicard key={model.meta.UUID} name={model.meta.name} id = {model.meta.UUID} author={model.meta.creator.username} summary={model.meta.summary} 
-                                version={model.meta.version} updatedDate={model.meta.updatedDate}/> )
-                            }
-                        </Grid>
-                    </Stack>
-                </Stack>
-            </Stack>
-        </Container>
+                </Container>
+            </Box>
+
+            {/* Models grid */}
+            <Container maxWidth="xl" sx={{ py: 4, px: { xs: 2, md: 4 } }}>
+                <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="h6" fontWeight={600} color="text.primary">
+                        All Models
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        {models.length} {models.length === 1 ? 'result' : 'results'}
+                    </Typography>
+                </Box>
+
+                {models.length === 0 ? (
+                    <Box
+                        sx={{
+                            textAlign: 'center',
+                            py: 8,
+                            color: 'text.secondary',
+                        }}
+                    >
+                        <Typography variant="body1">No models found.</Typography>
+                        <Typography variant="body2" sx={{ mt: 1 }}>
+                            Be the first to upload a model.
+                        </Typography>
+                        <Button
+                            variant="contained"
+                            href="/uploadpage"
+                            sx={{ mt: 2 }}
+                        >
+                            Upload a model
+                        </Button>
+                    </Box>
+                ) : (
+                    <Grid container spacing={2}>
+                        {models.map((model) => (
+                            <ModelMinicard
+                                key={model.meta.UUID}
+                                name={model.meta.name}
+                                id={model.meta.UUID}
+                                author={model.meta.creator.username}
+                                summary={model.meta.summary}
+                                version={model.meta.version}
+                                updatedDate={model.meta.updatedDate}
+                            />
+                        ))}
+                    </Grid>
+                )}
+            </Container>
+        </Box>
     );
 };
 
