@@ -912,7 +912,7 @@ const ModelPage = () => {
                 <Box
                     component="img"
                     src={opendiIcon}
-                    alt="Description of image"
+                    alt="OpenDI Logo – Synergies, Accessibility, Standards"
                     sx={{ width: '20em', height: 'auto' }}
                 />
 
