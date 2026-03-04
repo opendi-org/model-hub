@@ -2,44 +2,56 @@ services:
   web:
     build:
       context: ./frontend/model-hub/
-      dockerfile: Dockerfile
     ports:
-      - '3000:3000'
+      - "3000:3000"
     environment:
-      REACT_APP_MODEL_HUB_ADDRESS: localhost
-      REACT_APP_MODEL_HUB_PORT: 8080
-      WATCHPACK_POLLING: true # For React hot reloading (if necessary)
+      REACT_APP_API_URL: http://localhost:8080
+      WATCHPACK_POLLING: "true"
     volumes:
       - ./frontend/model-hub/src:/webapp/src
+
   api:
     build:
       context: ./api/
-      dockerfile: Dockerfile
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
-      OPEN_DI_DB_NAME: open_di_model_hub
-      OPEN_DI_DB_PORT: 3306
-      OPEN_DI_DB_HOSTNAME: db
-      OPEN_DI_DB_PASSWORD: temp_pass
-      OPEN_DI_DB_USERNAME: root
+      DB_HOSTNAME: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       OPENDI_MODEL_HUB_ADDRESS: api
-      OPENDI_MODEL_HUB_PORT: 8080
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
+      OPENDI_MODEL_HUB_PORT: "8080"
       JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID}
+      GOOGLE_WEB_CLIENT_SECRET: ${GOOGLE_WEB_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
+      GOOGLE_CLI_CLIENT_ID: ${GOOGLE_CLI_CLIENT_ID}
       DEV_MODE: true
-
-    #For debugging purposes, may be able to not expose this port later (unsure)
     ports:
-      - '8080:8080'
-    #volumes:
-    #  - ./api/:/app/
-    restart: unless-stopped
+      - "8080:8080"
+    volumes:
+      - ./api:/app
+    command: ["air", "-c", ".air.toml"]
 
   db:
-    image: mysql:latest
+    image: postgres:16-alpine
     environment:
-      MYSQL_ROOT_PASSWORD: temp_pass
-      MYSQL_DATABASE: open_di_model_hub
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      db_data: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  db_data:
