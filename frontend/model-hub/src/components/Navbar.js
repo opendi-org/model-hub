@@ -2,7 +2,7 @@
 // COPYRIGHT OpenDI
 //
 
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import opendiIcon from '../opendi-icon.png';
 import * as React from 'react';
 import { styled, alpha } from '@mui/material/styles';
@@ -18,7 +18,15 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Avatar from '@mui/material/Avatar';
 import Divider from '@mui/material/Divider';
+import Paper from '@mui/material/Paper';
+import List from '@mui/material/List';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
+import ListSubheader from '@mui/material/ListSubheader';
+import CircularProgress from '@mui/material/CircularProgress';
+import ClickAwayListener from '@mui/material/ClickAwayListener';
 import { useUser } from '../context/UserContext';
+import API_URL from '../config';
 
 const Search = styled('div')(({ theme }) => ({
     position: 'relative',
@@ -64,6 +72,85 @@ export default function Navbar() {
     const { user, logout } = useUser();
     const [anchorEl, setAnchorEl] = React.useState(null);
     const [imageError, setImageError] = React.useState(false);
+    const location = useLocation();
+    const navigate = useNavigate();
+
+    const [navSearchTerm, setNavSearchTerm] = React.useState('');
+    const [navModelResults, setNavModelResults] = React.useState([]);
+    const [navOwnerResults, setNavOwnerResults] = React.useState([]);
+    const [dropdownOpen, setDropdownOpen] = React.useState(false);
+    const [loading, setLoading] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!navSearchTerm.trim()) {
+            setNavModelResults([]);
+            setNavOwnerResults([]);
+            setDropdownOpen(false);
+            return;
+        }
+        const timer = setTimeout(() => {
+            setLoading(true);
+            Promise.all([
+                fetch(`${API_URL}/v0/models/search/model/${navSearchTerm}`).then(res => res.ok ? res.json() : []),
+                fetch(`${API_URL}/v0/models/search/user/${navSearchTerm}`).then(res => res.ok ? res.json() : []),
+            ])
+                .then(([modelData, userData]) => {
+                    const models = Array.isArray(modelData) ? modelData : [];
+                    const userModels = Array.isArray(userData) ? userData : [];
+                    const seenUsernames = new Set();
+                    const uniqueOwners = [];
+                    for (const result of userModels) {
+                        const username = result.meta?.creator?.username;
+                        if (username && !seenUsernames.has(username)) {
+                            seenUsernames.add(username);
+                            uniqueOwners.push(username);
+                        }
+                    }
+                    setNavModelResults(models);
+                    setNavOwnerResults(uniqueOwners);
+                    setDropdownOpen(models.length > 0 || uniqueOwners.length > 0);
+                })
+                .catch(() => {
+                    setNavModelResults([]);
+                    setNavOwnerResults([]);
+                })
+                .finally(() => setLoading(false));
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [navSearchTerm]);
+
+    const handleResultClick = (uuid) => {
+        setNavSearchTerm('');
+        setNavModelResults([]);
+        setNavOwnerResults([]);
+        setDropdownOpen(false);
+        navigate(`/model/${uuid}`);
+    };
+
+    const handleOwnerClick = (username) => {
+        setNavSearchTerm('');
+        setNavModelResults([]);
+        setNavOwnerResults([]);
+        setDropdownOpen(false);
+        navigate(`/search?term=${username}&type=user`);
+    };
+
+    const handleSearchKeyDown = (e) => {
+        if (e.key === 'Enter' && navSearchTerm.trim()) {
+            setDropdownOpen(false);
+            navigate(`/search?term=${navSearchTerm}`);
+        }
+    };
+
+    const handleClickAway = () => {
+        setDropdownOpen(false);
+    };
+
+    const activeStyle = (path) => ({
+        fontWeight: location.pathname === path ? 'bold' : 'normal',
+        borderBottom: location.pathname === path ? '2px solid black' : 'none',
+        borderRadius: 0,
+    });
 
     const handleMenuOpen = (event) => {
         setAnchorEl(event.currentTarget);
@@ -106,29 +193,96 @@ export default function Navbar() {
                     >
                         OpenDI
                     </Typography>
-                    <Search>
-                        <SearchIconWrapper>
-                            <SearchIcon />
-                        </SearchIconWrapper>
-                        <StyledInputBase
-                            placeholder="Search…"
-                            inputProps={{ 'aria-label': 'search' }}
-                            sx={{ width: '25em' }}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    const searchTerm = e.target.value;
-                                    window.location.href = `/search?term=${searchTerm}`;
-                                }
-                            }}
-                        />
-                    </Search>
+                    <ClickAwayListener onClickAway={handleClickAway}>
+                        <Box sx={{ position: 'relative' }}>
+                            <Search>
+                                <SearchIconWrapper>
+                                    {loading ? (
+                                        <CircularProgress size={18} color="inherit" />
+                                    ) : (
+                                        <SearchIcon />
+                                    )}
+                                </SearchIconWrapper>
+                                <StyledInputBase
+                                    placeholder="Search…"
+                                    inputProps={{ 'aria-label': 'search' }}
+                                    sx={{ width: '25em' }}
+                                    value={navSearchTerm}
+                                    onChange={(e) => setNavSearchTerm(e.target.value)}
+                                    onKeyDown={handleSearchKeyDown}
+                                    onFocus={() => (navModelResults.length > 0 || navOwnerResults.length > 0) && setDropdownOpen(true)}
+                                />
+                            </Search>
+                            {dropdownOpen && (
+                                <Paper
+                                    sx={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        left: 0,
+                                        right: 0,
+                                        zIndex: 1300,
+                                        maxHeight: 360,
+                                        overflowY: 'auto',
+                                        mt: 0.5,
+                                        boxShadow: 3,
+                                    }}
+                                >
+                                    <List dense disablePadding>
+                                        {navModelResults.length === 0 && navOwnerResults.length === 0 ? (
+                                            <ListItemButton disabled>
+                                                <ListItemText primary="No results found" />
+                                            </ListItemButton>
+                                        ) : (
+                                            <>
+                                                {navModelResults.length > 0 && (
+                                                    <>
+                                                        <ListSubheader sx={{ lineHeight: '32px', bgcolor: 'background.paper' }}>
+                                                            Models
+                                                        </ListSubheader>
+                                                        {navModelResults.map((result) => (
+                                                            <ListItemButton
+                                                                key={result.meta.UUID}
+                                                                onClick={() => handleResultClick(result.meta.UUID)}
+                                                                divider
+                                                            >
+                                                                <ListItemText
+                                                                    primary={result.meta.name}
+                                                                    secondary={result.meta.creator?.username}
+                                                                />
+                                                            </ListItemButton>
+                                                        ))}
+                                                    </>
+                                                )}
+                                                {navOwnerResults.length > 0 && (
+                                                    <>
+                                                        <Divider />
+                                                        <ListSubheader sx={{ lineHeight: '32px', bgcolor: 'background.paper' }}>
+                                                            Creators
+                                                        </ListSubheader>
+                                                        {navOwnerResults.map((username) => (
+                                                            <ListItemButton
+                                                                key={username}
+                                                                onClick={() => handleOwnerClick(username)}
+                                                                divider
+                                                            >
+                                                                <ListItemText primary={username} />
+                                                            </ListItemButton>
+                                                        ))}
+                                                    </>
+                                                )}
+                                            </>
+                                        )}
+                                    </List>
+                                </Paper>
+                            )}
+                        </Box>
+                    </ClickAwayListener>
                     <Box sx={{ flexGrow: 1 }} />
 
                     <Box sx={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <Button color="inherit" component={NavLink} to="/search">Search</Button>
-                        <Button color="inherit" component={NavLink} to="/cli-download">Download</Button>
-                        <Button color="inherit" component={NavLink} to="/UploadPage">Upload</Button>
-                        <Button color="inherit">Popular</Button>
+                        <Button color="inherit" component={NavLink} to="/search" sx={activeStyle('/search')}>Search</Button>
+                        <Button color="inherit" component={NavLink} to="/cli-download" sx={activeStyle('/cli-download')}>Download</Button>
+                        <Button color="inherit" component={NavLink} to="/upload" sx={activeStyle('/upload')}>Upload</Button>
                         <Button color="inherit" href="https://opendi.org" target="_blank">About</Button>
                         
                         {user ? (
@@ -179,7 +333,7 @@ export default function Navbar() {
                                 </Menu>
                             </>
                         ) : (
-                            <Button color="inherit" component={NavLink} to="/login">
+                            <Button color="inherit" component={NavLink} to="/login" sx={activeStyle('/login')}>
                                 Login
                             </Button>
                         )}
