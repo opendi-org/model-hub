@@ -47,21 +47,7 @@ const UploadPage = () => {
             fileData.meta.creator = fileData.meta.creator || {}; 
             fileData.meta.creator.email = user.email;
 
-            const response = await fetch(`${API_URL}/v0/models`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                credentials: "include",
-                body: JSON.stringify(fileData)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Upload failed: ${response.statusText}`);
-            }
-
-            const result = await response.json();
+            const result = await APIClient.uploadModel(fileData);
             console.log("Upload success:", result);
 
             setUploadStatus("success");
@@ -106,7 +92,7 @@ const UploadPage = () => {
                     <Button 
                         variant="contained" 
                         size="large"
-                        onClick={() => window.location.href = `${API_URL}/auth/google/login`}
+                        onClick={() => { window.location.href = APIClient.getGoogleLoginUrl(); }}
                     >
                         Login with Google
                     </Button>

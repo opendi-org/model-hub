@@ -9,21 +9,15 @@ import ModelMinicard from '../components/ModelMinicard';
 import { useEffect } from 'react';
 import { useState } from 'react';
 import { useTheme } from '@mui/material/styles';
-import API_URL from '../config';
+import APIClient from '../util/ApiClient';
+
 const Home = () => {
     const [models, setModels] = useState([])
     const theme = useTheme();
     const keywords = ["Financial", "Medical", "Business", "Technical"];
     useEffect(() => {
-        fetch(`${API_URL}/v0/models`, {credentials: 'include',})
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                setModels(data);})
+        APIClient.getModels()
+            .then(data => setModels(data))
             .catch(error => console.error('There was a problem with the fetch operation:', error));
     }, []);
 
