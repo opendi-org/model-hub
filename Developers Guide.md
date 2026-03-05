@@ -111,35 +111,7 @@ $ REACT_APP_API_URL=http://localhost:8080 npm start
 
 ## Running Unit Tests
 
-1. Navigate to the `api` directory
-
-**Running All Tests**
-
-```
-# Run all tests in all subdirectories
-$ cd api
-$ go test ./...
-
-# Run tests for a specific package
-$ go test ./handlers_test    # Run all handler tests
-$ go test ./database          # Run database tests
-```
-
-**Running Specific Test Functions**
-
-```
-# Run a specific test function
-$ go test ./handlers_test -run TestGetModels
-
-# Run all tests matching a pattern (e.g., all auth tests)
-$ go test ./handlers_test -run TestAuth
-
-# Run all tests matching a pattern (e.g., all model tests)
-$ go test ./handlers_test -run TestModel
-
-# Note: Individual test files cannot be tested directly in Go,
-# but you can test specific functions using the -run flag
-```
+1. Navigate to the directory containing the .go file to test
 
 **Without Coverage Reports**
 
@@ -177,15 +149,8 @@ $ go tool cover -html=cover.out
     │   │   ├── swagger.json
     │   │   └── swagger.yaml
     │   ├── handlers/
-    │   │   ├── auth.go
-    │   │   ├── helpers.go
-    │   │   ├── model.go
-    │   │   └── transfer.go
-    │   ├── handlers_test/
-    │   │   ├── auth_test.go
-    │   │   ├── model_test.go
-    │   │   ├── test_helpers.go
-    │   │   └── transfer_test.go
+    │   │   ├── handlers.go
+    │   │   └── handlers_test.go
     │   ├── jsondiffhelpers/
     │   │   └── jsondiffhelpers.go 
     │   ├── test_files/
