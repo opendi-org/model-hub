@@ -86,7 +86,7 @@ type CDMModelRunnableModel struct {
 	RunnableUUID string    `gorm:"primaryKey;type:uuid;not null;column:runnable_uuid"`
 }
 
-func (CDMModelRunnableModel) TableName() string { return "cdm_model_runnable_models" }
+func (CDMModelRunnableModel) TableName() string { return "cdm_join_model_runnable_models" }
 
 type CDMModelDiagram struct {
 	CreatedAt  time.Time `gorm:"type:timestamptz;not null"`
@@ -94,7 +94,7 @@ type CDMModelDiagram struct {
 	DiagramUUID string   `gorm:"primaryKey;type:uuid;not null;column:diagram_uuid"`
 }
 
-func (CDMModelDiagram) TableName() string { return "cdm_model_diagrams" }
+func (CDMModelDiagram) TableName() string { return "cdm_join_model_diagrams" }
 
 type CDMModelEvaluatableAsset struct {
 	CreatedAt      time.Time `gorm:"type:timestamptz;not null"`
@@ -102,7 +102,7 @@ type CDMModelEvaluatableAsset struct {
 	EvaluatableUUID string   `gorm:"primaryKey;type:uuid;not null;column:evaluatable_uuid"`
 }
 
-func (CDMModelEvaluatableAsset) TableName() string { return "cdm_model_evaluatable_assets" }
+func (CDMModelEvaluatableAsset) TableName() string { return "cdm_join_model_evaluatable_assets" }
 
 type CDMModelIOValue struct {
 	CreatedAt time.Time `gorm:"type:timestamptz;not null"`
@@ -110,7 +110,7 @@ type CDMModelIOValue struct {
 	IOValueUUID string  `gorm:"primaryKey;type:uuid;not null;column:io_value_uuid"`
 }
 
-func (CDMModelIOValue) TableName() string { return "cdm_model_io_values" }
+func (CDMModelIOValue) TableName() string { return "cdm_join_model_io_values" }
 
 type CDMModelControl struct {
 	CreatedAt  time.Time `gorm:"type:timestamptz;not null"`
@@ -118,4 +118,4 @@ type CDMModelControl struct {
 	ControlUUID string   `gorm:"primaryKey;type:uuid;not null;column:control_uuid"`
 }
 
-func (CDMModelControl) TableName() string { return "cdm_model_controls" }
+func (CDMModelControl) TableName() string { return "cdm_join_model_controls" }

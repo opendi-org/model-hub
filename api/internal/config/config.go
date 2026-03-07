@@ -1,13 +1,15 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 )
 
-// Config holds application configuration from environment (e.g. compose.yaml).
+// Config holds all runtime configuration sourced from environment variables.
+// Every field maps directly to a variable defined in docker-compose.
 type Config struct {
-	// Database (Postgres)
+	// Database
 	DBHostname string
 	DBPort     int
 	DBName     string
@@ -15,8 +17,8 @@ type Config struct {
 	DBPassword string
 
 	// Server
-	ModelHubAddress string
-	ModelHubPort    string
+	Address string // MODEL_HUB_ADDRESS
+	Port    int    // MODEL_HUB_PORT
 
 	// Auth
 	JWTSecret          string
@@ -24,53 +26,77 @@ type Config struct {
 	GoogleClientSecret string
 	GoogleRedirectURL  string
 
-	// Dev
+	// Runtime
 	DevMode bool
 }
 
-// Load reads configuration from the environment.
-func Load() *Config {
-	port := 5432
-	if p := os.Getenv("DB_PORT"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil {
-			port = v
-		}
-	}
-	devMode := os.Getenv("DEV_MODE") == "true" || os.Getenv("DEV_MODE") == "1"
-	return &Config{
-		DBHostname:         getEnv("DB_HOSTNAME", "localhost"),
-		DBPort:             port,
-		DBName:             getEnv("DB_NAME", "modelhub"),
-		DBUsername:         getEnv("DB_USERNAME", "postgres"),
-		DBPassword:         os.Getenv("DB_PASSWORD"),
-		ModelHubAddress:    getEnv("MODEL_HUB_ADDRESS", "localhost"),
-		ModelHubPort:       getEnv("MODEL_HUB_PORT", "8080"),
-		JWTSecret:          os.Getenv("JWT_SECRET"),
-		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		GoogleRedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
-		DevMode:            devMode,
-	}
+// DSN returns a PostgreSQL connection string for GORM.
+func (c *Config) DSN() string {
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable TimeZone=UTC",
+		c.DBHostname, c.DBPort, c.DBUsername, c.DBPassword, c.DBName,
+	)
 }
 
-func getEnv(key, defaultVal string) string {
-	if v := os.Getenv(key); v != "" {
+// ListenAddr returns the host:port string for the HTTP server.
+func (c *Config) ListenAddr() string {
+	return fmt.Sprintf("%s:%d", c.Address, c.Port)
+}
+
+// LoadConfig reads all required environment variables and returns a Config.
+// Returns an error listing every missing or invalid variable so the operator
+// sees all problems at once rather than one at a time.
+func LoadConfig() (*Config, error) {
+	var missing []string
+
+	require := func(key string) string {
+		v := os.Getenv(key)
+		if v == "" {
+			missing = append(missing, key)
+		}
 		return v
 	}
-	return defaultVal
-}
 
-// DSN returns a PostgreSQL connection string suitable for gorm postgres.Open.
-func (c *Config) DSN() string {
-	// sslmode=disable is typical for local/docker Postgres; use require for production.
-	sslmode := "disable"
-	if !c.DevMode {
-		sslmode = "require"
+	requireInt := func(key string, fallback int) int {
+		v := os.Getenv(key)
+		if v == "" {
+			return fallback
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			missing = append(missing, key+" (must be integer)")
+			return fallback
+		}
+		return n
 	}
-	return "host=" + c.DBHostname +
-		" port=" + strconv.Itoa(c.DBPort) +
-		" user=" + c.DBUsername +
-		" password=" + c.DBPassword +
-		" dbname=" + c.DBName +
-		" sslmode=" + sslmode
+
+	cfg := &Config{
+		DBHostname: require("DB_HOSTNAME"),
+		DBPort:     requireInt("DB_PORT", 5432),
+		DBName:     require("DB_NAME"),
+		DBUsername: require("DB_USERNAME"),
+		DBPassword: require("DB_PASSWORD"),
+
+		Address: func() string {
+			v := os.Getenv("MODEL_HUB_ADDRESS")
+			if v == "" {
+				return "0.0.0.0"
+			}
+			return v
+		}(),
+		Port: requireInt("MODEL_HUB_PORT", 8080),
+
+		JWTSecret:          require("JWT_SECRET"),
+		GoogleClientID:     require("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: require("GOOGLE_CLIENT_SECRET"),
+		GoogleRedirectURL:  require("GOOGLE_REDIRECT_URL"),
+
+		DevMode: os.Getenv("DEV_MODE") == "true",
+	}
+
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("missing or invalid environment variables: %v", missing)
+	}
+
+	return cfg, nil
 }
