@@ -5,12 +5,15 @@ import json
 import os
 from pathlib import Path
 
+import requests
 import typer
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials as GoogleCredentials
 from oauthlib.oauth2.rfc6749.errors import AccessDeniedError
 
 from opendi import auth, credential_storage, log
+
+_API_BASE_URL = os.environ.get("OPENDI_API_URL", "http://localhost:8080")
 
 app = typer.Typer(
     name="opendi",
@@ -184,6 +187,41 @@ def push(
 ) -> None:
     """Push a model or resource to the hub."""
     typer.echo(f"Push not yet implemented for: {path}")
+
+
+@app.command()
+def create_repo(
+    name: str = typer.Argument(..., help="Repository name (slug)"),
+    description: str = typer.Option("", "--description", "-d", help="Short description"),
+    private: bool = typer.Option(True, "--private/--public", help="Visibility"),
+) -> None:
+    """Create a new repository on the hub."""
+    jwt = _require_credentials()
+    visibility = "private" if private else "public"
+    try:
+        response = requests.post(
+            f"{_API_BASE_URL}/v0/repositories",
+            json={"name": name, "description": description, "visibility": visibility},
+            headers={"Authorization": f"Bearer {jwt}"},
+            timeout=10,
+        )
+        if response.status_code == 201:
+            typer.echo(f"Repository {typer.style(name, fg=typer.colors.GREEN, bold=True)} created.")
+        elif response.status_code == 409:
+            typer.echo(f"A repository named '{name}' already exists.", err=True)
+            raise typer.Exit(1)
+        elif response.status_code == 401:
+            typer.echo("Not authorised. Run `opendi login` to sign in again.", err=True)
+            raise typer.Exit(1)
+        else:
+            typer.echo(f"Failed to create repository (HTTP {response.status_code}).", err=True)
+            raise typer.Exit(1)
+    except requests.ConnectionError:
+        typer.echo(f"Could not connect to the hub at {_API_BASE_URL}.", err=True)
+        raise typer.Exit(1)
+    except requests.Timeout:
+        typer.echo("Request timed out. Please try again.", err=True)
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
