@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import API_URL from '../config';
+import APIClient from '../util/ApiClient';
 import { useDropzone } from "react-dropzone";
 import { useUser } from '../context/UserContext';
 
