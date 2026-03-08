@@ -23,7 +23,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import CodeIcon from '@mui/icons-material/Code';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
-import API_URL from '../config';
+import APIClient from '../util/ApiClient';
 import { useUser } from '../context/UserContext';
 
 // CLI executable
@@ -93,7 +93,7 @@ const CliDownloadPage = () => {
                     <Button 
                         variant="contained" 
                         size="large"
-                        onClick={() => window.location.href = `${API_URL}/auth/google/login`}
+                        onClick={() => { window.location.href = APIClient.getGoogleLoginUrl(); }}
                     >
                         Login with Google
                     </Button>

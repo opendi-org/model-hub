@@ -5,7 +5,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import opendiIcon from '../opendi-icon.png';
 import * as React from 'react';
-import { styled, alpha, useTheme } from '@mui/material/styles';
+import { styled, alpha } from '@mui/material/styles';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Toolbar from '@mui/material/Toolbar';
@@ -171,7 +171,7 @@ export default function Navbar() {
                     <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 0.5, alignItems: 'center' }}>
                         <NavButton component={NavLink} to="/search">Explore</NavButton>
                         <NavButton component={NavLink} to="/cli-download">Download</NavButton>
-                        <NavButton component={NavLink} to="/UploadPage">Upload</NavButton>
+                        <NavButton component={NavLink} to="/upload">Upload</NavButton>
                         <NavButton href="https://opendi.org" target="_blank" rel="noopener noreferrer">About</NavButton>
                     </Box>
 
