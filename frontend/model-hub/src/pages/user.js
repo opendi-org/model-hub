@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Grid from '@mui/material/Grid2';
+import Grid from '@mui/material/Grid';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Container from '@mui/material/Container';
@@ -9,7 +9,7 @@ import CardContent from '@mui/material/CardContent';
 import CardActions from '@mui/material/CardActions';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
-import API_URL from '../config';
+import APIClient from '../util/ApiClient';
 import ModelMinicard from '../components/ModelMinicard';
 
 
@@ -27,26 +27,11 @@ const UserPage = () => {
             try {
                 setLoading(true);
 
-                const userResponse = await fetch(`${API_URL}/auth/me`, {
-                    credentials: 'include',
-                });
-
-                if (!userResponse.ok) {
-                    if (userResponse.status === 401) {
-                        throw new Error('Not logged in.');
-                    }
-                    throw new Error('Could not fetch user.');
-                }
-
-                const userData = await userResponse.json();
+                const userData = await APIClient.getCurrentUser();
                 setUser(userData);
 
                 if (userData && userData.username) {
-                    // Fetch Owned Models
-                    const modelsResponse = await fetch(`${API_URL}/v0/models/search/user/${userData.email}`, { credentials: 'include' });
-                    if (!modelsResponse.ok) throw new Error('Could not fetch user models.');
-                    
-                    const modelsData = await modelsResponse.json();
+                    const modelsData = await APIClient.searchModels('user', userData.email);
                     if (modelsData) {
                         const userOwnedModels = modelsData.filter(model => model.addons.ownerID === userData.id);
                         setOwnedModels(userOwnedModels);
@@ -54,12 +39,8 @@ const UserPage = () => {
                         setOwnedModels([]);
                     }
 
-                    // Fetch Pending Transfers (Inbox)
-                    const transfersResponse = await fetch(`${API_URL}/v0/user/transfers`, { credentials: 'include' });
-                    if (transfersResponse.ok) {
-                        const transfersData = await transfersResponse.json();
-                        setPendingTransfers(transfersData || []);
-                    }
+                    const transfersData = await APIClient.getUserPendingTransfers();
+                    setPendingTransfers(transfersData || []);
                 }
             } catch (err) {
                 setError(err.message);
@@ -73,30 +54,14 @@ const UserPage = () => {
 
     const handleAcceptDecline = async (tag, accept) => {
         try {
-            const acceptValue = accept ? 'true' : 'false';
-            const url = `${API_URL}/v0/models/transfer/${tag}?accept=${acceptValue}`;
-
-            const response = await fetch(url, {
-                method: 'DELETE',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-            });
-
-            if (response.ok) {
-                // Remove the processed transfer from the list locally
-                setPendingTransfers(prev => prev.filter(item => item.modelTag !== tag));
-                
-                // If accepted, refresh the owned models list
-                if (accept) {
-                   window.location.reload(); // Simple reload to refresh ownership list
-                }
-            } else {
-                const errorData = await response.json();
-                setTransferActionStatus(`Error: ${errorData.error}`);
+            await APIClient.deleteTransfer(tag, accept);
+            setPendingTransfers(prev => prev.filter(item => item.modelTag !== tag));
+            if (accept) {
+                window.location.reload();
             }
         } catch (error) {
             console.error('Error during accept/decline:', error);
-            setTransferActionStatus('Network error occurred.');
+            setTransferActionStatus(error.message || 'Network error occurred.');
         }
     };
 

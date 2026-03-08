@@ -6,15 +6,11 @@ Commands:
   cli set-token "token"
   cli pull "tag"
   cli push "tag"
-  cli commit "tag"
   cli init "path"
-  cli get-commits -r "tag"
-  cli get-lineage -r "tag"
+  cli get-commits "tag"
+  cli get-lineage "tag"
   cli get-models
   cli clear-token
-
-Config location:
-  <repo_root>/.opendi_cli/config.json
 
 Run examples (from repo root):
   py -m cli -h
@@ -25,9 +21,10 @@ Run examples (from repo root):
 
 import argparse
 import json
+import os
+from urllib.parse import urlparse
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
 
 # 3rd-party HTTP lib (used later for API calls)
 try:
@@ -41,8 +38,6 @@ except Exception:
 CONFIG_DIR = Path.cwd() / ".opendi_cli"
 CONFIG_PATH = CONFIG_DIR / "config.json"
 MAPPINGS_PATH = CONFIG_DIR / "mapping.json"
-DEFAULT_REMOTE_URL = "http://opendi-modelhub.org" # temporary
-DEFAULT_ENGINE_URL = "http://localhost:7070"
 
 def load_config() -> dict:
   """Load config JSON (or return {} if missing/corrupt)."""
@@ -73,7 +68,13 @@ def save_mappings(maps: list) -> None:
   MAPPINGS_PATH.write_text(json.dumps(maps, indent=2), encoding="utf-8")
 
 def require_remote_url(cfg: dict) -> str:
-  return (cfg.get("remote_url") or "").strip() or DEFAULT_REMOTE_URL
+  url = (cfg.get("remote_url") or "").strip()
+  if not url:
+    sys.exit("Error: remote URL not set. Run: py -m cli set-url <URL>")
+  parsed = urlparse(url)
+  if parsed.scheme not in ("http", "https") or not parsed.netloc:
+    sys.exit("Error: invalid remote URL.")
+  return url
 
 def require_token(cfg: dict) -> str:
   tok = (cfg.get("token") or "").strip()
@@ -128,30 +129,13 @@ def cmd_pull(args, cfg, maps):
 
   # check if we already have a mapping for this model
   # if we do, make sure the file path is valid, otherwise create a new path
-  mapping_index = next((i for i, m in enumerate(maps) if m.get("remote") == model_data.get("meta").get("UUID")), None)
+  mapping_index = next((i for i, m in enumerate(maps) if m.get("uuid") == model_data.get("meta").get("UUID")), None)
   if mapping_index is None or not Path(maps[mapping_index].get("path")).exists():
     model_path = Path.cwd() / f"{args.tag.split(":")[0]}.json"
   else:
     model_path = Path(maps[mapping_index].get("path"))
 
-  # save for use later
-  retrieved_model_uuid = model_data.get("meta").get("UUID")
-  if mapping_index is None:
-    del model_data["meta"]["UUID"]
-  else:
-    model_data["meta"]["UUID"] = maps[mapping_index].get("local")
-  del model_data["addons"]
-
-  # post the model to the engine, if we have no mapping, this should create a new model
-  # if we do have a mapping, this should create a new commit on an existing model
-  try:
-    response = requests.post(f"{DEFAULT_ENGINE_URL}/v0/models", json=model_data)
-    if response.status_code != 200:
-      sys.exit(f"Error: {response.json().get("error")}")
-  except requests.exceptions.ConnectionError:
-    sys.exit(f"Error: failed to connect to server. Is engine running at {DEFAULT_ENGINE_URL}?")
-
-  # try writing the model we retrieved to disk, new file if the mapping didn't already exist
+  # write the remote model to disk
   try:
     model_path.write_text(json.dumps(model_data, indent=2), encoding="utf-8")
   except Exception:
@@ -162,10 +146,9 @@ def cmd_pull(args, cfg, maps):
 
   # finally, update the mapping so we keep track of everything properly
   mapping = {
-    "tag": response.json().get("addons").get("tag"), 
+    "tag": model_data.get("addons").get("tag"),
     "path": str(model_path),
-    "local": response.json().get("meta").get("UUID"),
-    "remote": retrieved_model_uuid
+    "uuid": model_data.get("meta").get("UUID")
   }
   if mapping_index is None:
     maps.append(mapping)
@@ -187,94 +170,57 @@ def cmd_push(args, cfg, maps):
   if mapping_index is None:
     sys.exit(f"Error: no mapping found for tag: {args.tag}")
 
-  # find the local model with the specified tag
-  try:
-    response = requests.get(f"{DEFAULT_ENGINE_URL}/v0/models/tag/{args.tag}")
-    if response.status_code != 200:
-      sys.exit(f"Error: {response.json().get("error")}")
-    model_data = response.json()
-  except requests.exceptions.ConnectionError:
-    sys.exit(f"Error: failed to connect to server. Is engine running at {DEFAULT_ENGINE_URL}?")
+  # load the local model JSON from disk
+  model_path = Path(maps[mapping_index].get("path", ""))
+  if not model_path.exists():
+    sys.exit(f"Error: no model found at: {model_path}")
 
-  # if this local model is already connected to a remote, update the uuid so we make updates and don't create an entirely new model
-  if maps[mapping_index].get("remote"):
-    model_data["meta"]["UUID"] = maps[mapping_index].get("remote")
+  try:
+    model_json = json.loads(model_path.read_text(encoding="utf-8"))
+  except Exception:
+    sys.exit(f"Error: invalid file: {model_path}")
 
   # post the local model to the remote
   try:
-    response = requests.post(f"{remote_url}/v0/models", json=model_data, headers={"Authorization": f"Bearer {token}"})
+    response = requests.post(f"{remote_url}/v0/models", json=model_json, headers={"Authorization": f"Bearer {token}"})
     if response.status_code == 200:
-      maps[mapping_index]["remote"] = response.json().get("meta").get("UUID")
-      save_mappings(maps)
+      # update mapping with remote UUID from response
+      try:
+        maps[mapping_index]["uuid"] = response.json().get("meta", {}).get("UUID")
+        save_mappings(maps)
+      except Exception:
+        pass
       print("Model pushed to remote successfully")
     else:
       sys.exit(f"Error: {response.json().get("error")}")
   except requests.exceptions.ConnectionError:
     sys.exit(f"Error: failed to connect to server. Is remote running at {remote_url}?")
-  
-
-def cmd_commit(args, cfg, maps):
-  # find the mapping for the tag
-  mapping_index = next((i for i, m in enumerate(maps) if m.get("tag") == args.tag), None)
-  if mapping_index is None:
-    sys.exit(f"Error: no mapping found for tag: {args.tag}")
-
-  # make sure that the model path is valid
-  model_path = Path(maps[mapping_index].get("path"))
-  if not model_path.exists():
-    sys.exit(f"Error: no model found at: {model_path}")
-
-  # load the model from the stored path and post it to the engine
-  try:
-    model_json = json.loads(model_path.read_text(encoding="utf-8"))
-    if maps[mapping_index].get("local"): # we should have a local uuid stored, use it
-      model_json["meta"]["UUID"] = maps[mapping_index].get("local")
-    response = requests.post(f"{DEFAULT_ENGINE_URL}/v0/models", json=model_json)
-    if response.status_code == 200:
-      model_tag = response.json().get("addons").get("tag")
-      maps[mapping_index]["tag"] = model_tag
-      save_mappings(maps)
-      print("Commit created successfully")
-      print(f"(Tag: {model_tag})")
-    else:
-      sys.exit(f"Error: {response.json().get("error")}")
-  except requests.exceptions.ConnectionError:
-    sys.exit(f"Error: failed to connect to server. Is engine running at {DEFAULT_ENGINE_URL}?")
-  except Exception:
-    sys.exit(f"Error: invalid file: {model_path}")
 
 def cmd_init(args, cfg, maps):
   path = Path(args.path)
-  
-  # load the provided file, post it to the engine, and then create a mapping for it
+
   try:
     model_json = json.loads(path.read_text(encoding="utf-8"))
-    response = requests.post(f"{DEFAULT_ENGINE_URL}/v0/models", json=model_json)
-    if response.status_code == 200:
-      model_tag = response.json().get("addons").get("tag")
-      maps = [m for m in maps if m.get("tag") != model_tag] 
-      maps.append({
-        "tag": model_tag, 
-        "path": str(Path.cwd() / args.path),
-        "local": response.json().get("meta").get("UUID"),
-        "remote": ""
-      })
-      save_mappings(maps)
-      print("Model initialized successfully")
-      print(f"(Tag: {model_tag})")
-    else:
-      sys.exit(f"Error: {response.json().get("error")}")
-  except requests.exceptions.ConnectionError:
-    sys.exit(f"Error: failed to connect to server. Is engine running at {DEFAULT_ENGINE_URL}?")
   except Exception:
     sys.exit(f"Error: invalid file: {path}")
 
+  model_tag = (model_json.get("addons", {}) or {}).get("tag")
+  maps = [m for m in maps if m.get("tag") != model_tag]
+  maps.append({
+    "tag": model_tag,
+    "path": str(Path.cwd() / args.path),
+    "uuid": (model_json.get("meta", {}) or {}).get("UUID")
+  })
+  save_mappings(maps)
+  print("Model initialized successfully")
+  print(f"(Tag: {model_tag})")
+
 def cmd_get_commits(args, cfg, maps):
-  url = require_remote_url(cfg) if args.remote else DEFAULT_ENGINE_URL
-  
-  # get the commits from either the local or remote instance
+  remote_url = require_remote_url(cfg)
+
+  # get commits from remote
   try:
-    response = requests.get(f"{url}/v0/models/commits/{args.tag}", headers={"Authorization": f"Bearer {require_token(cfg)}"} if args.remote else None)
+    response = requests.get(f"{remote_url}/v0/models/commits/{args.tag}", headers={"Authorization": f"Bearer {require_token(cfg)}"})
     if response.status_code == 200:
       commits = response.json()
       for commit in commits:
@@ -283,14 +229,14 @@ def cmd_get_commits(args, cfg, maps):
     else:
       sys.exit(f"No commits found for tag: {args.tag}")
   except requests.exceptions.ConnectionError:
-      sys.exit(f"Error: failed to connect to server. Is {"remote" if args.remote else "engine"} running at {url}?")
+      sys.exit(f"Error: failed to connect to server. Is remote running at {remote_url}?")
 
 def cmd_get_lineage(args, cfg, maps):
-  url = require_remote_url(cfg) if args.remote else DEFAULT_ENGINE_URL
-  
-  # get the lineage from either the local or remote instance
+  remote_url = require_remote_url(cfg)
+
+  # get lineage from remote
   try:
-    response = requests.get(f"{url}/v0/models/lineage/{args.tag}", headers={"Authorization": f"Bearer {require_token(cfg)}"} if args.remote else None)
+    response = requests.get(f"{remote_url}/v0/models/lineage/{args.tag}", headers={"Authorization": f"Bearer {require_token(cfg)}"})
     if response.status_code == 200:
       lineage = response.json()
       for model in lineage:
@@ -302,12 +248,14 @@ def cmd_get_lineage(args, cfg, maps):
     else:
       sys.exit(f"Error: no model found for tag: {args.tag}")
   except requests.exceptions.ConnectionError:
-    sys.exit(f"Error: failed to connect to server. Is {"remote" if args.remote else "engine"} running at {url}?")
+    sys.exit(f"Error: failed to connect to server. Is remote running at {remote_url}?")
 
 def cmd_get_models(args, cfg, maps):
-  # get the models from the engine
+  # get the models from the remote
+  remote_url = require_remote_url(cfg)
+  token = require_token(cfg)
   try:
-    response = requests.get(f"{DEFAULT_ENGINE_URL}/v0/models")
+    response = requests.get(f"{remote_url}/v0/models", headers={"Authorization": f"Bearer {token}"})
     if response.status_code == 200:
       models = response.json()
       for model in models:
@@ -317,7 +265,7 @@ def cmd_get_models(args, cfg, maps):
         print(f"  Version: {model.get("meta").get("version")}")
         print(f"  Last Updated: {model.get("meta").get("updatedDate")}")
   except requests.exceptions.ConnectionError:
-    sys.exit(f"Error: failed to connect to server. Is engine running at {DEFAULT_ENGINE_URL}?")
+    sys.exit(f"Error: failed to connect to server. Is remote running at {remote_url}?")
 
 # -----------------------------------------------------------------------------
 # CLI wiring (argparse)
@@ -328,10 +276,9 @@ EPILOG = """Examples:
   py -m cli clear-token
   py -m cli pull my-tag
   py -m cli push my-tag
-  py -m cli commit my-tag
   py -m cli init ./model.json
-  py -m cli get-commits -r test-model:1.0
-  py -m cli get-lineage -r test-model:1.0
+  py -m cli get-commits test-model:1.0
+  py -m cli get-lineage test-model:1.0
   py -m cli get-models
 """
 
@@ -364,30 +311,23 @@ def build_parser():
   sp.add_argument("tag", help="Local tag name")
   sp.set_defaults(func=cmd_push)
 
-  # commit
-  sp = sub.add_parser("commit", help="Create a local commit for a tag")
-  sp.add_argument("tag", help="Local tag name")
-  sp.set_defaults(func=cmd_commit)
-
   # init
   sp = sub.add_parser("init", help="Initialize a local model from a JSON file")
   sp.add_argument("path", help="Path to model.json")
   sp.set_defaults(func=cmd_init)
 
   # get-commits
-  sp = sub.add_parser("get-commits", help="Show commits for a model using a tag (local by default, remote with -r)")
+  sp = sub.add_parser("get-commits", help="Show commits for a model using a tag from remote")
   sp.add_argument("tag", help="Model tag")
-  sp.add_argument("-r", "--remote", action="store_true", help="Get commits from remote instead of local")
   sp.set_defaults(func=cmd_get_commits)
 
   # lineage
-  sp = sub.add_parser("get-lineage", help="Show lineage for a model using a tag (local by default, remote with -r)")
+  sp = sub.add_parser("get-lineage", help="Show lineage for a model using a tag from remote")
   sp.add_argument("tag", help="Model tag")
-  sp.add_argument("-r", "--remote", action="store_true", help="Get lineage from remote instead of local")
   sp.set_defaults(func=cmd_get_lineage)
 
   # get-models
-  sp = sub.add_parser("get-models", help="List local models")
+  sp = sub.add_parser("get-models", help="List remote models")
   sp.set_defaults(func=cmd_get_models)
 
   # clear-token (logout)

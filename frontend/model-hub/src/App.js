@@ -29,7 +29,7 @@ function App() {
           <Navbar />
           <Routes>
             <Route exact path="/" element={<Home />} />
-            <Route path="/uploadpage" element={<UploadPage />} />
+            <Route path="/upload" element={<UploadPage />} />
             <Route path="/cli-download" element={<CliDownloadPage />} />
             <Route path="/model/:uuid" element={<ModelPage />} />
             <Route path="/model" element={<ModelPage />} />

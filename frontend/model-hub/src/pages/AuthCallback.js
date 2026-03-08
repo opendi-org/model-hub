@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import { useUser } from '../context/UserContext';
-import API_URL from '../config';
+import APIClient from '../util/ApiClient';
 
 const AuthCallback = () => {
   const [searchParams] = useSearchParams();
@@ -25,33 +25,15 @@ const AuthCallback = () => {
       }
     
       try {
-        const response = await fetch(
-          `${API_URL}/auth/google/callback?code=${code}&state=${state}`,
-          {
-            method: 'GET',
-            credentials: 'include',
-          }
-        );
-    
-        const data = await response.json();
-    
-        if (!response.ok) {
-          throw new Error(data.error || 'Authentication failed');
-        }
-    
+        const data = await APIClient.handleGoogleCallback(code, state);
         console.log('Full auth response:', data);
-        
-        // Store the token before setting user
         if (data.token) {
           sessionStorage.setItem('auth_token', data.token);
           console.log('Token stored in sessionStorage');
         }
-        
         const userData = data.user || data;
         console.log('Setting user:', userData);
         setUser(userData);
-        
-        // Navigate back to home page
         navigate('/', { replace: true });
       } catch (err) {
         console.error('Auth error:', err);
