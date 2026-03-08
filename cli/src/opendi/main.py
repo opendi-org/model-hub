@@ -190,6 +190,49 @@ def push(
 
 
 @app.command()
+def list_repos(
+    owner: str = typer.Argument(None, help="Owner username (defaults to all repositories)"),
+) -> None:
+    """List repositories on the hub."""
+    jwt = _require_credentials()
+    url = f"{_API_BASE_URL}/v0/repositories/{owner}" if owner else f"{_API_BASE_URL}/v0/repositories"
+    try:
+        response = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {jwt}"},
+            timeout=10,
+        )
+        if response.status_code == 200:
+            repos = response.json()
+            if not repos:
+                typer.echo("No repositories found.")
+                return
+            for repo in repos:
+                visibility = typer.style(repo.get("visibility", ""), fg=typer.colors.YELLOW)
+                name = typer.style(repo.get("name", ""), fg=typer.colors.GREEN, bold=True)
+                description = repo.get("description", "")
+                line = f"{name} [{visibility}]"
+                if description:
+                    line += f"  {description}"
+                typer.echo(line)
+        elif response.status_code == 404:
+            typer.echo(f"Owner '{owner}' not found.", err=True)
+            raise typer.Exit(1)
+        elif response.status_code == 401:
+            typer.echo("Not authorised. Run `opendi login` to sign in again.", err=True)
+            raise typer.Exit(1)
+        else:
+            typer.echo(f"Failed to list repositories (HTTP {response.status_code}).", err=True)
+            raise typer.Exit(1)
+    except requests.ConnectionError:
+        typer.echo(f"Could not connect to the hub at {_API_BASE_URL}.", err=True)
+        raise typer.Exit(1)
+    except requests.Timeout:
+        typer.echo("Request timed out. Please try again.", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
 def create_repo(
     name: str = typer.Argument(..., help="Repository name (slug)"),
     description: str = typer.Option("", "--description", "-d", help="Short description"),
