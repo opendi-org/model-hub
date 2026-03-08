@@ -190,6 +190,57 @@ def push(
 
 
 @app.command()
+def search(
+    query: str = typer.Argument(..., help="Search query"),
+) -> None:
+    """Search repositories on the hub. Shows more results when logged in."""
+    # Auth is optional: send JWT if available, otherwise search as unauthenticated.
+    headers: dict[str, str] = {}
+    creds = credential_storage.load_creds()
+    id_token = credential_storage.load_id_token()
+    if creds is not None and id_token is not None:
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                credential_storage.store_all(creds)
+                id_token = creds.id_token
+            except Exception:
+                id_token = None
+        if id_token:
+            headers["Authorization"] = f"Bearer {id_token}"
+
+    try:
+        response = requests.get(
+            f"{_API_BASE_URL}/v0/search",
+            params={"q": query},
+            headers=headers,
+            timeout=10,
+        )
+        if response.status_code == 200:
+            repos = response.json()
+            if not repos:
+                typer.echo("No repositories found.")
+                return
+            for repo in repos:
+                visibility = typer.style(repo.get("visibility", ""), fg=typer.colors.YELLOW)
+                name = typer.style(repo.get("name", ""), fg=typer.colors.GREEN, bold=True)
+                description = repo.get("description", "")
+                line = f"{name} [{visibility}]"
+                if description:
+                    line += f"  {description}"
+                typer.echo(line)
+        else:
+            typer.echo(f"Search failed (HTTP {response.status_code}).", err=True)
+            raise typer.Exit(1)
+    except requests.ConnectionError:
+        typer.echo(f"Could not connect to the hub at {_API_BASE_URL}.", err=True)
+        raise typer.Exit(1)
+    except requests.Timeout:
+        typer.echo("Request timed out. Please try again.", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
 def list_repos(
     owner: str = typer.Argument(None, help="Owner username (defaults to all repositories)"),
 ) -> None:
