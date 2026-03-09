@@ -2,7 +2,7 @@
 // COPYRIGHT OpenDI
 //
 
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import opendiIcon from '../opendi-icon.png';
 import * as React from 'react';
 import { styled, alpha } from '@mui/material/styles';
@@ -18,31 +18,32 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Avatar from '@mui/material/Avatar';
 import Divider from '@mui/material/Divider';
-import Paper from '@mui/material/Paper';
-import List from '@mui/material/List';
-import ListItemButton from '@mui/material/ListItemButton';
-import ListItemText from '@mui/material/ListItemText';
-import ListSubheader from '@mui/material/ListSubheader';
-import CircularProgress from '@mui/material/CircularProgress';
-import ClickAwayListener from '@mui/material/ClickAwayListener';
+import Tooltip from '@mui/material/Tooltip';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
 import { useUser } from '../context/UserContext';
-import API_URL from '../config';
+import { useColorMode } from '../App';
 
 const Search = styled('div')(({ theme }) => ({
     position: 'relative',
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: alpha(theme.palette.common.white, 0.15),
-    border: '1px solid #ccc',
+    borderRadius: 20,
+    backgroundColor: alpha('#ffffff', 0.08),
+    border: '1px solid rgba(255,255,255,0.2)',
     '&:hover': {
-        backgroundColor: alpha(theme.palette.common.white, 0.25),
+        backgroundColor: alpha('#ffffff', 0.12),
+        borderColor: 'rgba(255,255,255,0.35)',
+    },
+    '&:focus-within': {
+        backgroundColor: alpha('#ffffff', 0.14),
+        borderColor: 'rgba(255,255,255,0.5)',
     },
     marginRight: theme.spacing(2),
-    marginLeft: 0,
+    marginLeft: theme.spacing(2),
     width: '100%',
     [theme.breakpoints.up('sm')]: {
-        marginLeft: theme.spacing(3),
         width: 'auto',
     },
+    transition: 'background-color 0.2s, border-color 0.2s',
 }));
 
 const SearchIconWrapper = styled('div')(({ theme }) => ({
@@ -53,104 +54,49 @@ const SearchIconWrapper = styled('div')(({ theme }) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    color: 'rgba(255,255,255,0.6)',
 }));
 
-const StyledInputBase = styled(InputBase)(({ theme }) => ({
-    color: 'inherit',
+const StyledInputBase = styled(InputBase)(() => ({
+    color: '#ffffff',
     '& .MuiInputBase-input': {
-        padding: theme.spacing(1, 1, 1, 0),
-        paddingLeft: `calc(1em + ${theme.spacing(4)})`,
-        transition: theme.transitions.create('width'),
+        padding: '8px 12px 8px 0',
+        paddingLeft: `calc(1em + 32px)`,
         width: '100%',
-        [theme.breakpoints.up('md')]: {
-            width: '40ch',
+        '&::placeholder': {
+            color: 'rgba(255,255,255,0.5)',
+            opacity: 1,
         },
+        '@media (min-width:900px)': {
+            width: '36ch',
+        },
+    },
+}));
+
+const NavButton = styled(Button)(() => ({
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: 500,
+    fontSize: '0.875rem',
+    textTransform: 'none',
+    padding: '6px 12px',
+    borderRadius: 6,
+    '&:hover': {
+        color: '#ffffff',
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    '&.active': {
+        color: '#ffffff',
+        backgroundColor: 'rgba(255,255,255,0.12)',
     },
 }));
 
 export default function Navbar() {
     const { user, logout } = useUser();
+    const { mode, toggleColorMode } = useColorMode();
     const [anchorEl, setAnchorEl] = React.useState(null);
     const [imageError, setImageError] = React.useState(false);
-    const location = useLocation();
+    const [searchValue, setSearchValue] = React.useState('');
     const navigate = useNavigate();
-
-    const [navSearchTerm, setNavSearchTerm] = React.useState('');
-    const [navModelResults, setNavModelResults] = React.useState([]);
-    const [navOwnerResults, setNavOwnerResults] = React.useState([]);
-    const [dropdownOpen, setDropdownOpen] = React.useState(false);
-    const [loading, setLoading] = React.useState(false);
-
-    React.useEffect(() => {
-        if (!navSearchTerm.trim()) {
-            setNavModelResults([]);
-            setNavOwnerResults([]);
-            setDropdownOpen(false);
-            return;
-        }
-        const timer = setTimeout(() => {
-            setLoading(true);
-            Promise.all([
-                fetch(`${API_URL}/v0/models/search/model/${navSearchTerm}`).then(res => res.ok ? res.json() : []),
-                fetch(`${API_URL}/v0/models/search/user/${navSearchTerm}`).then(res => res.ok ? res.json() : []),
-            ])
-                .then(([modelData, userData]) => {
-                    const models = Array.isArray(modelData) ? modelData : [];
-                    const userModels = Array.isArray(userData) ? userData : [];
-                    const seenUsernames = new Set();
-                    const uniqueOwners = [];
-                    for (const result of userModels) {
-                        const username = result.meta?.creator?.username;
-                        if (username && !seenUsernames.has(username)) {
-                            seenUsernames.add(username);
-                            uniqueOwners.push(username);
-                        }
-                    }
-                    setNavModelResults(models);
-                    setNavOwnerResults(uniqueOwners);
-                    setDropdownOpen(models.length > 0 || uniqueOwners.length > 0);
-                })
-                .catch(() => {
-                    setNavModelResults([]);
-                    setNavOwnerResults([]);
-                })
-                .finally(() => setLoading(false));
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [navSearchTerm]);
-
-    const handleResultClick = (uuid) => {
-        setNavSearchTerm('');
-        setNavModelResults([]);
-        setNavOwnerResults([]);
-        setDropdownOpen(false);
-        navigate(`/model/${uuid}`);
-    };
-
-    const handleOwnerClick = (username) => {
-        setNavSearchTerm('');
-        setNavModelResults([]);
-        setNavOwnerResults([]);
-        setDropdownOpen(false);
-        navigate(`/search?term=${username}&type=user`);
-    };
-
-    const handleSearchKeyDown = (e) => {
-        if (e.key === 'Enter' && navSearchTerm.trim()) {
-            setDropdownOpen(false);
-            navigate(`/search?term=${navSearchTerm}`);
-        }
-    };
-
-    const handleClickAway = () => {
-        setDropdownOpen(false);
-    };
-
-    const activeStyle = (path) => ({
-        fontWeight: location.pathname === path ? 'bold' : 'normal',
-        borderBottom: location.pathname === path ? '2px solid black' : 'none',
-        borderRadius: 0,
-    });
 
     const handleMenuOpen = (event) => {
         setAnchorEl(event.currentTarget);
@@ -165,7 +111,12 @@ export default function Navbar() {
         handleMenuClose();
     };
 
-    // Helper function to get initials for avatar
+    const handleSearchSubmit = () => {
+        if (searchValue.trim()) {
+            navigate(`/search?term=${encodeURIComponent(searchValue.trim())}`);
+        }
+    };
+
     const getInitials = () => {
         if (!user) return 'U';
         if (user.username) return user.username[0].toUpperCase();
@@ -175,167 +126,170 @@ export default function Navbar() {
 
     return (
         <Box sx={{ flexGrow: 1 }}>
-            <AppBar position="static" sx={{ backgroundColor: 'white', color: 'black' }}>
-                <Toolbar>
-                    <NavLink to="/" style={{ textDecoration: 'none' }}>
+            <AppBar position="static">
+                <Toolbar sx={{ gap: 0.5, minHeight: '60px !important' }}>
+                    {/* Logo */}
+                    <NavLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', gap: 8, flexShrink: 0 }}>
                         <img
                             src={opendiIcon}
                             alt="OpenDI Logo"
-                            style={{ height: 40, marginRight: 10 }}
+                            style={{ height: 36 }}
                         />
+                        <Typography
+                            variant="h6"
+                            sx={{
+                                display: { xs: 'none', sm: 'block' },
+                                color: '#ffffff',
+                                fontWeight: 700,
+                                fontSize: '1rem',
+                                letterSpacing: '-0.01em',
+                            }}
+                        >
+                            OpenDI
+                        </Typography>
                     </NavLink>
-                    <Typography
-                        variant="h6"
-                        noWrap
-                        component={NavLink}
-                        to="/"
-                        sx={{ display: { xs: 'none', sm: 'block' }, textDecoration: 'none', color: 'inherit' }}
-                    >
-                        OpenDI
-                    </Typography>
-                    <ClickAwayListener onClickAway={handleClickAway}>
-                        <Box sx={{ position: 'relative' }}>
-                            <Search>
-                                <SearchIconWrapper>
-                                    {loading ? (
-                                        <CircularProgress size={18} color="inherit" />
-                                    ) : (
-                                        <SearchIcon />
-                                    )}
-                                </SearchIconWrapper>
-                                <StyledInputBase
-                                    placeholder="Search…"
-                                    inputProps={{ 'aria-label': 'search' }}
-                                    sx={{ width: '25em' }}
-                                    value={navSearchTerm}
-                                    onChange={(e) => setNavSearchTerm(e.target.value)}
-                                    onKeyDown={handleSearchKeyDown}
-                                    onFocus={() => (navModelResults.length > 0 || navOwnerResults.length > 0) && setDropdownOpen(true)}
-                                />
-                            </Search>
-                            {dropdownOpen && (
-                                <Paper
-                                    sx={{
-                                        position: 'absolute',
-                                        top: '100%',
-                                        left: 0,
-                                        right: 0,
-                                        zIndex: 1300,
-                                        maxHeight: 360,
-                                        overflowY: 'auto',
-                                        mt: 0.5,
-                                        boxShadow: 3,
-                                    }}
-                                >
-                                    <List dense disablePadding>
-                                        {navModelResults.length === 0 && navOwnerResults.length === 0 ? (
-                                            <ListItemButton disabled>
-                                                <ListItemText primary="No results found" />
-                                            </ListItemButton>
-                                        ) : (
-                                            <>
-                                                {navModelResults.length > 0 && (
-                                                    <>
-                                                        <ListSubheader sx={{ lineHeight: '32px', bgcolor: 'background.paper' }}>
-                                                            Models
-                                                        </ListSubheader>
-                                                        {navModelResults.map((result) => (
-                                                            <ListItemButton
-                                                                key={result.meta.UUID}
-                                                                onClick={() => handleResultClick(result.meta.UUID)}
-                                                                divider
-                                                            >
-                                                                <ListItemText
-                                                                    primary={result.meta.name}
-                                                                    secondary={result.meta.creator?.username}
-                                                                />
-                                                            </ListItemButton>
-                                                        ))}
-                                                    </>
-                                                )}
-                                                {navOwnerResults.length > 0 && (
-                                                    <>
-                                                        <Divider />
-                                                        <ListSubheader sx={{ lineHeight: '32px', bgcolor: 'background.paper' }}>
-                                                            Creators
-                                                        </ListSubheader>
-                                                        {navOwnerResults.map((username) => (
-                                                            <ListItemButton
-                                                                key={username}
-                                                                onClick={() => handleOwnerClick(username)}
-                                                                divider
-                                                            >
-                                                                <ListItemText primary={username} />
-                                                            </ListItemButton>
-                                                        ))}
-                                                    </>
-                                                )}
-                                            </>
-                                        )}
-                                    </List>
-                                </Paper>
-                            )}
-                        </Box>
-                    </ClickAwayListener>
+
+                    {/* Search */}
+                    <Search>
+                        <SearchIconWrapper>
+                            <SearchIcon fontSize="small" />
+                        </SearchIconWrapper>
+                        <StyledInputBase
+                            placeholder="Search models..."
+                            inputProps={{ 'aria-label': 'search' }}
+                            value={searchValue}
+                            onChange={(e) => setSearchValue(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSearchSubmit();
+                            }}
+                        />
+                    </Search>
+
                     <Box sx={{ flexGrow: 1 }} />
 
-                    <Box sx={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <Button color="inherit" component={NavLink} to="/search" sx={activeStyle('/search')}>Search</Button>
-                        <Button color="inherit" component={NavLink} to="/cli-download" sx={activeStyle('/cli-download')}>Download</Button>
-                        <Button color="inherit" component={NavLink} to="/upload" sx={activeStyle('/upload')}>Upload</Button>
-                        <Button color="inherit" href="https://opendi.org" target="_blank">About</Button>
-                        
+                    {/* Nav links */}
+                    <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 0.5, alignItems: 'center' }}>
+                        <NavButton component={NavLink} to="/search">Explore</NavButton>
+                        <NavButton component={NavLink} to="/cli-download">Download</NavButton>
+                        <NavButton component={NavLink} to="/upload">Upload</NavButton>
+                        <NavButton href="https://opendi.org" target="_blank" rel="noopener noreferrer">About</NavButton>
+                    </Box>
+
+                    {/* Dark/Light toggle */}
+                    <Tooltip title={mode === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
+                        <IconButton
+                            onClick={toggleColorMode}
+                            size="small"
+                            sx={{
+                                color: 'rgba(255,255,255,0.75)',
+                                ml: 1,
+                                '&:hover': { color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.1)' },
+                            }}
+                        >
+                            {mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}
+                        </IconButton>
+                    </Tooltip>
+
+                    {/* User section */}
+                    <Box sx={{ ml: 1 }}>
                         {user ? (
                             <>
-                                <IconButton onClick={handleMenuOpen} sx={{ p: 0, ml: 1 }}>
-                                    <Avatar 
-                                        alt={user.username}
-                                        src={!imageError && user.picture ? user.picture : undefined}
-                                        imgProps={{
-                                            onError: () => {
-                                                console.log('Avatar image failed to load, using fallback');
-                                                setImageError(true);
-                                            },
-                                            referrerPolicy: 'no-referrer',
-                                        }}
-                                        sx={{ 
-                                            width: 32, 
-                                            height: 32,
-                                            bgcolor: imageError || !user.picture ? '#1976d2' : undefined,
-                                        }}
-                                    >
-                                        {(imageError || !user.picture) && getInitials()}
-                                    </Avatar>
-                                </IconButton>
+                                <Tooltip title={user.username || user.email}>
+                                    <IconButton onClick={handleMenuOpen} sx={{ p: 0.5 }}>
+                                        <Avatar
+                                            alt={user.username}
+                                            src={!imageError && user.picture ? user.picture : undefined}
+                                            imgProps={{
+                                                onError: () => setImageError(true),
+                                                referrerPolicy: 'no-referrer',
+                                            }}
+                                            sx={{
+                                                width: 32,
+                                                height: 32,
+                                                bgcolor: imageError || !user.picture ? '#086DD7' : undefined,
+                                                border: '2px solid rgba(255,255,255,0.3)',
+                                                fontSize: '0.875rem',
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            {(imageError || !user.picture) && getInitials()}
+                                        </Avatar>
+                                    </IconButton>
+                                </Tooltip>
                                 <Menu
                                     anchorEl={anchorEl}
                                     open={Boolean(anchorEl)}
                                     onClose={handleMenuClose}
-                                    anchorOrigin={{
-                                        vertical: 'bottom',
-                                        horizontal: 'right',
-                                    }}
-                                    transformOrigin={{
-                                        vertical: 'top',
-                                        horizontal: 'right',
+                                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                                    PaperProps={{
+                                        sx: {
+                                            mt: 0.5,
+                                            minWidth: 200,
+                                            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                                        },
                                     }}
                                 >
-                                    <MenuItem disabled>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {user.email}
-                                        </Typography>
-                                    </MenuItem>
-                                    <MenuItem component={NavLink} to="/user" onClick={handleMenuClose}>
-                                        Profile
+                                    <MenuItem disabled sx={{ opacity: '1 !important' }}>
+                                        <Box>
+                                            <Typography variant="body2" fontWeight={600}>
+                                                {user.username}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {user.email}
+                                            </Typography>
+                                        </Box>
                                     </MenuItem>
                                     <Divider />
-                                    <MenuItem onClick={handleLogout}>Logout</MenuItem>
+                                    <MenuItem component={NavLink} to="/user" onClick={handleMenuClose}>
+                                        My Profile
+                                    </MenuItem>
+                                    <MenuItem component={NavLink} to="/UploadPage" onClick={handleMenuClose}>
+                                        Upload Model
+                                    </MenuItem>
+                                    <Divider />
+                                    <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
+                                        Sign out
+                                    </MenuItem>
                                 </Menu>
                             </>
                         ) : (
-                            <Button color="inherit" component={NavLink} to="/login" sx={activeStyle('/login')}>
-                                Login
-                            </Button>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    component={NavLink}
+                                    to="/login"
+                                    sx={{
+                                        color: '#ffffff',
+                                        borderColor: 'rgba(255,255,255,0.4)',
+                                        '&:hover': {
+                                            borderColor: '#ffffff',
+                                            backgroundColor: 'rgba(255,255,255,0.1)',
+                                        },
+                                        textTransform: 'none',
+                                        fontWeight: 600,
+                                        fontSize: '0.875rem',
+                                    }}
+                                >
+                                    Sign in
+                                </Button>
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    component={NavLink}
+                                    to="/login"
+                                    sx={{
+                                        backgroundColor: '#086DD7',
+                                        '&:hover': { backgroundColor: '#0558AE' },
+                                        textTransform: 'none',
+                                        fontWeight: 600,
+                                        fontSize: '0.875rem',
+                                    }}
+                                >
+                                    Sign up
+                                </Button>
+                            </Box>
                         )}
                     </Box>
                 </Toolbar>
