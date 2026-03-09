@@ -9,7 +9,6 @@ import {
   Route,
 } from "react-router-dom";
 import Home from "./pages";
-import UploadPage from "./pages/uploadPage";
 import ModelPage from './pages/modelPage';
 import CliDownloadPage from './pages/downloadPage';
 import AuthCallback from './pages/AuthCallback';
@@ -20,7 +19,10 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import UserPage from "./pages/user";
 import SearchPage from "./pages/search";
+import RepositoriesPage from "./pages/repositoriesPage";
+import RepositoryDetailsPage from "./pages/repositoryDetailsPage";
 import { UserProvider } from './context/UserContext';
+import { RepositoryProvider } from './context/RepositoryContext';
 
 export const ColorModeContext = createContext({ toggleColorMode: () => {}, mode: 'light' });
 
@@ -47,20 +49,23 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <UserProvider>
-          <Router>
-            <Navbar />
-            <Routes>
-              <Route exact path="/" element={<Home />} />
-              <Route path="/upload" element={<UploadPage />} />
-              <Route path="/cli-download" element={<CliDownloadPage />} />
-              <Route path="/model/:uuid" element={<ModelPage />} />
-              <Route path="/model" element={<ModelPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="/user" element={<UserPage />} />
-              <Route path="/search" element={<SearchPage />} />
-            </Routes>
-          </Router>
+          <RepositoryProvider>
+            <Router>
+              <Navbar />
+              <Routes>
+                <Route exact path="/" element={<Home />} />
+                <Route path="/repositories" element={<RepositoriesPage />} />
+                <Route path="/repositories/:repositoryId" element={<RepositoryDetailsPage />} />
+                <Route path="/cli-download" element={<CliDownloadPage />} />
+                <Route path="/model/:uuid" element={<ModelPage />} />
+                <Route path="/model" element={<ModelPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/user" element={<UserPage />} />
+                <Route path="/search" element={<SearchPage />} />
+              </Routes>
+            </Router>
+          </RepositoryProvider>
         </UserProvider>
       </ThemeProvider>
     </ColorModeContext.Provider>
