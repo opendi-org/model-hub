@@ -6,7 +6,7 @@ import * as React from 'react';
 import { useEffect } from 'react';
 import { useState } from 'react';
 import opendiIcon from '../opendi-icon.png';
-import API_URL from '../config';
+import APIClient from '../util/ApiClient';
 import { useMemo } from 'react';
 import { JSONTree } from 'react-json-tree';
 import {
@@ -74,33 +74,15 @@ function Ownership({
         setMessage('Sending ownership transfer request...');
 
         try {
-            const url = `${API_URL}/v0/models/transfer/${tag}?owner=${newOwnerEmail}`;
-
-            const response = await fetch(url, {
-                method: 'POST',
-                credentials: 'include', 
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({})
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setStatus('success');
-                setMessage(`Ownership transfer request sent successfully to ${newOwnerEmail}.`);
-                // The actual ToUserID is returned, but we show the email for user confirmation
-                onTransferUpdate(data); 
-                setNewOwnerEmail(''); 
-            } else {
-                const errorData = await response.json();
-                setStatus('error');
-                setMessage(errorData.error || 'An unexpected error occurred.');
-            }
+            const data = await APIClient.createTransfer(tag, newOwnerEmail);
+            setStatus('success');
+            setMessage(`Ownership transfer request sent successfully to ${newOwnerEmail}.`);
+            onTransferUpdate(data);
+            setNewOwnerEmail('');
         } catch (error) {
             console.error('Error during ownership transfer:', error);
             setStatus('error');
-            setMessage('An error occurred during the API call.');
+            setMessage(error.message || 'An error occurred during the API call.');
         }
     };
 
@@ -110,36 +92,17 @@ function Ownership({
         setMessage(`${action} ownership transfer request...`);
 
         try {
-            // API Endpoint: DELETE /v0/models/transfer/{tag}?accept={boolean}
-            const acceptValue = accept ? 'true' : 'false';
-            const url = `${API_URL}/v0/models/transfer/${tag}?accept=${acceptValue}`;
-
-            const response = await fetch(url, {
-                method: 'DELETE', 
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-            });
-
-            if (response.ok) {
-                setStatus('success');
-                const successMsg = accept 
-                    ? 'Ownership transfer accepted successfully.' 
-                    : 'Ownership transfer declined successfully.';
-                setMessage(successMsg);
-                onTransferUpdate(null);
-            } else {
-                // Read the error body for a specific message
-                const errorData = await response.json();
-                setStatus('error');
-                // Use the error message from the API or a fallback
-                setMessage(errorData.error || `Error (${response.status}): Could not complete the action.`);
-            }
+            await APIClient.deleteTransfer(tag, accept);
+            setStatus('success');
+            const successMsg = accept
+                ? 'Ownership transfer accepted successfully.'
+                : 'Ownership transfer declined successfully.';
+            setMessage(successMsg);
+            onTransferUpdate(null);
         } catch (error) {
             console.error('Error during accept/decline:', error);
             setStatus('error');
-            setMessage('A network error occurred during the accept/decline API call.');
+            setMessage(error.message || 'A network error occurred during the accept/decline API call.');
         }
     };
 
@@ -242,32 +205,17 @@ const ModelPage = () => {
         const fetchTransfer = async () => {
             setFetchStatus('loading');
             try {
-                const url = `${API_URL}/v0/models/transfer/${model?.addons?.tag}`;
-                const response = await fetch(url, {
-                    method: 'GET',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    setPendingTransfer(data);
-                    setFetchStatus('loaded');
-                } else if (response.status === 404) {
-                    // This is expected if no transfer is pending
+                const data = await APIClient.getTransfer(model.addons.tag);
+                setPendingTransfer(data);
+                setFetchStatus('loaded');
+            } catch (error) {
+                if (error.message && error.message.includes('404')) {
                     setPendingTransfer(null);
                     setFetchStatus('loaded');
                 } else {
-                    // Handle other errors (401, 403, 500, etc.)
-                    const errorData = await response.json();
-                    console.error('Error fetching transfer:', errorData.error);
+                    console.error('Error fetching transfer:', error);
                     setFetchStatus('failed');
                 }
-            } catch (error) {
-                console.error('Network error fetching transfer:', error);
-                setFetchStatus('failed');
             }
         }; 
 
@@ -279,13 +227,7 @@ const ModelPage = () => {
     // setHeader("Authorization", `Bearer ${jwtToken}`);
 
     useEffect(() => {
-        fetch(`${API_URL}/v0/models/${uuid}`, { credentials: 'include' })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
+        APIClient.getModelByUUID(uuid)
             .then(data => {
                 setModel(data);
                 if (data.addons && data.addons.hasOwnProperty('isPublic')) {
@@ -297,45 +239,23 @@ const ModelPage = () => {
 
     const [commit, setCommit] = useState({})
     useEffect(() => {
-        fetch(`${API_URL}/v0/models/commits/latest/${model?.addons?.tag}`, { credentials: 'include' })
-            .then(response => {
-                if (response.status === 404) {
-                    return { version: 0 }; // Exit early if not found
-                }
-    
-                if (!response.ok) {
-                    throw new Error('Network response was not ok for getting latest commit');
-                }
-                return response.json();
-            })
+        if (!model?.addons?.tag) return;
+        APIClient.getLatestCommitByTag(model.addons.tag)
             .then(data => {
-                    setCommit(data); // Set commit data if the response was valid
-                    if (data.version > 0 && !selectedVersion) {
-                        setSelectedVersion(data.version);
-                    }
+                setCommit(data);
+                if (data.version > 0 && !selectedVersion) {
+                    setSelectedVersion(data.version);
+                }
             })
-            .catch(error => console.error('There was a problem with the fetch operation:', error));
+            .catch(() => setCommit({ version: 0 }));
     }, [model, selectedVersion]);
 
     // Fetch all commits for the model
     useEffect(() => {
         if (!model?.addons?.tag) return;
-        
-        fetch(`${API_URL}/v0/models/commits/${model?.addons?.tag}`, { credentials: 'include' })
-            .then(response => {
-                if (response.status === 404) {
-                    setAllCommits([]); // Set empty array if no commits found
-                    return [];
-                }
-                if (!response.ok) {
-                    throw new Error('Network response was not ok for getting commits');
-                }
-                return response.json();
-            })
-            .then(data => {
-                setAllCommits(data);
-            })
-            .catch(error => console.error('Error fetching commits:', error));
+        APIClient.getCommitsByTag(model.addons.tag)
+            .then(data => setAllCommits(data))
+            .catch(() => setAllCommits([]));
     }, [model]);
 
     // Get previous version of model
@@ -354,11 +274,7 @@ const ModelPage = () => {
             }
 
             try {
-                const response = await fetch(`${API_URL}/v0/models/modelVersion/${model?.addons?.tag}/${commit.version - 1}`);
-                if (!response.ok) {
-                    throw new Error('Network response was not ok for getting model version');
-                }
-                const data = await response.json();
+                const data = await APIClient.getModelVersionByTagAndCommit(model.addons.tag, commit.version - 1);
                 console.log(commit['diff'])
                 setLastVersionOfModel(data);
             } catch (error) {
@@ -375,27 +291,14 @@ const ModelPage = () => {
         
         const fetchSelectedVersion = async () => {
             try {
-                const response = await fetch(`${API_URL}/v0/models/modelVersion/${model?.addons?.tag}/${selectedVersion}`);
-                if (!response.ok) {
-                    throw new Error('Network response was not ok for getting selected model version');
-                }
-                const data = await response.json();
+                const data = await APIClient.getModelVersionByTagAndCommit(model.addons.tag, selectedVersion);
                 setSelectedVersionModel(data);
-                
-                // Always try to fetch the previous version, even for version 1
-                const prevResponse = await fetch(`${API_URL}/v0/models/modelVersion/${model?.addons?.tag}/${selectedVersion - 1}`);
-                if (!prevResponse.ok) {
-                    // For version 1, we need to handle the special case where version 0 might not be directly accessible
-                    if (selectedVersion === 1) {
-                        console.log("Fetching version 0 (original state)");
-                        // The backend should reconstruct version 0 from the version 1 diff
-                    } else {
-                        console.error('Error fetching previous version:', prevResponse.statusText);
-                    }
-                    setPrevVersionModel("No previous version");
-                } else {
-                    const prevData = await prevResponse.json();
+                try {
+                    const prevData = await APIClient.getModelVersionByTagAndCommit(model.addons.tag, selectedVersion - 1);
                     setPrevVersionModel(prevData);
+                } catch {
+                    if (selectedVersion === 1) console.log("Fetching version 0 (original state)");
+                    setPrevVersionModel("No previous version");
                 }
             } catch (error) {
                 console.error('Error fetching model versions:', error);
@@ -445,27 +348,11 @@ const ModelPage = () => {
         const file = acceptedFiles[0];
 
         try {
-            // const fileText = await file.text();
-            const response = await fetch(`${API_URL}/v0/models`, {
-                method: "PUT",
-                credentials: 'include',
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: file
-            });
-
-            if (!response.ok) {
-                throw new Error(`Upload failed: ${response.statusText}`);
-            }
-
-            const result = await response.json();
+            const result = await APIClient.updateModelWithFile(file);
             console.log("Updated success:", result);
-
             setUploadStatus("success");
             setErrorMessage("");
             handleClose();
-
         } catch (error) {
             console.error("Error uploading file:", error);
             setUploadStatus("error");
@@ -485,60 +372,29 @@ const ModelPage = () => {
 
         setIsPrivate(newIsPublic); // Optimistically update the state
 
+        const tag = model?.addons?.tag;
+        if (!tag) return;
         try {
-            const response = await fetch(apiEndpoint, {
-                method: 'GET',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to fetch share settings.');
-            }
-
-            data = await response.json();
+            data = await APIClient.getModelPrivacy(tag);
         } catch (err) {
             setError(err.message);
-            setIsPrivate(previousIsPrivate); // Revert on GET failure
-            return; // <-- Stop execution
+            setIsPrivate(previousIsPrivate);
+            return;
         }
 
         let currentShares = data.shares || [];
         console.log(newIsPublic, currentShares);
-        if(newIsPublic) {
+        if (newIsPublic) {
             currentShares = currentShares.filter(share => share.level === 'write');
         }
 
         try {
-            const response = await fetch(`${API_URL}/v0/models/privacy/${model?.addons?.tag}`, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    isPublic: newIsPublic,
-                    shares: currentShares
-                 })
-            });
-
-            if (!response.ok) {
-                // Revert the state change if the API call fails
-                setIsPrivate(previousIsPrivate); // Revert on PUT failure
-                const error = await response.json();
-                console.error("Failed to update privacy settings:", error.error);
-                setError(error.error || "Failed to update privacy.");
-            } else {
-                setError(null); // Clear any previous errors on success
-            }
+            await APIClient.updateModelPrivacy(tag, { isPublic: newIsPublic, shares: currentShares });
+            setError(null);
         } catch (error) {
-            // Revert the state change if the API call fails
-            setIsPrivate(previousIsPrivate); // Revert on PUT network error
+            setIsPrivate(previousIsPrivate);
             console.error("An error occurred during the API call:", error);
-            setError("An network error occurred.");
+            setError(error.message || "Failed to update privacy.");
         }
     };
 
@@ -548,8 +404,7 @@ const ModelPage = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
-
-    const apiEndpoint = `${API_URL}/v0/models/privacy/${model?.addons?.tag}`;
+    const privacyTag = model?.addons?.tag;
 
     const style = {
         position: 'absolute',
@@ -583,139 +438,57 @@ const ModelPage = () => {
     };
 
     const handleSave = async () => {
+        if (!privacyTag) return;
         let data;
-
         try {
-            const response = await fetch(apiEndpoint, {
-                method: 'GET',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to fetch share settings.');
-            }
-
-
-            data = await response.json();
+            data = await APIClient.getModelPrivacy(privacyTag);
         } catch (err) {
             setError(err.message);
             return;
         }
-        const url = `${API_URL}/v0/models/privacy/${model?.addons?.tag}`;
-        // searchTerm is now the new user's email
-        const newEmail = searchTerm; 
-        
+        const newEmail = searchTerm;
         if (!newEmail) {
-            console.error("Email cannot be empty.");
             setError("Email cannot be empty.");
             return;
         }
 
-        const newShare = {
-            email: newEmail, // Use email field
-            level: permissionLevel
-        }
-        
-        // Filter out the new share if the email already exists to prevent duplicates
+        const newShare = { email: newEmail, level: permissionLevel };
         const existingShares = (data.shares || []).filter(share => share.email !== newShare.email);
-        
-        const bodyData = {
-            'isPublic': isPrivate,
-            'shares': [ 
-                ...existingShares,
-                newShare
-            ]
-        };
-        
+        const bodyData = { isPublic: isPrivate, shares: [...existingShares, newShare] };
 
         try {
-            const response = await fetch(url, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(bodyData)
-            });
-
-            if (response.ok) {
-                console.log("Share settings updated successfully.");
-                closeModal();
-            } else {
-                const errorData = await response.json();
-                console.error("API Error:", errorData.error);
-                setError(errorData.error || "Failed to save share settings.");
-                // Handle specific error messages based on status codes (e.g., show a user-friendly message)
-            }
+            await APIClient.updateModelPrivacy(privacyTag, bodyData);
+            console.log("Share settings updated successfully.");
+            closeModal();
         } catch (error) {
             console.error("Network or other error:", error);
-            setError("A network error occurred.");
-            // Handle network errors
+            setError(error.message || "A network error occurred.");
         }
     };
 
     const handleRemoveShare = async (emailToRemove) => {
-        // Create the new list of shares by filtering out the user to remove
         const newSharesList = shares.filter(share => share.email !== emailToRemove);
-        
-        const bodyData = {
-            'isPublic': isPrivate, // Use the current state of the public/private toggle
-            'shares': newSharesList
-        };
+        const bodyData = { isPublic: isPrivate, shares: newSharesList };
 
         try {
-            const response = await fetch(apiEndpoint, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(bodyData)
-            });
-
-            if (response.ok) {
-                console.log("Share removed successfully.");
-                // Update the local state to reflect the change immediately
-                setShares(newSharesList); 
-            } else {
-                const errorData = await response.json();
-                console.error("API Error removing share:", errorData.error);
-                // Optionally, set an error message to display to the user
-                setError("Failed to remove share."); 
-            }
+            await APIClient.updateModelPrivacy(privacyTag, bodyData);
+            console.log("Share removed successfully.");
+            setShares(newSharesList);
         } catch (error) {
-            console.error("Network or other error:", error);
-            // Optionally, set an error message
-            setError("A network error occurred.");
+            console.error("API Error removing share:", error);
+            setError(error.message || "Failed to remove share.");
         }
     };
 
     // Fetch data from the API when the modal is opened
     useEffect(() => {
-        if (modalIsOpen) {
+        if (modalIsOpen && privacyTag) {
             const fetchShares = async () => {
                 setIsLoading(true);
                 setError(null);
                 try {
-                    const response = await fetch(apiEndpoint, {
-                        method: 'GET',
-                        credentials: 'include',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                    });
-
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.error || 'Failed to fetch share settings.');
-                    }
-
-                    const data = await response.json();
-                    setShares(data.shares || []); // data.shares now contains email
+                    const data = await APIClient.getModelPrivacy(privacyTag);
+                    setShares(data.shares || []);
                 } catch (err) {
                     setError(err.message);
                 } finally {
@@ -724,7 +497,7 @@ const ModelPage = () => {
             };
             fetchShares();
         }
-    }, [modalIsOpen, apiEndpoint]);
+    }, [modalIsOpen, privacyTag]);
 
     function displayUploadMenu() {
         return (
@@ -802,19 +575,10 @@ const ModelPage = () => {
         const [lineage, setLineage] = React.useState(null);
 
         React.useEffect(() => {
-            async function fetchLineage() {
-                try {
-                    const res = await fetch(`${API_URL}/v0/models/lineage/${model?.addons?.tag}`, { credentials: 'include' });
-                    if (!res.ok) {
-                        throw new Error('Failed to fetch lineage');
-                    }
-                    const data = await res.json();
-                    setLineage(data);
-                } catch (error) {
-                    console.error('Error fetching lineage:', error);
-                }
-            }
-            fetchLineage();
+            if (!model?.addons?.tag) return;
+            APIClient.getModelLineage(model.addons.tag)
+                .then(data => setLineage(data))
+                .catch(error => console.error('Error fetching lineage:', error));
         }, [model]);
 
         if (!lineage) {
@@ -859,19 +623,10 @@ const ModelPage = () => {
         const [children, setChildren] = React.useState(null);
 
         React.useEffect(() => {
-            async function fetchChildren() {
-                try {
-                    const res = await fetch(`${API_URL}/v0/models/children/${model?.addons?.tag}`, { credentials: 'include' });
-                    if (!res.ok) {
-                        throw new Error('Failed to fetch children');
-                    }
-                    const data = await res.json();
-                    setChildren(data);
-                } catch (error) {
-                    console.error('Error fetching children:', error);
-                }
-            }
-            fetchChildren();
+            if (!model?.addons?.tag) return;
+            APIClient.getModelChildren(model.addons.tag)
+                .then(data => setChildren(data))
+                .catch(error => console.error('Error fetching children:', error));
         }, [model]);
 
         if (!children || children.length === 0) {
@@ -912,7 +667,7 @@ const ModelPage = () => {
                 <Box
                     component="img"
                     src={opendiIcon}
-                    alt="Description of image"
+                    alt="OpenDI Logo – Synergies, Accessibility, Standards"
                     sx={{ width: '20em', height: 'auto' }}
                 />
 
