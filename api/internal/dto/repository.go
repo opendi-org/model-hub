@@ -30,8 +30,7 @@ type RepositoryTagInfo struct {
 	Name        string    `json:"name"`
 	Digest      string    `json:"digest"`      // ModelUUID
 	Size        int64     `json:"size"`        // SizeBytes
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	LastUpdated   time.Time `json:"updatedAt"`
 	CreatedBy   string    `json:"createdBy"` // username
 }
 
