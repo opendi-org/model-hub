@@ -197,35 +197,19 @@ func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 
 // GetRepository handles UC-05: View Repository
 // GET /v0/repositories/:owner/:slug
+// Requires: ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware (no authentication required)
+// Handler enforces read access (permission != PermissionNone)
 func GetRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		owner := c.Param("owner")
-		slug := c.Param("slug")
-
-		user := middleware.OptionalGetCurrentUser(c)
-		var userID uint
-		isAuthenticated := user != nil
-		if isAuthenticated {
-			userID = user.ID
-		}
-
-		// Fetch repository with owner
-		var repo hub.Repository
-		if err := db.Preload("Owner").Where("hub_repositories.slug = ?", slug).
-			Joins("INNER JOIN hub_users ON hub_users.id = hub_repositories.owner_id").
-			Where("hub_users.username = ?", owner).
-			First(&repo).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "repository not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		// Repository and permission already resolved by middleware
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
 			return
 		}
 
-		// Check access
-		canAccess := repo.Visibility == "public" || (isAuthenticated && (repo.OwnerID == userID || hasCollaboratorAccess(db, repo.ID, userID)))
-		if !canAccess {
+		permission := middleware.GetRepositoryPermission(c)
+		if permission == middleware.PermissionNone {
 			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
@@ -260,10 +244,10 @@ func GetRepository(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Fetch collaborators (only show to owner and collaborators)
-		isOwner := isAuthenticated && repo.OwnerID == userID
-		isCollaborator := isAuthenticated && hasCollaboratorAccess(db, repo.ID, userID)
-		if isOwner || isCollaborator {
+		// Fetch collaborators (only show to owner and explicit collaborators)
+		isOwner := permission == middleware.PermissionOwner
+		isExplicitCollaborator := middleware.IsRepositoryCollaborator(c)
+		if isOwner || isExplicitCollaborator {
 			var collabs []hub.Collaborator
 			if err := db.Where("repo_id = ?", repo.ID).Preload("User").Find(&collabs).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
@@ -280,7 +264,7 @@ func GetRepository(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Fetch lineage if accessible (owner or explicit collab only)
-		if isOwner || isCollaborator {
+		if isOwner || isExplicitCollaborator {
 			lineage := dto.RepositoryLineageInfo{}
 
 			// Parent
@@ -317,40 +301,26 @@ func GetRepository(db *gorm.DB) gin.HandlerFunc {
 
 // UpdateRepository handles UC-06: Update Repository
 // PATCH /v0/repositories/:owner/:slug
+// Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Handler enforces PermissionAdmin or PermissionOwner
 func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user, err := middleware.GetCurrentUser(c)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		// Repository and permission already resolved by middleware
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
 			return
 		}
 
-		owner := c.Param("owner")
-		slug := c.Param("slug")
+		permission := middleware.GetRepositoryPermission(c)
+		if permission != middleware.PermissionOwner && permission != middleware.PermissionAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
 
 		var req dto.UpdateRepositoryRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Fetch repository
-		var repo hub.Repository
-		if err := db.Where("slug = ?", slug).
-			Joins("INNER JOIN hub_users ON hub_users.id = hub_repositories.owner_id").
-			Where("hub_users.username = ?", owner).
-			First(&repo).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "repository not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-			return
-		}
-
-		// Check authorization (owner or admin collaborator)
-		if repo.OwnerID != user.ID && !hasCollaboratorAccessWithRole(db, repo.ID, user.ID, "admin") {
-			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
 
@@ -382,13 +352,13 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 			"description": req.Description,
 		}
 
-		if err := db.Model(&repo).Updates(updateData).Error; err != nil {
+		if err := db.Model(repo).Updates(updateData).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update repository"})
 			return
 		}
 
 		// Fetch updated repo with owner
-		if err := db.Preload("Owner").First(&repo, repo.ID).Error; err != nil {
+		if err := db.Preload("Owner").First(repo, repo.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 			return
 		}
@@ -409,39 +379,25 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 
 // DeleteRepository handles UC-07: Delete Repository
 // DELETE /v0/repositories/:owner/:slug
+// Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Handler enforces PermissionOwner only
 func DeleteRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user, err := middleware.GetCurrentUser(c)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		// Repository and permission already resolved by middleware
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
 			return
 		}
 
-		owner := c.Param("owner")
-		slug := c.Param("slug")
-
-		// Fetch repository
-		var repo hub.Repository
-		if err := db.Where("slug = ?", slug).
-			Joins("INNER JOIN hub_users ON hub_users.id = hub_repositories.owner_id").
-			Where("hub_users.username = ?", owner).
-			First(&repo).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "repository not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-			return
-		}
-
-		// Check authorization (owner only)
-		if repo.OwnerID != user.ID {
+		permission := middleware.GetRepositoryPermission(c)
+		if permission != middleware.PermissionOwner {
 			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
 
 		// Soft-delete the repository
-		if err := db.Delete(&repo).Error; err != nil {
+		if err := db.Delete(repo).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete repository"})
 			return
 		}
@@ -469,21 +425,4 @@ func isValidSlug(slug string) bool {
 	}
 
 	return true
-}
-
-// hasCollaboratorAccess checks if a user has any level of access to a repo.
-func hasCollaboratorAccess(db *gorm.DB, repoID, userID uint) bool {
-	var count int64
-	db.Model(&hub.Collaborator{}).
-		Where("repo_id = ? AND user_id = ?", repoID, userID).
-		Count(&count)
-	return count > 0
-}
-
-// hasCollaboratorAccessWithRole checks if a user has specific role access to a repo.
-func hasCollaboratorAccessWithRole(db *gorm.DB, repoID, userID uint, requiredRole string) bool {
-	var collab hub.Collaborator
-	err := db.Where("repo_id = ? AND user_id = ? AND role = ?", repoID, userID, requiredRole).
-		First(&collab).Error
-	return err == nil
 }
