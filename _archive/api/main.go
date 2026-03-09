@@ -95,6 +95,27 @@ func main() {
 		userGroup.GET("/transfers", modelHandler.GetUserPendingTransfers)
 	}
 
+	// Diagram-focused endpoints used by frontends to render repo/model/tag graphs.
+	diagramHandler := handlers.NewDiagramHandler()
+
+	users := router.Group("/v0/users")
+	{
+		// GET /v0/users/:userID/repos
+		users.GET("/:userID/repos", diagramHandler.GetReposForUser)
+	}
+
+	repos := router.Group("/v0/repos")
+	{
+		// GET /v0/repos/:repoID/models
+		repos.GET("/:repoID/models", diagramHandler.GetModelsForRepo)
+	}
+
+	diagram := router.Group("/v0/diagram")
+	{
+		// GET /v0/diagram/repos/:repoID
+		diagram.GET("/repos/:repoID", diagramHandler.GetDiagramForRepo)
+	}
+
 	auth := router.Group("/auth")
 	{
 		auth.GET("/google/login", authHandler.GoogleLogin)
