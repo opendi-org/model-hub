@@ -1,26 +1,12 @@
-# Builder stage
-FROM golang:1.24 AS api
+FROM golang:1.26-alpine AS build
 WORKDIR /app
+
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 
-RUN go install github.com/swaggo/swag/cmd/swag@latest
-RUN swag init --parseDependency --parseInternal --parseDepth 1
-
-#hot reloading - DOES NOT WORK
-#RUN go install github.com/air-verse/air@latest 
-#RUN air init
-
-#For actually building the API
-RUN CGO_ENABLED=0 GOOS=linux go build -o /api-server
+RUN CGO_ENABLED=0 go build -o /opendi-api ./cmd/api
 
 EXPOSE 8080
-
-#If building the API
-CMD ["/api-server"]
-
-#DOES NOT WORK
-#for hot reloading
-#CMD ["air", "-c", ".air.toml"]
+CMD ["/opendi-api"]

@@ -1,0 +1,3 @@
+[submodule "api/cdm-json-schema"]
+	path = api/cdm-json-schema
+	url = https://github.com/opendi-org/cdm-json-schema.git
