@@ -7,6 +7,8 @@ import (
 	"gorm.io/gorm"
 
 	"opendi.org/model-hub/api/internal/config"
+	"opendi.org/model-hub/api/internal/handlers"
+	"opendi.org/model-hub/api/internal/middleware"
 )
 
 // mock returns a handler that echoes method and path. Replace with real handlers later.
@@ -14,29 +16,25 @@ func mock(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"method": c.Request.Method, "path": c.Request.URL.Path, "status": "mock"})
 }
 
-// repoScope mounts routes for a single repo (by owner/slug or by id): get/patch/delete, tags, tag model, collaborators, transfer, lineage, fork.
+// repoScope mounts additional routes for a single repo (tags, collaborators, transfer, lineage, fork).
+// The base GET/PATCH/DELETE routes are mounted separately by the caller to allow middleware injection.
 func repoScope(g *gin.RouterGroup) {
-	h := mock
-	g.GET("", h)
-	g.PATCH("", h)
-	g.DELETE("", h)
-	g.GET("/tags", h)
-	g.GET("/tags/:tag", h)
-	g.GET("/tags/:tag/model", h)
-	g.PUT("/tags/:tag", h)
-	g.DELETE("/tags/:tag", h)
-	g.GET("/collaborators", h)
-	g.PUT("/collaborators/:username", h)
-	g.DELETE("/collaborators/:username", h)
-	g.POST("/transfer", h)
-	g.GET("/lineage", h)
-	g.POST("/fork", h)
+	g.GET("/tags", mock)
+	g.GET("/tags/:tag", mock)
+	g.GET("/tags/:tag/model", mock)
+	g.PUT("/tags/:tag", mock)
+	g.DELETE("/tags/:tag", mock)
+	g.GET("/collaborators", mock)
+	g.PUT("/collaborators/:username", mock)
+	g.DELETE("/collaborators/:username", mock)
+	g.POST("/transfer", mock)
+	g.GET("/lineage", mock)
+	g.POST("/fork", mock)
 }
 
 // RegisterRoutes mounts all v0 endpoints from endpoints.md.
 func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	v0 := r.Group("/v0")
-	_ = db
 	_ = cfg
 
 	// Auth: me, logout, token refresh, Google OAuth, CLI login/poll
@@ -51,13 +49,32 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 
 	// Repositories
 	repos := v0.Group("/repositories")
-	repos.GET("", mock)           // list (?scope, q, owner)
-	repos.GET("/:owner", mock)    // list by owner
-	repos.POST("", mock)          // create
-	repoScope(repos.Group("/:owner/:slug")) // get/patch/delete repo, tags, collaborators, transfer, lineage, fork
+	repos.GET("", handlers.ListRepositories(db))                                      // list (?scope, q, owner) - optional auth
+	repos.GET("/:owner", handlers.ListRepositories(db))                               // list by owner - optional auth
+	repos.POST("", middleware.RequireAuthentication(), handlers.CreateRepository(db)) // create - requires auth
 
-	// Repo by id (alias): same routes as owner/slug, under /repo/:id. Add ResolveRepoID middleware when lookup exists.
-	repoScope(v0.Group("/repo/:id"))
+	// Repository by owner/slug with middleware: resolve repo, check access
+	ownerSlugGroup := repos.Group("/:owner/:slug",
+		middleware.ResolveRepositoryByOwnerSlug(db),
+		middleware.CheckRepositoryAccess(db),
+	)
+	ownerSlugGroup.GET("", handlers.GetRepository(db))
+	ownerSlugGroup.PATCH("", middleware.RequireAuthentication(), handlers.UpdateRepository(db))
+	ownerSlugGroup.DELETE("", middleware.RequireAuthentication(), handlers.DeleteRepository(db))
+	// Remaining routes under this scope (tags, collaborators, etc.)
+	repoScope(ownerSlugGroup)
+
+	// Repo by id (alias): same routes as owner/slug, under /repo/:id.
+	// ResolveRepositoryByID requires repo ID lookup to be implemented.
+	idGroup := v0.Group("/repo/:id",
+		middleware.ResolveRepositoryByID(db),
+		middleware.CheckRepositoryAccess(db),
+	)
+	idGroup.GET("", handlers.GetRepository(db))
+	idGroup.PATCH("", middleware.RequireAuthentication(), handlers.UpdateRepository(db))
+	idGroup.DELETE("", middleware.RequireAuthentication(), handlers.DeleteRepository(db))
+	// Remaining routes under this scope (tags, collaborators, etc.)
+	repoScope(idGroup)
 
 	// Search
 	v0.GET("/search", mock)
