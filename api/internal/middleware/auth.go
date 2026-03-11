@@ -20,14 +20,14 @@ import (
 //    - RequireAuthentication(): Middleware enforcing authenticated requests
 //
 // 2. AUTHORIZATION (repository resource access)
-//    - Permission constants define access levels: owner > admin > write > read > none
+//    - Permission constants define access levels: owner > write > read > none
 //    - CheckRepositoryAccess(): Evaluates user's permission on a specific repository
 //    - RequireRepositoryPermission(): Middleware enforcing permission requirements
 //
 // Example flow for a protected endpoint:
 //   GET /v0/repositories/:owner/:slug
 //     -> ResolveRepositoryByOwnerSlug middleware (fetches repo from DB)
-//     -> CheckRepositoryAccess middleware (evaluates permission: read, admin, etc.)
+//     -> CheckRepositoryAccess middleware (evaluates permission: read, owner, etc.)
 //     -> Handler receives repo and permission level in context
 //
 // ──────────────────────────────────────────────────────────────────────────────
@@ -84,11 +84,8 @@ func RequireAuthentication() gin.HandlerFunc {
 //
 // Permission hierarchy (each level inherits permissions of lower levels):
 //
-//	owner (5)  - Repository owner (OwnerID in DB)
-//	            Permissions: read, write, admin, delete, transfer
-//
-//	admin (4)  - Explicit collaborator with "admin" role
-//	            Permissions: read, write, admin (manage collaborators, visibility)
+//	owner (5)  - Repository owner (OwnerID in DB) or collaborator with "owner" role
+//	            Permissions: read, write, delete, transfer, manage collaborators
 //
 //	write (3)  - Explicit collaborator with "write" role
 //	            Permissions: read, write (push/delete tags)
@@ -102,16 +99,14 @@ const (
 	PermissionNone  = "none"  // No access
 	PermissionRead  = "read"  // Read tags and model content
 	PermissionWrite = "write" // Push and delete tags
-	PermissionAdmin = "admin" // Manage collaborators, visibility, transfer, delete
-	PermissionOwner = "owner" // Full owner access
+	PermissionOwner = "owner" // Manage collaborators, visibility, transfer, delete (repo owner or owner collaborator)
 )
 
 // CheckRepositoryAccess is middleware that determines the authenticated user's
 // permission level on a repository and stores it in context.
 //
 // Permissions (in order):
-//   - "owner"     if user is the repository owner
-//   - "admin"     if user is a collaborator with admin role
+//   - "owner"     if user is the repository owner or a collaborator with owner role
 //   - "write"     if user is a collaborator with write role
 //   - "read"      if user is a collaborator with read role, or repo is public
 //   - "none"      otherwise
@@ -147,7 +142,7 @@ func CheckRepositoryAccess(db *gorm.DB) gin.HandlerFunc {
 // RequireRepositoryPermission is middleware that enforces a minimum permission
 // level on the repository. Must be called after CheckRepositoryAccess middleware.
 //
-// requiredLevel should be one of: PermissionRead, PermissionWrite, PermissionAdmin, PermissionOwner
+// requiredLevel should be one of: PermissionRead, PermissionWrite, PermissionOwner
 //
 // Responds with 403 Forbidden if the user lacks the required permission.
 func RequireRepositoryPermission(requiredLevel string) gin.HandlerFunc {
@@ -246,8 +241,8 @@ func getRepositoryPermission(db *gorm.DB, repo *hub.Repository, userID uint) str
 	if err == nil {
 		// User is an explicit collaborator
 		switch collab.Role {
-		case "admin":
-			return PermissionAdmin
+		case "owner":
+			return PermissionOwner
 		case "write":
 			return PermissionWrite
 		case "read":
@@ -287,8 +282,8 @@ func getRepositoryPermissionWithCollaboratorStatus(db *gorm.DB, repo *hub.Reposi
 	if err == nil {
 		// User is an explicit collaborator
 		switch collab.Role {
-		case "admin":
-			return PermissionAdmin, true
+		case "owner":
+			return PermissionOwner, true
 		case "write":
 			return PermissionWrite, true
 		case "read":
@@ -306,11 +301,10 @@ func getRepositoryPermissionWithCollaboratorStatus(db *gorm.DB, repo *hub.Reposi
 }
 
 // hasRequiredPermission checks if the user's current permission meets the requirement.
-// Permissions are hierarchical: owner > admin > write > read > none
+// Permissions are hierarchical: owner > write > read > none
 func hasRequiredPermission(current, required string) bool {
 	permissionHierarchy := map[string]int{
 		PermissionOwner: 5,
-		PermissionAdmin: 4,
 		PermissionWrite: 3,
 		PermissionRead:  2,
 		PermissionNone:  0,

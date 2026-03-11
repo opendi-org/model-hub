@@ -54,7 +54,7 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 			OwnerID:     user.ID,
 			Slug:        req.Slug,
 			Description: req.Description,
-			Visibility:  "private", // default to private
+			Visibility:  req.Visibility,
 		}
 
 		if err := db.Create(repo).Error; err != nil {
@@ -235,12 +235,11 @@ func GetRepository(db *gorm.DB) gin.HandlerFunc {
 		response.Tags = make([]dto.RepositoryTagInfo, len(tags))
 		for i, tag := range tags {
 			response.Tags[i] = dto.RepositoryTagInfo{
-				Name:      tag.Name,
-				Digest:    tag.ModelUUID,
-				Size:      tag.SizeBytes,
-				CreatedAt: tag.CreatedAt,
-				UpdatedAt: tag.UpdatedAt,
-				CreatedBy: tag.CreatedBy.Username,
+				Name:        tag.Name,
+				Digest:      tag.ModelUUID,
+				Size:        tag.SizeBytes,
+				LastUpdated: tag.UpdatedAt,
+				CreatedBy:   tag.CreatedBy.Username,
 			}
 		}
 
@@ -302,7 +301,7 @@ func GetRepository(db *gorm.DB) gin.HandlerFunc {
 // UpdateRepository handles UC-06: Update Repository
 // PATCH /v0/repositories/:owner/:slug
 // Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
-// Handler enforces PermissionAdmin or PermissionOwner
+// Handler enforces PermissionOwner
 func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Repository and permission already resolved by middleware
@@ -313,7 +312,7 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		permission := middleware.GetRepositoryPermission(c)
-		if permission != middleware.PermissionOwner && permission != middleware.PermissionAdmin {
+		if permission != middleware.PermissionOwner {
 			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
@@ -350,6 +349,7 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 		updateData := map[string]interface{}{
 			"slug":        req.Slug,
 			"description": req.Description,
+			"visibility":  req.Visibility,
 		}
 
 		if err := db.Model(repo).Updates(updateData).Error; err != nil {
