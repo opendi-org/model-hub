@@ -33,7 +33,7 @@ import (
 //   UPDATE repositories SET owner_id = <new_user_id> WHERE id = ?
 //   No extra table needed. Run inside one transaction with any collaborator
 //   cleanup. See open question in planning doc (Section 4): does the previous
-//   owner lose access or become an admin collaborator?
+//   owner lose access or become an owner collaborator?
 
 type Repository struct {
 	gorm.Model
@@ -54,7 +54,7 @@ func (Repository) TableName() string { return "hub_repositories" }
 //
 // Grants a User explicit access to a Repository.
 //
-// For public repos a collaborator row is only needed for write/admin access, or
+// For public repos a collaborator row is only needed for write/owner access, or
 // to make the collaborator list visible to that user (UC-05). For private repos
 // it is required for any access at all.
 //
@@ -65,7 +65,7 @@ func (Repository) TableName() string { return "hub_repositories" }
 // Roles (ascending privilege):
 //   "read"  — fetch tags and model content                          (UC-12, UC-20, UC-26)
 //   "write" — push and delete tags                                  (UC-23, UC-24, UC-25)
-//   "admin" — manage collaborators, visibility, transfer, delete    (UC-10, UC-11)
+//   "owner" — manage collaborators, visibility, transfer, delete    (UC-10, UC-11)
 //
 // Hard-delete: no DeletedAt column. Revoking access is a plain DELETE. A soft-
 // deleted row would silently block re-adding the same user because the unique
@@ -77,7 +77,7 @@ type Collaborator struct {
 	UpdatedAt time.Time `gorm:"type:timestamptz;autoUpdateTime;not null"`
 	RepoID    uint      `gorm:"uniqueIndex:idx_collab;not null"`
 	UserID    uint      `gorm:"uniqueIndex:idx_collab;not null"`
-	Role      string    `gorm:"type:text;default:'read';not null"` // "read"|"write"|"admin"
+	Role      string    `gorm:"type:text;default:'read';not null"` // "read"|"write"|"owner"
 
 	// Preload only
 	Repo Repository `gorm:"foreignKey:RepoID"`
@@ -85,4 +85,3 @@ type Collaborator struct {
 }
 
 func (Collaborator) TableName() string { return "hub_collaborators" }
-
