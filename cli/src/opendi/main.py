@@ -211,19 +211,19 @@ def search(
 
     try:
         response = requests.get(
-            f"{_API_BASE_URL}/v0/search",
+            f"{_API_BASE_URL}/v0/repositories",
             params={"q": query},
             headers=headers,
             timeout=10,
         )
         if response.status_code == 200:
-            repos = response.json()
+            repos = response.json().get("repositories", [])
             if not repos:
                 typer.echo("No repositories found.")
                 return
             for repo in repos:
                 visibility = typer.style(repo.get("visibility", ""), fg=typer.colors.YELLOW)
-                name = typer.style(repo.get("name", ""), fg=typer.colors.GREEN, bold=True)
+                name = typer.style(repo.get("slug", ""), fg=typer.colors.GREEN, bold=True)
                 description = repo.get("description", "")
                 line = f"{name} [{visibility}]"
                 if description:
@@ -246,21 +246,22 @@ def list_repos(
 ) -> None:
     """List repositories on the hub."""
     jwt = _require_credentials()
-    url = f"{_API_BASE_URL}/v0/repositories/{owner}" if owner else f"{_API_BASE_URL}/v0/repositories"
+    params = {"owner": owner} if owner else {}
     try:
         response = requests.get(
-            url,
+            f"{_API_BASE_URL}/v0/repositories",
+            params=params,
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=10,
         )
         if response.status_code == 200:
-            repos = response.json()
+            repos = response.json().get("repositories", [])
             if not repos:
                 typer.echo("No repositories found.")
                 return
             for repo in repos:
                 visibility = typer.style(repo.get("visibility", ""), fg=typer.colors.YELLOW)
-                name = typer.style(repo.get("name", ""), fg=typer.colors.GREEN, bold=True)
+                name = typer.style(repo.get("slug", ""), fg=typer.colors.GREEN, bold=True)
                 description = repo.get("description", "")
                 line = f"{name} [{visibility}]"
                 if description:
@@ -295,7 +296,7 @@ def create_repo(
     try:
         response = requests.post(
             f"{_API_BASE_URL}/v0/repositories",
-            json={"name": name, "description": description, "visibility": visibility},
+            json={"slug": name, "description": description, "visibility": visibility},
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=10,
         )
@@ -320,24 +321,28 @@ def create_repo(
 
 @app.command()
 def delete_repo(
-    name: str = typer.Argument(..., help="Repository name (slug) to delete"),
+    repo: str = typer.Argument(..., help="Repository to delete in owner/slug format (e.g. alice/my-repo)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
 ) -> None:
     """Permanently delete a repository and all associated data."""
+    if "/" not in repo or repo.count("/") != 1:
+        typer.echo("Repository must be in owner/slug format (e.g. alice/my-repo).", err=True)
+        raise typer.Exit(1)
+    owner, slug = repo.split("/", 1)
     jwt = _require_credentials()
     if not yes:
-        typer.confirm(f"Delete repository '{name}'? This cannot be undone.", abort=True)
+        typer.confirm(f"Delete repository '{repo}'? This cannot be undone.", abort=True)
     try:
         response = requests.delete(
-            f"{_API_BASE_URL}/v0/repositories/{name}",
+            f"{_API_BASE_URL}/v0/repositories/{owner}/{slug}",
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=10,
         )
         if response.status_code == 204:
-            typer.echo(f"Repository {typer.style(name, fg=typer.colors.GREEN, bold=True)} deleted.")
+            typer.echo(f"Repository {typer.style(repo, fg=typer.colors.GREEN, bold=True)} deleted.")
         elif response.status_code in (403, 404):
             typer.echo(
-                f"Repository '{name}' does not exist or you are not the owner.", err=True
+                f"Repository '{repo}' does not exist or you are not the owner.", err=True
             )
             raise typer.Exit(1)
         elif response.status_code == 401:
