@@ -18,7 +18,7 @@ export const RepositoryProvider = ({ children }) => {
     setLoading(true);
     try {
       const data = await APIClient.getRepositories('mine');
-      setRepositories(Array.isArray(data) ? data : data.repos ?? []);
+      setRepositories(Array.isArray(data) ? data : data.repositories ?? []);
     } catch (err) {
       console.error('Failed to fetch repositories:', err);
       setRepositories([]);

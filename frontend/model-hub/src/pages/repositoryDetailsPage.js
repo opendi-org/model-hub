@@ -59,12 +59,9 @@ const RepositoryDetailsPage = () => {
     setLoading(true);
     setError('');
     try {
-      const [repoData, tagsData] = await Promise.all([
-        APIClient.getRepositoryById(repositoryId),
-        APIClient.getRepositoryTags(repositoryId),
-      ]);
+      const repoData = await APIClient.getRepositoryById(repositoryId);
       setRepo(repoData);
-      setTags(Array.isArray(tagsData) ? tagsData : tagsData.tags ?? []);
+      setTags(repoData.tags ?? []);
     } catch (err) {
       setError(err.message || 'Failed to load repository.');
     } finally {
@@ -153,7 +150,7 @@ const RepositoryDetailsPage = () => {
     setDeleteSubmitting(true);
     try {
       await APIClient.deleteTag(repositoryId, selectedTag.name);
-      setTags((prev) => prev.filter((t) => t.id !== selectedTag.id));
+      setTags((prev) => prev.filter((t) => t.name !== selectedTag.name));
       setDeleteOpen(false);
       setSelectedTag(null);
     } catch (err) {
@@ -208,9 +205,9 @@ const RepositoryDetailsPage = () => {
             {repo.description}
           </Typography>
         )}
-        {repo?.owner?.username && (
+        {repo?.owner && (
           <Typography variant="body2" color="text.secondary">
-            Owner: {repo.owner.username}
+            Owner: {repo.owner}
           </Typography>
         )}
       </Card>
@@ -240,30 +237,34 @@ const RepositoryDetailsPage = () => {
             <TableHead>
               <TableRow>
                 <TableCell><strong>Tag</strong></TableCell>
-                <TableCell><strong>Model UUID</strong></TableCell>
+                <TableCell><strong>Digest</strong></TableCell>
                 <TableCell><strong>Size</strong></TableCell>
                 <TableCell><strong>Updated</strong></TableCell>
+                <TableCell><strong>Created By</strong></TableCell>
                 <TableCell align="right"><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {tags.map((tag) => (
-                <TableRow key={tag.id || tag.name} hover>
+                <TableRow key={tag.name} hover>
                   <TableCell>
                     <Chip label={tag.name} color="primary" size="small" sx={{ borderRadius: '12px' }} />
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" sx={{ fontFamily: 'monospace' }} noWrap>
-                      {tag.modelUUID || tag.model_uuid || '—'}
+                      {tag.digest || '—'}
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    {formatBytes(tag.sizeBytes ?? tag.size_bytes)}
+                    {formatBytes(tag.size)}
                   </TableCell>
                   <TableCell>
-                    {tag.updatedAt || tag.updated_at
-                      ? new Date(tag.updatedAt || tag.updated_at).toLocaleDateString()
+                    {tag.updatedAt
+                      ? new Date(tag.updatedAt).toLocaleDateString()
                       : '—'}
+                  </TableCell>
+                  <TableCell>
+                    {tag.createdBy || '—'}
                   </TableCell>
                   <TableCell align="right">
                     <IconButton
