@@ -23,6 +23,7 @@ import RepositoriesPage from "./pages/repositoriesPage";
 import RepositoryDetailsPage from "./pages/repositoryDetailsPage";
 import { UserProvider } from './context/UserContext';
 import { RepositoryProvider } from './context/RepositoryContext';
+import { NotificationProvider } from './context/NotificationContext';
 
 export const ColorModeContext = createContext({ toggleColorMode: () => {}, mode: 'light' });
 
@@ -48,9 +49,10 @@ function App() {
     <ColorModeContext.Provider value={colorMode}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <UserProvider>
-          <RepositoryProvider>
-            <Router>
+        <NotificationProvider>
+          <UserProvider>
+            <RepositoryProvider>
+              <Router>
               <Navbar />
               <Routes>
                 <Route exact path="/" element={<Home />} />
@@ -64,9 +66,10 @@ function App() {
                 <Route path="/user" element={<UserPage />} />
                 <Route path="/search" element={<SearchPage />} />
               </Routes>
-            </Router>
-          </RepositoryProvider>
-        </UserProvider>
+              </Router>
+            </RepositoryProvider>
+          </UserProvider>
+        </NotificationProvider>
       </ThemeProvider>
     </ColorModeContext.Provider>
   );

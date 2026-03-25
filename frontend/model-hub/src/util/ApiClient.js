@@ -163,6 +163,11 @@ export default class APIClient {
     return HTTPClient.post("/v0/repositories", data);
   }
 
+  /** PATCH /v0/repo/:id - update repository metadata. */
+  static async updateRepository(id, data) {
+    return HTTPClient.patch(`/v0/repo/${encodeURIComponent(id)}`, data);
+  }
+
   /** DELETE /v0/repo/:id - delete a repository (204 No Content). */
   static async deleteRepository(id) {
     const response = await fetch(HTTPClient.baseURL + `/v0/repo/${encodeURIComponent(id)}`, {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -14,33 +14,49 @@ import {
   DialogActions,
   Divider,
   IconButton,
+  Skeleton,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import PublicIcon from '@mui/icons-material/Public';
 import LockIcon from '@mui/icons-material/Lock';
+import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
+import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
 import { useDropzone } from 'react-dropzone';
 import APIClient from '../util/ApiClient';
 import { useUser } from '../context/UserContext';
+import { useRepositories } from '../context/RepositoryContext';
+import { useNotification } from '../context/NotificationContext';
 
 const RepositoryDetailsPage = () => {
   const { repositoryId } = useParams();
   const navigate = useNavigate();
   const { user } = useUser();
+  const { updateRepository: updateRepoInContext } = useRepositories();
+  const { showNotification } = useNotification();
 
   const [repo, setRepo] = useState(null);
   const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Sort state
+  const [sortField, setSortField] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
 
   // Add-tag dialog state
   const [addOpen, setAddOpen] = useState(false);
@@ -54,6 +70,14 @@ const RepositoryDetailsPage = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedTag, setSelectedTag] = useState(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+  // Edit repo dialog state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSlug, setEditSlug] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editVisibility, setEditVisibility] = useState('private');
+  const [editError, setEditError] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -72,6 +96,47 @@ const RepositoryDetailsPage = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // --- Sorting ---
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedTags = useMemo(() => {
+    const sorted = [...tags];
+    sorted.sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+      if (sortField === 'size') {
+        aVal = aVal ?? 0;
+        bVal = bVal ?? 0;
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      if (sortField === 'updatedAt') {
+        aVal = aVal ? new Date(aVal).getTime() : 0;
+        bVal = bVal ? new Date(bVal).getTime() : 0;
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      aVal = (aVal || '').toLowerCase();
+      bVal = (bVal || '').toLowerCase();
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [tags, sortField, sortDir]);
+
+  // --- Copy digest ---
+  const handleCopyDigest = (digest) => {
+    navigator.clipboard.writeText(digest).then(() => {
+      showNotification('Digest copied to clipboard', 'info');
+    });
+  };
 
   // --- Add Tag ---
   const handleAddOpen = () => {
@@ -126,6 +191,7 @@ const RepositoryDetailsPage = () => {
       }
       await APIClient.createOrUpdateTag(repositoryId, tagName.trim(), tagFileData);
       setAddOpen(false);
+      showNotification('Tag created successfully', 'success');
       await fetchData();
     } catch (err) {
       setAddError(err.message || 'Failed to create tag.');
@@ -153,17 +219,64 @@ const RepositoryDetailsPage = () => {
       setTags((prev) => prev.filter((t) => t.name !== selectedTag.name));
       setDeleteOpen(false);
       setSelectedTag(null);
+      showNotification('Tag deleted', 'success');
     } catch (err) {
-      setAddError(err.message || 'Failed to delete tag.');
+      showNotification(err.message || 'Failed to delete tag.', 'error');
     } finally {
       setDeleteSubmitting(false);
     }
   };
 
+  // --- Edit Repo ---
+  const handleEditOpen = () => {
+    setEditSlug(repo?.slug || '');
+    setEditDescription(repo?.description || '');
+    setEditVisibility(repo?.visibility || 'private');
+    setEditError('');
+    setEditOpen(true);
+  };
+
+  const handleEditClose = () => setEditOpen(false);
+
+  const handleEditSubmit = async () => {
+    if (!editSlug.trim()) {
+      setEditError('Repository name is required.');
+      return;
+    }
+    setEditSubmitting(true);
+    setEditError('');
+    try {
+      const updated = await APIClient.updateRepository(repositoryId, {
+        slug: editSlug.trim(),
+        description: editDescription.trim(),
+        visibility: editVisibility,
+      });
+      setRepo((prev) => ({ ...prev, ...updated }));
+      updateRepoInContext(Number(repositoryId), updated);
+      setEditOpen(false);
+      showNotification('Repository updated', 'success');
+    } catch (err) {
+      setEditError(err.message || 'Failed to update repository.');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  // --- Loading skeleton ---
   if (loading) {
     return (
-      <Container maxWidth="md" sx={{ py: 8, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress />
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Skeleton variant="text" width={180} height={36} sx={{ mb: 2 }} />
+        <Card sx={{ p: 3, mb: 3 }}>
+          <Skeleton variant="text" width="40%" height={40} />
+          <Skeleton variant="text" width="70%" height={20} sx={{ mt: 1 }} />
+          <Skeleton variant="text" width="30%" height={16} sx={{ mt: 1 }} />
+        </Card>
+        <Divider sx={{ mb: 3 }} />
+        <Skeleton variant="text" width={100} height={32} sx={{ mb: 2 }} />
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} variant="rectangular" height={48} sx={{ mb: 1, borderRadius: 1 }} />
+        ))}
       </Container>
     );
   }
@@ -179,6 +292,14 @@ const RepositoryDetailsPage = () => {
     );
   }
 
+  const sortableColumns = [
+    { id: 'name', label: 'Tag' },
+    { id: 'digest', label: 'Digest', sortable: false },
+    { id: 'size', label: 'Size' },
+    { id: 'updatedAt', label: 'Updated' },
+    { id: 'createdBy', label: 'Created By' },
+  ];
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Header */}
@@ -187,29 +308,38 @@ const RepositoryDetailsPage = () => {
       </Button>
 
       <Card sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-          <Typography variant="h4" fontWeight="bold">
-            {repo?.slug || repo?.name}
-          </Typography>
-          {repo?.visibility && (
-            <Chip
-              icon={repo.visibility === 'public' ? <PublicIcon /> : <LockIcon />}
-              label={repo.visibility}
-              size="small"
-              variant="outlined"
-            />
-          )}
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+              <Typography variant="h4" fontWeight="bold">
+                {repo?.slug || repo?.name}
+              </Typography>
+              {repo?.visibility && (
+                <Chip
+                  icon={repo.visibility === 'public' ? <PublicIcon /> : <LockIcon />}
+                  label={repo.visibility}
+                  size="small"
+                  variant="outlined"
+                />
+              )}
+            </Box>
+            {repo?.description && (
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
+                {repo.description}
+              </Typography>
+            )}
+            {repo?.owner && (
+              <Typography variant="body2" color="text.secondary">
+                Owner: {repo.owner}
+              </Typography>
+            )}
+          </Box>
+          <Tooltip title="Edit repository">
+            <IconButton onClick={handleEditOpen} sx={{ color: 'text.secondary' }}>
+              <EditOutlinedIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
-        {repo?.description && (
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
-            {repo.description}
-          </Typography>
-        )}
-        {repo?.owner && (
-          <Typography variant="body2" color="text.secondary">
-            Owner: {repo.owner}
-          </Typography>
-        )}
       </Card>
 
       <Divider sx={{ mb: 3 }} />
@@ -226,6 +356,7 @@ const RepositoryDetailsPage = () => {
 
       {tags.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6, color: 'text.secondary' }}>
+          <LabelOffOutlinedIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
           <Typography variant="body1">No tags yet.</Typography>
           <Typography variant="body2" sx={{ mt: 1 }}>
             Add a tag by uploading a CDM model file.
@@ -236,24 +367,43 @@ const RepositoryDetailsPage = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell><strong>Tag</strong></TableCell>
-                <TableCell><strong>Digest</strong></TableCell>
-                <TableCell><strong>Size</strong></TableCell>
-                <TableCell><strong>Updated</strong></TableCell>
-                <TableCell><strong>Created By</strong></TableCell>
+                {sortableColumns.map((col) => (
+                  <TableCell key={col.id}>
+                    {col.sortable === false ? (
+                      <strong>{col.label}</strong>
+                    ) : (
+                      <TableSortLabel
+                        active={sortField === col.id}
+                        direction={sortField === col.id ? sortDir : 'asc'}
+                        onClick={() => handleSort(col.id)}
+                      >
+                        <strong>{col.label}</strong>
+                      </TableSortLabel>
+                    )}
+                  </TableCell>
+                ))}
                 <TableCell align="right"><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {tags.map((tag) => (
+              {sortedTags.map((tag) => (
                 <TableRow key={tag.name} hover>
                   <TableCell>
                     <Chip label={tag.name} color="primary" size="small" sx={{ borderRadius: '12px' }} />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }} noWrap>
-                      {tag.digest || '—'}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }} noWrap>
+                        {tag.digest || '—'}
+                      </Typography>
+                      {tag.digest && (
+                        <Tooltip title="Copy digest">
+                          <IconButton size="small" onClick={() => handleCopyDigest(tag.digest)}>
+                            <ContentCopyOutlinedIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     {formatBytes(tag.size)}
@@ -300,7 +450,7 @@ const RepositoryDetailsPage = () => {
             {...getRootProps()}
             sx={{
               border: '2px dashed',
-              borderColor: isDragActive ? 'primary.main' : 'grey.400',
+              borderColor: isDragActive ? 'primary.main' : 'divider',
               borderRadius: 2,
               p: 4,
               textAlign: 'center',
@@ -354,6 +504,52 @@ const RepositoryDetailsPage = () => {
           <Button onClick={handleDeleteClose} disabled={deleteSubmitting}>Cancel</Button>
           <Button variant="contained" color="error" onClick={handleDeleteConfirm} disabled={deleteSubmitting}>
             {deleteSubmitting ? <CircularProgress size={20} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Repository Dialog */}
+      <Dialog open={editOpen} onClose={handleEditClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Repository</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          {editError && <Alert severity="error">{editError}</Alert>}
+          <TextField
+            label="Repository Name"
+            value={editSlug}
+            onChange={(e) => setEditSlug(e.target.value)}
+            fullWidth
+            autoFocus
+            required
+          />
+          <TextField
+            label="Description"
+            value={editDescription}
+            onChange={(e) => setEditDescription(e.target.value)}
+            fullWidth
+            multiline
+            rows={2}
+          />
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Visibility</Typography>
+            <ToggleButtonGroup
+              value={editVisibility}
+              exclusive
+              onChange={(_, val) => { if (val) setEditVisibility(val); }}
+              size="small"
+            >
+              <ToggleButton value="public">
+                <PublicIcon fontSize="small" sx={{ mr: 0.5 }} /> Public
+              </ToggleButton>
+              <ToggleButton value="private">
+                <LockIcon fontSize="small" sx={{ mr: 0.5 }} /> Private
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleEditClose} disabled={editSubmitting}>Cancel</Button>
+          <Button variant="contained" onClick={handleEditSubmit} disabled={editSubmitting}>
+            {editSubmitting ? <CircularProgress size={20} /> : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>

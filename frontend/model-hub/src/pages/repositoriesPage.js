@@ -7,17 +7,19 @@ import {
   CardActionArea,
   Chip,
   Container,
-  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   IconButton,
+  InputAdornment,
+  Skeleton,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import AddIcon from '@mui/icons-material/Add';
@@ -25,15 +27,40 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PublicIcon from '@mui/icons-material/Public';
 import LockIcon from '@mui/icons-material/Lock';
+import SearchIcon from '@mui/icons-material/Search';
+import FolderOffOutlinedIcon from '@mui/icons-material/FolderOffOutlined';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import APIClient from '../util/ApiClient';
 import { useUser } from '../context/UserContext';
 import { useRepositories } from '../context/RepositoryContext';
+import { useNotification } from '../context/NotificationContext';
+
+function timeAgo(dateString) {
+  if (!dateString) return '';
+  const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
 
 const RepositoriesPage = () => {
   const { user, loading: userLoading } = useUser();
-  const { repositories, loading: reposLoading, addRepository, removeRepository } = useRepositories();
+  const {
+    repositories, loading: reposLoading,
+    addRepository, removeRepository,
+    scope, changeScope,
+  } = useRepositories();
+  const { showNotification } = useNotification();
   const navigate = useNavigate();
 
+  const [searchQuery, setSearchQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState(null);
@@ -43,6 +70,13 @@ const RepositoriesPage = () => {
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const filtered = repositories.filter((r) => {
+    const q = searchQuery.toLowerCase();
+    return (r.slug || '').toLowerCase().includes(q) ||
+           (r.description || '').toLowerCase().includes(q) ||
+           (r.owner || '').toLowerCase().includes(q);
+  });
+
   const handleCreateOpen = () => {
     setFormSlug('');
     setFormDescription('');
@@ -51,9 +85,7 @@ const RepositoriesPage = () => {
     setCreateOpen(true);
   };
 
-  const handleCreateClose = () => {
-    setCreateOpen(false);
-  };
+  const handleCreateClose = () => setCreateOpen(false);
 
   const handleCreateSubmit = async () => {
     if (!formSlug.trim()) {
@@ -70,6 +102,7 @@ const RepositoriesPage = () => {
       });
       addRepository(repo);
       setCreateOpen(false);
+      showNotification('Repository created successfully', 'success');
     } catch (err) {
       setFormError(err.message || 'Failed to create repository.');
     } finally {
@@ -96,6 +129,7 @@ const RepositoriesPage = () => {
       removeRepository(selectedRepo.id);
       setDeleteOpen(false);
       setSelectedRepo(null);
+      showNotification('Repository deleted', 'success');
     } catch (err) {
       setFormError(err.message || 'Failed to delete repository.');
     } finally {
@@ -103,10 +137,17 @@ const RepositoriesPage = () => {
     }
   };
 
-  if (userLoading || reposLoading) {
+  if (userLoading) {
     return (
-      <Container maxWidth="md" sx={{ py: 8, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress />
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Skeleton variant="rectangular" height={48} sx={{ mb: 3, borderRadius: 1 }} />
+        <Grid container spacing={2}>
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Grid key={i} size={{ xs: 12, sm: 6, md: 4 }}>
+              <Skeleton variant="rectangular" height={160} sx={{ borderRadius: 1 }} />
+            </Grid>
+          ))}
+        </Grid>
       </Container>
     );
   }
@@ -136,17 +177,65 @@ const RepositoriesPage = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h4" fontWeight="bold">
-          My Repositories
+          Repositories
         </Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreateOpen}>
           Create Repository
         </Button>
       </Box>
 
-      {repositories.length === 0 ? (
+      {/* Scope Toggle */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+        <ToggleButtonGroup
+          value={scope}
+          exclusive
+          onChange={(_, val) => { if (val) changeScope(val); }}
+          size="small"
+        >
+          <ToggleButton value="mine">My Repos</ToggleButton>
+          <ToggleButton value="shared-with-me">Shared With Me</ToggleButton>
+          <ToggleButton value="all">All Public</ToggleButton>
+        </ToggleButtonGroup>
+
+        {/* Search */}
+        <TextField
+          size="small"
+          placeholder="Filter repositories..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+            },
+          }}
+          sx={{ minWidth: 240 }}
+        />
+      </Box>
+
+      {/* Loading skeleton */}
+      {reposLoading ? (
+        <Grid container spacing={2}>
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Grid key={i} size={{ xs: 12, sm: 6, md: 4 }}>
+              <Card sx={{ p: 2.5 }}>
+                <Skeleton variant="text" width="60%" height={32} />
+                <Skeleton variant="text" width="90%" height={20} sx={{ mt: 1 }} />
+                <Skeleton variant="rectangular" width="40%" height={24} sx={{ mt: 2, borderRadius: 1 }} />
+                <Skeleton variant="text" width="50%" height={16} sx={{ mt: 1.5 }} />
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      ) : repositories.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
+          <FolderOffOutlinedIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
           <Typography variant="body1">No repositories yet.</Typography>
           <Typography variant="body2" sx={{ mt: 1 }}>
             Create your first repository to start managing models and tags.
@@ -155,27 +244,35 @@ const RepositoriesPage = () => {
             Create a Repository
           </Button>
         </Box>
+      ) : filtered.length === 0 ? (
+        <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
+          <SearchIcon sx={{ fontSize: 48, mb: 1 }} />
+          <Typography variant="body1">No repositories match "{searchQuery}"</Typography>
+        </Box>
       ) : (
         <Grid container spacing={2}>
-          {repositories.map((repo) => (
+          {filtered.map((repo) => (
             <Grid key={repo.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <Card
                 sx={{
                   height: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  transition: 'box-shadow 0.2s',
-                  '&:hover': { boxShadow: 6 },
                 }}
               >
                 <CardActionArea
                   onClick={() => navigate(`/repositories/${repo.id}`)}
                   sx={{ flexGrow: 1, p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 1 }}>
-                    <Typography variant="h6" fontWeight={600} noWrap sx={{ flexGrow: 1 }}>
-                      {repo.slug || repo.name}
-                    </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 0.5 }}>
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {repo.owner}
+                      </Typography>
+                      <Typography variant="h6" fontWeight={600} noWrap>
+                        {repo.slug || repo.name}
+                      </Typography>
+                    </Box>
                     <IconButton
                       size="small"
                       onClick={(e) => handleDeleteOpen(e, repo)}
@@ -210,6 +307,15 @@ const RepositoriesPage = () => {
                       />
                     ))}
                   </Box>
+
+                  {repo.updatedAt && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1.5 }}>
+                      <AccessTimeIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                      <Typography variant="caption" color="text.secondary">
+                        Updated {timeAgo(repo.updatedAt)}
+                      </Typography>
+                    </Box>
+                  )}
                 </CardActionArea>
               </Card>
             </Grid>

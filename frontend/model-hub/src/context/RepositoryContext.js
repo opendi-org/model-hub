@@ -8,16 +8,18 @@ export const RepositoryProvider = ({ children }) => {
   const { user } = useUser();
   const [repositories, setRepositories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [scope, setScope] = useState('mine');
 
-  const refreshRepositories = useCallback(async () => {
-    if (!user) {
+  const refreshRepositories = useCallback(async (newScope) => {
+    const activeScope = newScope ?? scope;
+    if (!user && activeScope !== 'all') {
       setRepositories([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const data = await APIClient.getRepositories('mine');
+      const data = await APIClient.getRepositories(activeScope);
       setRepositories(Array.isArray(data) ? data : data.repositories ?? []);
     } catch (err) {
       console.error('Failed to fetch repositories:', err);
@@ -25,7 +27,12 @@ export const RepositoryProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, scope]);
+
+  const changeScope = useCallback((newScope) => {
+    setScope(newScope);
+    refreshRepositories(newScope);
+  }, [refreshRepositories]);
 
   useEffect(() => {
     refreshRepositories();
@@ -50,6 +57,8 @@ export const RepositoryProvider = ({ children }) => {
       value={{
         repositories,
         loading,
+        scope,
+        changeScope,
         addRepository,
         removeRepository,
         updateRepository,
