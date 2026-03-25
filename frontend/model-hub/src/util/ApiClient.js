@@ -163,9 +163,17 @@ export default class APIClient {
     return HTTPClient.post("/v0/repositories", data);
   }
 
-  /** DELETE /v0/repo/:id - delete a repository. */
+  /** DELETE /v0/repo/:id - delete a repository (204 No Content). */
   static async deleteRepository(id) {
-    return HTTPClient.delete(`/v0/repo/${encodeURIComponent(id)}`);
+    const response = await fetch(HTTPClient.baseURL + `/v0/repo/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${response.status}`);
+    }
+    return {};
   }
 
   // --- Tags ---
