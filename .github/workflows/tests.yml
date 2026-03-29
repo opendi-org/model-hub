@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [dev, auth-handler-tests]
+    branches: [dev]
   pull_request:
-    branches: [dev, auth-handler-tests]
+    branches: [dev]
 
 jobs:
 
@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: cli
-        run: uv pip install -e ".[dev]"
+        run: uv pip install --system -e ".[dev]"
 
       - name: Run tests
         working-directory: cli
