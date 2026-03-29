@@ -14,8 +14,6 @@ from oauthlib.oauth2.rfc6749.errors import AccessDeniedError
 from opendi import auth, credential_storage, log
 
 _API_BASE_URL = os.environ.get("OPENDI_API_URL", "http://localhost:8080")
-
-_API_BASE_URL = os.environ.get("OPENDI_API_URL", "http://localhost:8080")
 # Populated by main() before every command; None if not logged in.
 _current_token: str | None = None
 _had_creds: bool = False  # True when creds were found but a valid token couldn't be obtained.
@@ -340,77 +338,6 @@ def delete_repo(
         elif response.status_code in (403, 404):
             typer.echo(
                 f"Repository '{repo}' does not exist or you are not the owner.", err=True
-            )
-            raise typer.Exit(1)
-        elif response.status_code == 401:
-            typer.echo("Not authorised. Run `opendi login` to sign in again.", err=True)
-            raise typer.Exit(1)
-        else:
-            typer.echo(f"Failed to delete repository (HTTP {response.status_code}).", err=True)
-            raise typer.Exit(1)
-    except requests.ConnectionError:
-        typer.echo(f"Could not connect to the hub at {_API_BASE_URL}.", err=True)
-        raise typer.Exit(1)
-    except requests.Timeout:
-        typer.echo("Request timed out. Please try again.", err=True)
-        raise typer.Exit(1)
-
-
-@app.command()
-def create_repo(
-    name: str = typer.Argument(..., help="Repository name (slug)"),
-    description: str = typer.Option("", "--description", "-d", help="Short description"),
-    private: bool = typer.Option(True, "--private/--public", help="Visibility"),
-) -> None:
-    """Create a new repository on the hub."""
-    jwt = _require_credentials()
-    visibility = "private" if private else "public"
-    try:
-        response = requests.post(
-            f"{_API_BASE_URL}/v0/repositories",
-            json={"name": name, "description": description, "visibility": visibility},
-            headers={"Authorization": f"Bearer {jwt}"},
-            timeout=10,
-        )
-        if response.status_code == 201:
-            typer.echo(f"Repository {typer.style(name, fg=typer.colors.GREEN, bold=True)} created.")
-        elif response.status_code == 409:
-            typer.echo(f"A repository named '{name}' already exists.", err=True)
-            raise typer.Exit(1)
-        elif response.status_code == 401:
-            typer.echo("Not authorised. Run `opendi login` to sign in again.", err=True)
-            raise typer.Exit(1)
-        else:
-            typer.echo(f"Failed to create repository (HTTP {response.status_code}).", err=True)
-            raise typer.Exit(1)
-    except requests.ConnectionError:
-        typer.echo(f"Could not connect to the hub at {_API_BASE_URL}.", err=True)
-        raise typer.Exit(1)
-    except requests.Timeout:
-        typer.echo("Request timed out. Please try again.", err=True)
-        raise typer.Exit(1)
-
-
-@app.command()
-def delete_repo(
-    name: str = typer.Argument(..., help="Repository name (slug) to delete"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
-) -> None:
-    """Permanently delete a repository and all associated data."""
-    jwt = _require_credentials()
-    if not yes:
-        typer.confirm(f"Delete repository '{name}'? This cannot be undone.", abort=True)
-    try:
-        response = requests.delete(
-            f"{_API_BASE_URL}/v0/repositories/{name}",
-            headers={"Authorization": f"Bearer {jwt}"},
-            timeout=10,
-        )
-        if response.status_code == 204:
-            typer.echo(f"Repository {typer.style(name, fg=typer.colors.GREEN, bold=True)} deleted.")
-        elif response.status_code in (403, 404):
-            typer.echo(
-                f"Repository '{name}' does not exist or you are not the owner.", err=True
             )
             raise typer.Exit(1)
         elif response.status_code == 401:
