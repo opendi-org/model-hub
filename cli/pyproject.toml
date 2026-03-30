@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "google-auth-oauthlib>=1.2.4",
     "keyring>=25.0",
+    "requests>=2.32.0",
     "typer>=0.15.0",
 ]
 
@@ -20,6 +21,7 @@ opendi = "opendi.main:app"
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",
 ]
 
 [tool.setuptools.packages.find]
