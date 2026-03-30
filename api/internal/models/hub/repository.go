@@ -6,6 +6,12 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	CollaboratorRoleRead  = "read"
+	CollaboratorRoleWrite = "write"
+	CollaboratorRoleOwner = "owner"
+)
+
 // ── Repositories ──────────────────────────────────────────────────────────────
 //
 // A Repository is the named container for CDM tags, owned by a User.
@@ -77,7 +83,7 @@ type Collaborator struct {
 	UpdatedAt time.Time `gorm:"type:timestamptz;autoUpdateTime;not null"`
 	RepoID    uint      `gorm:"uniqueIndex:idx_collab;not null"`
 	UserID    uint      `gorm:"uniqueIndex:idx_collab;not null"`
-	Role      string    `gorm:"type:text;default:'read';not null"` // "read"|"write"|"owner"
+	Role      string    `gorm:"type:text;default:'read';not null"` // hub.CollaboratorRoleRead|Write|Owner
 
 	// Preload only
 	Repo Repository `gorm:"foreignKey:RepoID"`

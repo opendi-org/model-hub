@@ -69,6 +69,7 @@ func LoadConfig() (*Config, error) {
 		}
 		return n
 	}
+	devMode := os.Getenv("DEV_MODE") == "true"
 
 	cfg := &Config{
 		DBHostname: require("DB_HOSTNAME"),
@@ -91,7 +92,7 @@ func LoadConfig() (*Config, error) {
 		GoogleClientSecret: require("GOOGLE_CLIENT_SECRET"),
 		GoogleRedirectURL:  require("GOOGLE_REDIRECT_URL"),
 
-		DevMode: os.Getenv("DEV_MODE") == "true",
+		DevMode: devMode,
 	}
 
 	if len(missing) > 0 {

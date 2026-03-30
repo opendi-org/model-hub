@@ -19,6 +19,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import UserPage from "./pages/user";
 import SearchPage from "./pages/search";
+import NotFoundPage from "./pages/NotFound";
 import RepositoriesPage from "./pages/repositoriesPage";
 import RepositoryDetailsPage from "./pages/repositoryDetailsPage";
 import { UserProvider } from './context/UserContext';

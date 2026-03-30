@@ -3,6 +3,7 @@ package middleware
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -23,7 +24,7 @@ import (
 //   - Does NOT call next handler on error
 func ResolveRepositoryByOwnerSlug(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		owner := c.Param("owner")
+		owner := strings.ToLower(strings.TrimSpace(c.Param("owner")))
 		slug := c.Param("slug")
 
 		var repo hub.Repository

@@ -61,7 +61,6 @@ func Migrate(db *gorm.DB) error {
 		// Mutable hub-layer tables.
 		&hub.User{},
 		&hub.OAuthIdentity{},
-		&hub.RefreshToken{},
 		&hub.CLISession{},
 		&hub.Repository{},
 		&hub.Collaborator{},
