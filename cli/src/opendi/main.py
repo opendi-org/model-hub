@@ -38,23 +38,7 @@ def main(_ctx: typer.Context) -> None:
     _had_creds = False
     log.configure_logging()
 
-    creds = credential_storage.load_creds()
-    if creds is None:
-        return
-
-    _had_creds = True
-    id_token = credential_storage.load_id_token()
-
-    if creds.expired and creds.refresh_token:
-        try:
-            creds.refresh(Request())
-            credential_storage.store_all(creds)
-            id_token = creds.id_token
-        except Exception:
-            return  # _had_creds=True, _current_token=None → _require_token() will handle it
-
-    if id_token:
-        _current_token = id_token
+    _current_token = credential_storage.load_access_token()
 
 
 @app.command()
@@ -191,7 +175,7 @@ def list_repos(
     owner: str = typer.Argument(None, help="Owner username (defaults to all repositories)"),
 ) -> None:
     """List repositories on the hub."""
-    jwt = _require_token()
+    jwt = _require_access_token()
     params = {"owner": owner} if owner else {}
     try:
         response = requests.get(
@@ -237,7 +221,7 @@ def create_repo(
     private: bool = typer.Option(True, "--private/--public", help="Visibility"),
 ) -> None:
     """Create a new repository on the hub."""
-    jwt = _require_token()
+    jwt = _require_access_token()
     visibility = "private" if private else "public"
     try:
         response = requests.post(
@@ -275,7 +259,7 @@ def delete_repo(
         typer.echo("Repository must be in owner/slug format (e.g. alice/my-repo).", err=True)
         raise typer.Exit(1)
     owner, slug = repo.split("/", 1)
-    jwt = _require_token()
+    jwt = _require_access_token()
     if not yes:
         typer.confirm(f"Delete repository '{repo}'? This cannot be undone.", abort=True)
     try:
