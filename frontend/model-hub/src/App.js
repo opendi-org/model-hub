@@ -20,6 +20,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import UserPage from "./pages/user";
 import SearchPage from "./pages/search";
+import NotFoundPage from "./pages/NotFound";
 import { UserProvider } from './context/UserContext';
 
 export const ColorModeContext = createContext({ toggleColorMode: () => {}, mode: 'light' });
@@ -59,6 +60,7 @@ function App() {
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/user" element={<UserPage />} />
               <Route path="/search" element={<SearchPage />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </Router>
         </UserProvider>

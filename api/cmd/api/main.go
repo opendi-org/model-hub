@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"opendi.org/model-hub/api/internal/config"
 	"opendi.org/model-hub/api/internal/database"
+	"opendi.org/model-hub/api/internal/middleware"
 	"opendi.org/model-hub/api/internal/routes"
 )
 
@@ -41,6 +42,7 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
+	r.Use(middleware.CORS(cfg.DevMode))
 
 	// Health check — outside versioned API so load balancers can reach it
 	// without auth and without bumping the API version.

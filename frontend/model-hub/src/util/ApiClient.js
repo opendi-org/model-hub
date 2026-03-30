@@ -5,12 +5,12 @@ export default class APIClient {
 
   /** GET /auth/me - current user (session cookie). */
   static async getCurrentUser() {
-    return HTTPClient.get("/auth/me");
+    return HTTPClient.get("/v0/auth/me");
   }
 
   /** POST /auth/logout - logout. */
   static async logout() {
-    const response = await fetch(HTTPClient.baseURL + "/auth/logout", {
+    const response = await fetch(HTTPClient.baseURL + "/v0/auth/logout", {
       method: "POST",
       credentials: "include",
     });
@@ -19,13 +19,14 @@ export default class APIClient {
   }
 
   /** Full URL for Google OAuth login redirect. Backend serves /auth/... at root (no /api prefix). */
-  static getGoogleLoginUrl() {
-    return `${HTTPClient.baseURL}/auth/google/login`;
+  static getGoogleLoginUrl(username) {
+    const qs = username ? `?username=${encodeURIComponent(username)}` : "";
+    return `${HTTPClient.baseURL}/v0/auth/login/google/start${qs}`;
   }
 
   /** GET /auth/google/callback - exchange code/state for user; throws with error message on failure. */
   static async handleGoogleCallback(code, state) {
-    const url = `${HTTPClient.baseURL}/auth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+    const url = `${HTTPClient.baseURL}/v0/auth/login/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
     const response = await fetch(url, { method: "GET", credentials: "include" });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Authentication failed");
