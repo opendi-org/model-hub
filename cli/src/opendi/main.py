@@ -1,15 +1,9 @@
 """CLI entry point. Called when the user runs the `opendi` command."""
 
-import base64
-import json
 import os
-from pathlib import Path
 
 import requests
 import typer
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials as GoogleCredentials
-from oauthlib.oauth2.rfc6749.errors import AccessDeniedError
 
 from opendi import auth, credential_storage, log
 
@@ -24,68 +18,16 @@ app = typer.Typer(
 )
 
 
-def _resolve_oauth_client_secrets() -> Path:
-    """Resolve path to OAuth client secrets file (bundled or env override).
-
-    Returns:
-        Path to a GCP client_secret.json file.
-
-    Raises:
-        FileNotFoundError: If the env override path or bundled file is missing.
-    """
-    # Override: env var points to a GCP client_secret.json file path
-    env_path = os.environ.get("OPENDI_OAUTH_CLIENT_SECRETS")
-    if env_path:
-        path = Path(env_path)
-        if not path.is_file():
-            raise FileNotFoundError(
-                f"OPENDI_OAUTH_CLIENT_SECRETS points to missing file: {env_path}"
-            )
-        return path
-
-    # Default: bundled file next to this module
-    bundled = Path(__file__).resolve().parent / "client_secret.json"
-    if not bundled.is_file():
-        raise FileNotFoundError(
-            "OAuth client secrets not found. "
-            "Contributors: set OPENDI_OAUTH_CLIENT_SECRETS to your GCP file path, "
-            "or place client_secret.json in cli/src/opendi/. See README."
-        )
-    return bundled
+def _api_base_url() -> str:
+    return os.environ.get("OPENDI_API_URL", "http://localhost:8080").rstrip("/")
 
 
-def _require_token() -> str:
-    """Exit with an appropriate message if no valid token is available; otherwise return it."""
-    if _had_creds and _current_token is None:
-        credential_storage.delete()
-        typer.echo("Session expired. Run `opendi login` to sign in again.", err=True)
+def _require_access_token() -> str:
+    token = credential_storage.load_access_token()
+    if not token:
+        typer.echo("Not logged in. Please run `opendi login` first.", err=True)
         raise typer.Exit(1)
-    if _current_token is None:
-        typer.echo("Please run `opendi login` first.", err=True)
-        raise typer.Exit(1)
-    return _current_token
-
-
-def _get_email_from_id_token(id_token: str | None) -> str | None:
-    """Decode email from a Google id_token (JWT) without verification.
-
-    Only for display purposes — no signature check needed.
-    """
-    if not id_token:
-        return None
-    try:
-        payload_b64 = id_token.split(".")[1]
-        # Fix base64 padding.
-        payload_b64 += "=" * (-len(payload_b64) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-        return payload.get("email")
-    except Exception:
-        return None
-
-
-def _styled_email(email: str) -> str:
-    """Return email styled in bold green for terminal display."""
-    return typer.style(email, fg=typer.colors.GREEN, bold=True)
+    return token
 
 
 @app.callback(invoke_without_command=True)
@@ -117,54 +59,63 @@ def main(_ctx: typer.Context) -> None:
 
 @app.command()
 def login() -> None:
-    """Log in to the OpenDI hub (Google OAuth, local loopback)."""
+    """Log in to the OpenDI hub (browser-assisted device flow)."""
+    api_base = _api_base_url()
     try:
-        creds: GoogleCredentials | None = credential_storage.load_creds()
-        id_token = credential_storage.load_id_token()
+        token = credential_storage.load_access_token()
+        if token:
+            try:
+                me = auth.get_current_user(api_base, token)
+                username = me.get("username")
+                if username:
+                    typer.echo(f"Already logged in as {typer.style(username, fg=typer.colors.GREEN, bold=True)}.")
+                else:
+                    typer.echo("Already logged in.")
+                return
+            except Exception:
+                credential_storage.delete()
 
-        if creds is not None and id_token is not None:
-            email = _get_email_from_id_token(id_token)
-            if email:
-                typer.echo(f"Already logged in as {_styled_email(email)}.")
-            else:
-                typer.echo("Already logged in.")
-            return
-
-        # Full OAuth flow (opens browser). Refresh/errors are handled by other commands via _require_token().
-        client_secrets_path = _resolve_oauth_client_secrets()
-        creds = auth.run_login_flow(client_secrets_path)
-        credential_storage.store_all(creds)
-        email = _get_email_from_id_token(creds.id_token)
-        if email:
-            typer.echo(f"Login successful. Logged in as {_styled_email(email)}.")
+        code, login_url, expires_in = auth.start_cli_login(api_base)
+        absolute_url = auth.open_login_url(api_base, login_url)
+        typer.echo(f"Approve login in your browser:\n{absolute_url}")
+        token = auth.poll_cli_token(api_base, code, expires_in)
+        credential_storage.store_access_token(token)
+        me = auth.get_current_user(api_base, token)
+        username = me.get("username")
+        if username:
+            typer.echo(f"Login successful. Logged in as {typer.style(username, fg=typer.colors.GREEN, bold=True)}.")
         else:
             typer.echo("Login successful.")
-    except (KeyboardInterrupt, AccessDeniedError):
+    except KeyboardInterrupt:
         typer.echo("Login cancelled.", err=True)
         raise typer.Exit(1)
-    except FileNotFoundError as e:
-        # Setup problem: missing client secrets; message is actionable (path, README).
-        typer.echo(str(e), err=True)
+    except TimeoutError:
+        typer.echo("Login timed out. Please try again.", err=True)
         raise typer.Exit(1)
-    except AttributeError:
-        # No redirect received (timeout or closed tab); explain and suggest retry.
-        typer.echo("Login timed out or cancelled. Please try again.", err=True)
-        raise typer.Exit(1)
-    except Exception:
-        # Other OAuth or unexpected errors; generic retry.
-        typer.echo("Login failed. Please try again.", err=True)
+    except Exception as e:
+        typer.echo(f"Login failed: {e}", err=True)
         raise typer.Exit(1)
 
 
 @app.command()
 def whoami() -> None:
-    """Show the email for the currently logged-in account."""
-    jwt = _require_token()
-    email = _get_email_from_id_token(jwt)
-    if email:
-        typer.echo(_styled_email(email))
+    """Show the currently logged-in account."""
+    api_base = _api_base_url()
+    token = _require_access_token()
+    try:
+        me = auth.get_current_user(api_base, token)
+    except Exception:
+        credential_storage.delete()
+        typer.echo("Session expired. Run `opendi login` to sign in again.", err=True)
+        raise typer.Exit(1)
+    username = me.get("username")
+    email = me.get("email")
+    if username:
+        typer.echo(typer.style(username, fg=typer.colors.GREEN, bold=True))
+    elif email:
+        typer.echo(typer.style(email, fg=typer.colors.GREEN, bold=True))
     else:
-        typer.echo("Logged in (could not determine email).")
+        typer.echo("Logged in.")
 
 
 @app.command()
@@ -181,7 +132,7 @@ def pull(
     name: str = typer.Argument(..., help="Model or resource name to pull"),
 ) -> None:
     """Pull a model or resource from the hub."""
-    _require_token()
+    _require_access_token()
     typer.echo(f"Pull not yet implemented for: {name}")
 
 
@@ -190,7 +141,7 @@ def push(
     path: str = typer.Argument(..., help="Local path to push"),
 ) -> None:
     """Push a model or resource to the hub."""
-    _require_token()
+    _require_access_token()
     typer.echo(f"Push not yet implemented for: {path}")
 
 
