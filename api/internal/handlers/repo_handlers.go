@@ -15,11 +15,12 @@ import (
 
 // CreateRepository handles UC-03: Create Repository
 // POST /v0/repositories
+// Requires: RequireAuthentication middleware.
 func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user, err := middleware.GetCurrentUser(c)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		user, _ := middleware.GetCurrentUser(c)
+		if user == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "authenticated user missing from context"})
 			return
 		}
 
@@ -85,6 +86,7 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 
 // ListRepositories handles UC-04: Search Repositories
 // GET /v0/repositories/?q=...&scope=...&owner=...
+// Authentication is optional here; public requests are supported.
 func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query dto.SearchRepositoriesQuery
@@ -145,8 +147,9 @@ func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 
 		// Apply owner filter
 		if query.Owner != "" {
+			ownerName := strings.ToLower(strings.TrimSpace(query.Owner))
 			var ownerUser hub.User
-			if err := db.Model(&hub.User{}).Where("username = ?", query.Owner).First(&ownerUser).Error; err != nil {
+			if err := db.Model(&hub.User{}).Where("username = ?", ownerName).First(&ownerUser).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					// No repos for this owner
 					c.JSON(http.StatusOK, dto.ListRepositoriesResponse{
@@ -209,10 +212,6 @@ func GetRepository(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		permission := middleware.GetRepositoryPermission(c)
-		if permission == middleware.PermissionNone {
-			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-			return
-		}
 
 		// Build response
 		response := dto.RepositoryResponse{
@@ -301,6 +300,7 @@ func GetRepository(db *gorm.DB) gin.HandlerFunc {
 // UpdateRepository handles UC-06: Update Repository
 // PATCH /v0/repositories/:owner/:slug
 // Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Note: RequireAuthentication depends on AuthenticateRequest at /v0 router level.
 // Handler enforces PermissionOwner
 func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -308,12 +308,6 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 		repo := middleware.GetRepository(c)
 		if repo == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
-			return
-		}
-
-		permission := middleware.GetRepositoryPermission(c)
-		if permission != middleware.PermissionOwner {
-			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
 
@@ -380,6 +374,7 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 // DeleteRepository handles UC-07: Delete Repository
 // DELETE /v0/repositories/:owner/:slug
 // Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Note: RequireAuthentication depends on AuthenticateRequest at /v0 router level.
 // Handler enforces PermissionOwner only
 func DeleteRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -387,12 +382,6 @@ func DeleteRepository(db *gorm.DB) gin.HandlerFunc {
 		repo := middleware.GetRepository(c)
 		if repo == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
-			return
-		}
-
-		permission := middleware.GetRepositoryPermission(c)
-		if permission != middleware.PermissionOwner {
-			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
 

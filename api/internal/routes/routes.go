@@ -35,17 +35,23 @@ func repoScope(g *gin.RouterGroup) {
 // RegisterRoutes mounts all v0 endpoints from endpoints.md.
 func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	v0 := r.Group("/v0")
-	_ = cfg
+	cookieSecure := !cfg.DevMode
+	// MVP auth setup:
+	// - access token TTL comes from middleware default (single source of truth)
+	// - attach auth context + best-effort user hydration on every /v0 request
+	v0.Use(
+		middleware.AttachAuthContextWithCookieSecure(db, cfg.JWTSecret, 0, &cookieSecure),
+		middleware.AuthenticateRequest(),
+	)
 
-	// Auth: me, logout, token refresh, Google OAuth, CLI login/poll
+	// Auth: me, logout, Google OAuth, CLI login/poll
 	auth := v0.Group("/auth")
-	auth.GET("/me", mock)
-	auth.POST("/logout", mock)
-	auth.POST("/token/refresh", mock)
-	auth.GET("/login/google/start", mock)
-	auth.GET("/login/google/callback", mock)
-	auth.POST("/cli/login", mock)
-	auth.POST("/cli/poll", mock)
+	auth.GET("/me", middleware.RequireAuthentication(), handlers.AuthMe())
+	auth.POST("/logout", handlers.AuthLogout())
+	auth.GET("/login/google/start", handlers.GoogleStart(cfg))
+	auth.GET("/login/google/callback", handlers.GoogleCallback(db, cfg))
+	auth.POST("/cli/login", handlers.CLILogin(db))
+	auth.POST("/cli/poll", handlers.CLIPoll(db))
 
 	// Repositories
 	repos := v0.Group("/repositories")
@@ -58,9 +64,9 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		middleware.ResolveRepositoryByOwnerSlug(db),
 		middleware.CheckRepositoryAccess(db),
 	)
-	ownerSlugGroup.GET("", handlers.GetRepository(db))
-	ownerSlugGroup.PATCH("", middleware.RequireAuthentication(), handlers.UpdateRepository(db))
-	ownerSlugGroup.DELETE("", middleware.RequireAuthentication(), handlers.DeleteRepository(db))
+	ownerSlugGroup.GET("", middleware.RequireRepositoryPermission(middleware.PermissionRead), handlers.GetRepository(db))
+	ownerSlugGroup.PATCH("", middleware.RequireAuthentication(), middleware.RequireRepositoryPermission(middleware.PermissionOwner), handlers.UpdateRepository(db))
+	ownerSlugGroup.DELETE("", middleware.RequireAuthentication(), middleware.RequireRepositoryPermission(middleware.PermissionOwner), handlers.DeleteRepository(db))
 	// Remaining routes under this scope (tags, collaborators, etc.)
 	repoScope(ownerSlugGroup)
 
@@ -70,9 +76,9 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		middleware.ResolveRepositoryByID(db),
 		middleware.CheckRepositoryAccess(db),
 	)
-	idGroup.GET("", handlers.GetRepository(db))
-	idGroup.PATCH("", middleware.RequireAuthentication(), handlers.UpdateRepository(db))
-	idGroup.DELETE("", middleware.RequireAuthentication(), handlers.DeleteRepository(db))
+	idGroup.GET("", middleware.RequireRepositoryPermission(middleware.PermissionRead), handlers.GetRepository(db))
+	idGroup.PATCH("", middleware.RequireAuthentication(), middleware.RequireRepositoryPermission(middleware.PermissionOwner), handlers.UpdateRepository(db))
+	idGroup.DELETE("", middleware.RequireAuthentication(), middleware.RequireRepositoryPermission(middleware.PermissionOwner), handlers.DeleteRepository(db))
 	// Remaining routes under this scope (tags, collaborators, etc.)
 	repoScope(idGroup)
 

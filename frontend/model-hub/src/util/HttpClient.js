@@ -6,8 +6,9 @@ function handleResponse(response) {
 }
 
 export default class HTTPClient {
-  // React exposes env via process.env.REACT_APP_API_URL. When empty, use '/api' for proxy/Nginx.
-  static baseURL = process.env.REACT_APP_API_URL || '/api';
+  // React exposes env via process.env.REACT_APP_API_URL.
+  // Default to local API port for dev when env is not set.
+  static baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
 
   // GET request (credentials: include so session cookies are sent)
   static async get(url) {
