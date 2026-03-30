@@ -127,12 +127,10 @@ func TestCreateRepository_ValidRequest(t *testing.T) {
 	user := createTestUser(t, db, "testuser")
 
 	router := gin.New()
-	// Set authenticated user (must be before route registration)
-	router.Use(func(c *gin.Context) {
+	router.POST("/repositories", func(c *gin.Context) {
 		middleware.SetCurrentUser(c, user)
-		c.Next()
+		CreateRepository(db)(c)
 	})
-	router.POST("/repositories", CreateRepository(db))
 
 	req := dto.CreateRepositoryRequest{
 		Slug:        "test-repo",
@@ -166,12 +164,10 @@ func TestCreateRepository_InvalidSlug(t *testing.T) {
 	user := createTestUser(t, db, "testuser")
 
 	router := gin.New()
-	// Set authenticated user (must be before route registration)
-	router.Use(func(c *gin.Context) {
+	router.POST("/repositories", func(c *gin.Context) {
 		middleware.SetCurrentUser(c, user)
-		c.Next()
+		CreateRepository(db)(c)
 	})
-	router.POST("/repositories", CreateRepository(db))
 
 	tests := []string{
 		"test repo", // spaces not allowed
@@ -205,12 +201,10 @@ func TestCreateRepository_DuplicateSlug(t *testing.T) {
 	createTestRepository(t, db, user.ID, "existing-repo", "private")
 
 	router := gin.New()
-	// Set authenticated user (must be before route registration)
-	router.Use(func(c *gin.Context) {
+	router.POST("/repositories", func(c *gin.Context) {
 		middleware.SetCurrentUser(c, user)
-		c.Next()
+		CreateRepository(db)(c)
 	})
-	router.POST("/repositories", CreateRepository(db))
 
 	req := dto.CreateRepositoryRequest{
 		Slug:       "existing-repo",
@@ -301,12 +295,10 @@ func TestListRepositories_UserOwnedRepos(t *testing.T) {
 	createTestRepository(t, db, user.ID, "my-repo-2", "private")
 
 	router := gin.New()
-	// Set authenticated user (must be before route registration)
-	router.Use(func(c *gin.Context) {
+	router.GET("/repositories", func(c *gin.Context) {
 		middleware.SetCurrentUser(c, user)
-		c.Next()
+		ListRepositories(db)(c)
 	})
-	router.GET("/repositories", ListRepositories(db))
 
 	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
 	w := httptest.NewRecorder()
