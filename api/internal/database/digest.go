@@ -7,7 +7,7 @@ package database
 //   2. Compute content-addressed UUIDs for every CDM child type and the root.
 //   3. Rewrite cross-references inside JSONB blobs after child UUIDs are known.
 //   4. Strip hub-managed meta fields so they never affect the content hash.
-//
+//                
 // All functions are pure (no I/O, no global state).
 // The single entry point used by store.go is assignDigests.
 

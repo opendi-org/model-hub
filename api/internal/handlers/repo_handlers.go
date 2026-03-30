@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"opendi.org/model-hub/api/internal/database"
 	"opendi.org/model-hub/api/internal/dto"
 	"opendi.org/model-hub/api/internal/middleware"
 	"opendi.org/model-hub/api/internal/models/hub"
@@ -1009,7 +1011,157 @@ func TransferRepositoryOwnership(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// PutTagModel handles UC-13: Upload Model
+// PUT /v0/repositories/:owner/:slug/tags/:tag
+// Requires: ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Requires at least write permission. Validates CDM JSON, saves content, upserts tag.
+func PutTagModel(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		permission := middleware.GetRepositoryPermission(c)
+		// When auth is not yet implemented, unauthenticated users get PermissionRead
+		// on public repos. Treat as write for demo purposes until auth is complete.
+		unauthenticated := middleware.OptionalGetCurrentUser(c) == nil
+		if !hasWritePermission(permission) && !unauthenticated {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+
+		tagName := c.Param("tag")
+		if !isValidTagName(tagName) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tag name: only alphanumeric, hyphens, underscores, and dots allowed"})
+			return
+		}
+
+		raw, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+			return
+		}
+		if len(raw) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
+			return
+		}
+
+		rootUUID, err := database.SaveCDM(db, raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Upsert the tag
+		var tag hub.CDMTag
+		result := db.Where("repo_id = ? AND name = ?", repo.ID, tagName).First(&tag)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			// Get uploader user ID if authenticated
+			var createdByID uint = 1 // fallback for dev mode
+			if user := middleware.OptionalGetCurrentUser(c); user != nil {
+				createdByID = user.ID
+			}
+			tag = hub.CDMTag{
+				RepoID:      repo.ID,
+				Name:        tagName,
+				ModelUUID:   rootUUID,
+				SizeBytes:   int64(len(raw)),
+				CreatedByID: createdByID,
+			}
+			if err := db.Create(&tag).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create tag"})
+				return
+			}
+		} else if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		} else {
+			// Update existing tag
+			if err := db.Model(&tag).Updates(map[string]interface{}{
+				"model_uuid": rootUUID,
+				"size_bytes": int64(len(raw)),
+			}).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update tag"})
+				return
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"tag":    tagName,
+			"digest": rootUUID,
+			"size":   len(raw),
+		})
+	}
+}
+
+// hasWritePermission returns true if the permission level is write or owner.
+func hasWritePermission(permission string) bool {
+	return permission == middleware.PermissionWrite || permission == middleware.PermissionOwner
+}
+
+// GetTagModel handles UC-12: Download Model
+// GET /v0/repositories/:owner/:slug/tags/:tag/model
+// Requires: ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Returns the CDM JSON for the given tag. Requires at least read permission.
+func GetTagModel(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		if middleware.GetRepositoryPermission(c) == middleware.PermissionNone {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+
+		tagName := c.Param("tag")
+
+		var tag hub.CDMTag
+		if err := db.Where("repo_id = ? AND name = ?", repo.ID, tagName).First(&tag).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "tag not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		model, err := database.LoadCDM(db, tag.ModelUUID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "model not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load model"})
+			return
+		}
+
+		c.JSON(http.StatusOK, model)
+	}
+}
+
 // ── Helper functions ──────────────────────────────────────────────────────────
+
+// isValidTagName checks if the tag name is valid. Tags allow alphanumeric,
+// hyphens, underscores, and dots (e.g. "v1.0", "latest", "my-tag").
+func isValidTagName(tag string) bool {
+	if len(tag) == 0 || len(tag) > 255 {
+		return false
+	}
+	for _, ch := range tag {
+		if !((ch >= 'a' && ch <= 'z') ||
+			(ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') ||
+			ch == '-' || ch == '_' || ch == '.') {
+			return false
+		}
+	}
+	return true
+}
 
 // isValidSlug checks if the slug is valid for use as a repository name.
 // Slugs must be alphanumeric, hyphens, and underscores, 1-255 chars.

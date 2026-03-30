@@ -18,11 +18,11 @@ func mock(c *gin.Context) {
 
 // repoScope mounts additional routes for a single repo (tags, collaborators, transfer, lineage, fork).
 // The base GET/PATCH/DELETE routes are mounted separately by the caller to allow middleware injection.
-func repoScope(g *gin.RouterGroup) {
+func repoScope(g *gin.RouterGroup, db *gorm.DB) {
 	g.GET("/tags", mock)
 	g.GET("/tags/:tag", mock)
-	g.GET("/tags/:tag/model", mock)
-	g.PUT("/tags/:tag", mock)
+	g.GET("/tags/:tag/model", handlers.GetTagModel(db))
+	g.PUT("/tags/:tag", handlers.PutTagModel(db))
 	g.DELETE("/tags/:tag", mock)
 	g.GET("/collaborators", mock)
 	g.PUT("/collaborators/:username", mock)

@@ -5,7 +5,10 @@ import os
 import requests
 import typer
 
-from opendi import auth, credential_storage, log
+from opendi import auth, credential_storage, local_store, log
+
+# Base URL for the OpenDI API. Override with OPENDI_API_URL environment variable.
+_API_BASE = os.environ.get("OPENDI_API_URL", "http://localhost:8080")
 
 _API_BASE_URL = os.environ.get("OPENDI_API_URL", "http://localhost:8080")
 # Populated by main() before every command; None if not logged in.
@@ -113,20 +116,127 @@ def logout() -> None:
 
 @app.command()
 def pull(
-    name: str = typer.Argument(..., help="Model or resource name to pull"),
+    name: str = typer.Argument(..., help="Model ref to pull: owner/repo:tag"),
+    output: str = typer.Option(None, "--output", "-o", help="Output file path (default: <tag>.json)"),
 ) -> None:
-    """Pull a model or resource from the hub."""
-    _require_access_token()
-    typer.echo(f"Pull not yet implemented for: {name}")
+    """Pull a model from the hub and save it as a JSON file.
+
+    NAME format: owner/repo:tag  (e.g. alice/my-model:v1.0)
+    """
+    # Parse owner/repo:tag
+    if "/" not in name or ":" not in name:
+        typer.echo("Invalid format. Use: owner/repo:tag", err=True)
+        raise typer.Exit(1)
+
+    repo_part, tag = name.rsplit(":", 1)
+    owner, repo_slug = repo_part.split("/", 1)
+
+    if not owner or not repo_slug or not tag:
+        typer.echo("Invalid format. Use: owner/repo:tag", err=True)
+        raise typer.Exit(1)
+
+    # Try authenticated download first; fall back to unauthenticated for public repos.
+    headers: dict[str, str] = {}
+    creds = credential_storage.load_creds()
+    if creds is not None:
+        try:
+            jwt = _require_credentials()
+            headers["Authorization"] = f"Bearer {jwt}"
+        except SystemExit:
+            pass  # expired/invalid — proceed unauthenticated
+
+    url = f"{_API_BASE}/v0/repositories/{owner}/{repo_slug}/tags/{tag}/model"
+    try:
+        response = requests.get(url, headers=headers, timeout=30)
+    except requests.ConnectionError:
+        typer.echo(f"Could not connect to {_API_BASE}. Is the server running?", err=True)
+        raise typer.Exit(1)
+
+    if response.status_code == 404:
+        typer.echo(f"Not found: {name}", err=True)
+        raise typer.Exit(1)
+    if response.status_code == 403:
+        typer.echo("Access denied. Run `opendi login` if this is a private repository.", err=True)
+        raise typer.Exit(1)
+    if not response.ok:
+        typer.echo(f"Server error {response.status_code}: {response.text}", err=True)
+        raise typer.Exit(1)
+
+    out_path = Path(output) if output else Path(f"{tag}.json")
+    out_path.write_text(response.text, encoding="utf-8")
+    local_store.save_model(owner, repo_slug, tag, response.text)
+    typer.echo(f"Downloaded {name} → {out_path}")
 
 
 @app.command()
 def push(
-    path: str = typer.Argument(..., help="Local path to push"),
+    path: str = typer.Argument(..., help="Local CDM JSON file to push"),
+    name: str = typer.Option(..., "--name", "-n", help="Target ref: owner/repo:tag"),
 ) -> None:
-    """Push a model or resource to the hub."""
-    _require_access_token()
-    typer.echo(f"Push not yet implemented for: {path}")
+    """Push a local CDM JSON file to the hub.
+
+    Example:
+      opendi push model.json --name alice/my-repo:v1.0
+    """
+    # Parse owner/repo:tag
+    if "/" not in name or ":" not in name:
+        typer.echo("Invalid --name format. Use: owner/repo:tag", err=True)
+        raise typer.Exit(1)
+
+    repo_part, tag = name.rsplit(":", 1)
+    owner, repo_slug = repo_part.split("/", 1)
+
+    if not owner or not repo_slug or not tag:
+        typer.echo("Invalid --name format. Use: owner/repo:tag", err=True)
+        raise typer.Exit(1)
+
+    # Read local file
+    file_path = Path(path)
+    if not file_path.is_file():
+        typer.echo(f"File not found: {path}", err=True)
+        raise typer.Exit(1)
+
+    raw = file_path.read_bytes()
+
+    # Auth header (optional — works without auth in dev mode for public repos)
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    creds = credential_storage.load_creds()
+    if creds is not None:
+        try:
+            jwt = _require_credentials()
+            headers["Authorization"] = f"Bearer {jwt}"
+        except SystemExit:
+            pass
+
+    url = f"{_API_BASE}/v0/repositories/{owner}/{repo_slug}/tags/{tag}"
+    try:
+        response = requests.put(url, data=raw, headers=headers, timeout=60)
+    except requests.ConnectionError:
+        typer.echo(f"Could not connect to {_API_BASE}. Is the server running?", err=True)
+        raise typer.Exit(1)
+
+    if response.status_code == 400:
+        typer.echo(f"Validation error: {response.json().get('error', response.text)}", err=True)
+        raise typer.Exit(1)
+    if response.status_code == 403:
+        typer.echo("Access denied. You need write access to this repository.", err=True)
+        raise typer.Exit(1)
+    if response.status_code == 404:
+        typer.echo(f"Repository not found: {owner}/{repo_slug}", err=True)
+        raise typer.Exit(1)
+    if not response.ok:
+        typer.echo(f"Server error {response.status_code}: {response.text}", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Pushed {file_path.name} → {name}")
+    try:
+        result = response.json()
+        digest = result.get("digest", "unknown")
+        size = result.get("size", "unknown")
+        typer.echo(f"  digest: {digest}")
+        typer.echo(f"  size:   {size} bytes")
+    except Exception:
+        typer.echo(f"  (raw response: {response.text[:200]})")
 
 
 @app.command()
