@@ -26,6 +26,8 @@ jobs:
 
       - name: Run tests
         working-directory: cli
+        env:
+          PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
         run: pytest tests/ -v
 
   api-tests:
