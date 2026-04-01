@@ -85,8 +85,13 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 }
 
 // ListRepositories handles UC-04: Search Repositories
+<<<<<<< auth-rework
 // GET /v0/repositories/?q=...&scope=...&owner=...
 // Authentication is optional here; public requests are supported.
+=======
+// GET /v0/repositories/?q=...&owner=...&visibility=...&sortBy=...&sortOrder=...
+// Search across user's repositories (owned or shared)
+>>>>>>> dev
 func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query dto.SearchRepositoriesQuery
@@ -95,48 +100,29 @@ func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Default scope to "all"
-		if query.Scope == "" {
-			query.Scope = "all"
+		// Set defaults
+		if query.SortBy == "" {
+			query.SortBy = "updated"
+		}
+		if query.SortOrder == "" {
+			query.SortOrder = "desc"
 		}
 
-		user := middleware.OptionalGetCurrentUser(c)
-		var userID uint
-		isAuthenticated := user != nil
-		if isAuthenticated {
-			userID = user.ID
+		// Get authenticated user (required by middleware)
+		user, err := middleware.GetCurrentUser(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
 		}
 
 		dbQuery := db.Model(&hub.Repository{})
 
-		// Apply scope filter
-		switch query.Scope {
-		case "mine":
-			if !isAuthenticated {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "must be authenticated to view your repositories"})
-				return
-			}
-			dbQuery = dbQuery.Where("owner_id = ?", userID)
+		// Show all accessible repositories: owned + shared (for personal search)
+		dbQuery = dbQuery.Where("owner_id = ? OR id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)", user.ID, user.ID)
 
-		case "shared-with-me":
-			if !isAuthenticated {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "must be authenticated to view shared repositories"})
-				return
-			}
-			dbQuery = dbQuery.Joins("INNER JOIN hub_collaborators ON hub_collaborators.repo_id = hub_repositories.id").
-				Where("hub_collaborators.user_id = ?", userID)
-
-		case "all":
-			// Show public repos, or if authenticated: public + owned + shared
-			if isAuthenticated {
-				dbQuery = dbQuery.Where("visibility = 'public' OR owner_id = ? OR id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)", userID, userID)
-			} else {
-				dbQuery = dbQuery.Where("visibility = 'public'")
-			}
-
-		default:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scope"})
-			return
+		// Apply visibility filter
+		if query.Visibility != "" && (query.Visibility == "public" || query.Visibility == "private") {
+			dbQuery = dbQuery.Where("visibility = ?", query.Visibility)
 		}
 
 		// Apply search filter
@@ -170,6 +156,25 @@ func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 			return
 		}
+
+		// Apply sorting
+		sortColumn := "updated_at"
+		switch query.SortBy {
+		case "name":
+			sortColumn = "slug"
+		case "created":
+			sortColumn = "created_at"
+		case "updated":
+			sortColumn = "updated_at"
+		}
+
+		sortDir := "DESC"
+		if query.SortOrder == "asc" {
+			sortDir = "ASC"
+		}
+
+		// Apply sorting
+		dbQuery = dbQuery.Order(sortColumn + " " + sortDir)
 
 		// Fetch repositories
 		var repos []hub.Repository
@@ -392,6 +397,120 @@ func DeleteRepository(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusNoContent, nil)
+	}
+}
+
+// GlobalSearch handles generic full-text search across all public repositories
+// GET /v0/search?q=...&owner=...&visibility=...&sortBy=...&sortOrder=...
+// No authentication required; only searches public repos unless authenticated
+func GlobalSearch(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var query dto.SearchRepositoriesQuery
+		if err := c.ShouldBindQuery(&query); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Set defaults
+		if query.SortBy == "" {
+			query.SortBy = "updated"
+		}
+		if query.SortOrder == "" {
+			query.SortOrder = "desc"
+		}
+
+		user := middleware.OptionalGetCurrentUser(c)
+		var userID uint
+		isAuthenticated := user != nil
+		if isAuthenticated {
+			userID = user.ID
+		}
+
+		dbQuery := db.Model(&hub.Repository{})
+
+		// Visibility filter: only include public repos (or user's own/shared if authenticated)
+		if query.Visibility == "public" || query.Visibility == "" {
+			if isAuthenticated {
+				dbQuery = dbQuery.Where("visibility = 'public' OR owner_id = ? OR id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)", userID, userID)
+			} else {
+				dbQuery = dbQuery.Where("visibility = 'public'")
+			}
+		}
+
+		// Full-text search on slug and description
+		if query.Q != "" {
+			searchTerm := "%" + strings.ToLower(query.Q) + "%"
+			dbQuery = dbQuery.Where("LOWER(slug) LIKE ? OR LOWER(description) LIKE ?", searchTerm, searchTerm)
+		}
+
+		// Apply owner filter
+		if query.Owner != "" {
+			var ownerUser hub.User
+			if err := db.Model(&hub.User{}).Where("username = ?", query.Owner).First(&ownerUser).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					// No repos for this owner
+					c.JSON(http.StatusOK, dto.ListRepositoriesResponse{
+						Repositories: []dto.RepositoryListItem{},
+						Total:        0,
+					})
+					return
+				}
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+				return
+			}
+			dbQuery = dbQuery.Where("owner_id = ?", ownerUser.ID)
+		}
+
+		// Get total count
+		var total int64
+		if err := dbQuery.Count(&total).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		// Sorting
+		sortColumn := "updated_at"
+		switch query.SortBy {
+		case "name":
+			sortColumn = "slug"
+		case "created":
+			sortColumn = "created_at"
+		case "updated":
+			sortColumn = "updated_at"
+		}
+
+		sortDir := "DESC"
+		if query.SortOrder == "asc" {
+			sortDir = "ASC"
+		}
+
+		// Apply sorting
+		dbQuery = dbQuery.Order(sortColumn + " " + sortDir)
+
+		// Fetch repositories with owners
+		var repos []hub.Repository
+		if err := dbQuery.Preload("Owner").Find(&repos).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		items := make([]dto.RepositoryListItem, len(repos))
+		for i, repo := range repos {
+			items[i] = dto.RepositoryListItem{
+				ID:          repo.ID,
+				Owner:       repo.Owner.Username,
+				Slug:        repo.Slug,
+				Description: repo.Description,
+				Visibility:  repo.Visibility,
+				CreatedAt:   repo.CreatedAt,
+				UpdatedAt:   repo.UpdatedAt,
+			}
+		}
+
+		c.JSON(http.StatusOK, dto.ListRepositoriesResponse{
+			Repositories: items,
+			Total:        total,
+		})
 	}
 }
 
