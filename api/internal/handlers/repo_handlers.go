@@ -85,13 +85,8 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 }
 
 // ListRepositories handles UC-04: Search Repositories
-<<<<<<< auth-rework
-// GET /v0/repositories/?q=...&scope=...&owner=...
-// Authentication is optional here; public requests are supported.
-=======
 // GET /v0/repositories/?q=...&owner=...&visibility=...&sortBy=...&sortOrder=...
 // Search across user's repositories (owned or shared)
->>>>>>> dev
 func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query dto.SearchRepositoriesQuery
