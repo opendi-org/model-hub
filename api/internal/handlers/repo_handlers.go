@@ -20,7 +20,7 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, _ := middleware.GetCurrentUser(c)
 		if user == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "authenticated user missing from context"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
@@ -85,13 +85,8 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 }
 
 // ListRepositories handles UC-04: Search Repositories
-<<<<<<< auth-rework
-// GET /v0/repositories/?q=...&scope=...&owner=...
-// Authentication is optional here; public requests are supported.
-=======
 // GET /v0/repositories/?q=...&owner=...&visibility=...&sortBy=...&sortOrder=...
 // Search across user's repositories (owned or shared)
->>>>>>> dev
 func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query dto.SearchRepositoriesQuery
@@ -316,6 +311,11 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		if middleware.GetRepositoryPermission(c) != middleware.PermissionOwner {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can update this repository"})
+			return
+		}
+
 		var req dto.UpdateRepositoryRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -387,6 +387,11 @@ func DeleteRepository(db *gorm.DB) gin.HandlerFunc {
 		repo := middleware.GetRepository(c)
 		if repo == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		if middleware.GetRepositoryPermission(c) != middleware.PermissionOwner {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can delete this repository"})
 			return
 		}
 
