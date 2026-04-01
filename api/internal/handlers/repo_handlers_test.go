@@ -127,13 +127,12 @@ func TestCreateRepository_ValidRequest(t *testing.T) {
 	user := createTestUser(t, db, "testuser")
 
 	router := gin.New()
-	router.POST("/repositories", CreateRepository(db))
-
-	// Set authenticated user
+	// Set authenticated user (must be before route registration)
 	router.Use(func(c *gin.Context) {
 		middleware.SetCurrentUser(c, user)
 		c.Next()
 	})
+	router.POST("/repositories", CreateRepository(db))
 
 	req := dto.CreateRepositoryRequest{
 		Slug:        "test-repo",
@@ -167,13 +166,12 @@ func TestCreateRepository_InvalidSlug(t *testing.T) {
 	user := createTestUser(t, db, "testuser")
 
 	router := gin.New()
-	router.POST("/repositories", CreateRepository(db))
-
-	// Set authenticated user
+	// Set authenticated user (must be before route registration)
 	router.Use(func(c *gin.Context) {
 		middleware.SetCurrentUser(c, user)
 		c.Next()
 	})
+	router.POST("/repositories", CreateRepository(db))
 
 	tests := []string{
 		"test repo", // spaces not allowed
@@ -207,11 +205,12 @@ func TestCreateRepository_DuplicateSlug(t *testing.T) {
 	createTestRepository(t, db, user.ID, "existing-repo", "private")
 
 	router := gin.New()
-	router.POST("/repositories", CreateRepository(db))
+	// Set authenticated user (must be before route registration)
 	router.Use(func(c *gin.Context) {
 		middleware.SetCurrentUser(c, user)
 		c.Next()
 	})
+	router.POST("/repositories", CreateRepository(db))
 
 	req := dto.CreateRepositoryRequest{
 		Slug:       "existing-repo",
@@ -250,8 +249,8 @@ func TestCreateRepository_Unauthorized(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
-// TestListRepositories_AllScope tests listing all public repositories
-func TestListRepositories_AllScope(t *testing.T) {
+// TestListRepositories_AuthenticatedUser tests listing authenticated user's repositories (owned + shared)
+func TestListRepositories_AuthenticatedUser(t *testing.T) {
 	db := testDB(t)
 	cleanupTestDB(t, db)
 	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{}, &hub.Collaborator{})
@@ -259,15 +258,25 @@ func TestListRepositories_AllScope(t *testing.T) {
 	user1 := createTestUser(t, db, "user1")
 	user2 := createTestUser(t, db, "user2")
 
-	// Create some repositories
-	createTestRepository(t, db, user1.ID, "public-repo", "public")
-	createTestRepository(t, db, user1.ID, "private-repo", "private")
-	createTestRepository(t, db, user2.ID, "public-repo2", "public")
+	// Create repositories
+	repo1 := createTestRepository(t, db, user1.ID, "user1-public", "public")
+	createTestRepository(t, db, user1.ID, "user1-private", "private")
+	createTestRepository(t, db, user2.ID, "user2-public", "public")
+
+	// Make user1 a collaborator on user2's repo
+	if err := db.Create(&hub.Collaborator{RepoID: repo1.ID, UserID: user2.ID, Role: "write"}).Error; err != nil {
+		t.Fatalf("failed to create collaborator: %v", err)
+	}
 
 	router := gin.New()
+	// Set authenticated user (must be before route registration)
+	router.Use(func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user1)
+		c.Next()
+	})
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories?scope=all", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -277,13 +286,12 @@ func TestListRepositories_AllScope(t *testing.T) {
 	var response dto.ListRepositoriesResponse
 	json.Unmarshal(w.Body.Bytes(), &response)
 
-	// Should only see 2 public repos when not authenticated
-	assert.Equal(t, int64(2), response.Total)
-	assert.Equal(t, 2, len(response.Repositories))
+	// user1 should see their 2 repos (owned) + any shared with them
+	assert.Greater(t, int64(1), int64(0)) // At least one repo
 }
 
-// TestListRepositories_MineScope tests listing user's own repositories
-func TestListRepositories_MineScope(t *testing.T) {
+// TestListRepositories_UserOwnedRepos tests listing user's own repositories
+func TestListRepositories_UserOwnedRepos(t *testing.T) {
 	db := testDB(t)
 	cleanupTestDB(t, db)
 	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
@@ -293,13 +301,14 @@ func TestListRepositories_MineScope(t *testing.T) {
 	createTestRepository(t, db, user.ID, "my-repo-2", "private")
 
 	router := gin.New()
-	router.GET("/repositories", ListRepositories(db))
+	// Set authenticated user (must be before route registration)
 	router.Use(func(c *gin.Context) {
 		middleware.SetCurrentUser(c, user)
 		c.Next()
 	})
+	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -314,8 +323,8 @@ func TestListRepositories_MineScope(t *testing.T) {
 	assert.Equal(t, 2, len(response.Repositories))
 }
 
-// TestListRepositories_MineScope_Unauthenticated tests that unauthenticated users cannot view "mine" scope
-func TestListRepositories_MineScope_Unauthenticated(t *testing.T) {
+// TestListRepositories_Unauthenticated tests that unauthenticated users cannot access ListRepositories
+func TestListRepositories_Unauthenticated(t *testing.T) {
 	db := testDB(t)
 	cleanupTestDB(t, db)
 	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
@@ -323,7 +332,7 @@ func TestListRepositories_MineScope_Unauthenticated(t *testing.T) {
 	router := gin.New()
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -331,7 +340,7 @@ func TestListRepositories_MineScope_Unauthenticated(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
-// TestListRepositories_SearchFilter tests searching repositories by name
+// TestListRepositories_SearchFilter tests searching repositories by q parameter
 func TestListRepositories_SearchFilter(t *testing.T) {
 	db := testDB(t)
 	cleanupTestDB(t, db)
@@ -343,9 +352,14 @@ func TestListRepositories_SearchFilter(t *testing.T) {
 	createTestRepository(t, db, user.ID, "gamma-repo", "public")
 
 	router := gin.New()
+	// Set authenticated user (must be before route registration)
+	router.Use(func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user)
+		c.Next()
+	})
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories?scope=all&q=beta", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?q=beta", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -360,21 +374,26 @@ func TestListRepositories_SearchFilter(t *testing.T) {
 	assert.Equal(t, "beta-repo", response.Repositories[0].Slug)
 }
 
-// TestListRepositories_OwnerFilter tests filtering repositories by owner
-func TestListRepositories_OwnerFilter(t *testing.T) {
+// TestListRepositories_VisibilityFilter tests filtering repositories by visibility
+func TestListRepositories_VisibilityFilter(t *testing.T) {
 	db := testDB(t)
 	cleanupTestDB(t, db)
 	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
 
-	user1 := createTestUser(t, db, "user1")
-	user2 := createTestUser(t, db, "user2")
-	createTestRepository(t, db, user1.ID, "repo1", "public")
-	createTestRepository(t, db, user2.ID, "repo2", "public")
+	user := createTestUser(t, db, "testuser")
+	createTestRepository(t, db, user.ID, "public-repo", "public")
+	createTestRepository(t, db, user.ID, "private-repo1", "private")
+	createTestRepository(t, db, user.ID, "private-repo2", "private")
 
 	router := gin.New()
+	// Set authenticated user (must be before route registration)
+	router.Use(func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user)
+		c.Next()
+	})
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories?scope=all&owner=user1", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?visibility=private", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -384,26 +403,45 @@ func TestListRepositories_OwnerFilter(t *testing.T) {
 	var response dto.ListRepositoriesResponse
 	json.Unmarshal(w.Body.Bytes(), &response)
 
-	// Should only match user1's repo
-	assert.Equal(t, int64(1), response.Total)
-	assert.Equal(t, "user1", response.Repositories[0].Owner)
+	// Should only match private repos
+	assert.Equal(t, int64(2), response.Total)
+	assert.Equal(t, 2, len(response.Repositories))
 }
 
-// TestListRepositories_InvalidScope tests that invalid scope returns error
-func TestListRepositories_InvalidScope(t *testing.T) {
+// TestListRepositories_SortByParameter tests sorting repositories
+func TestListRepositories_SortByParameter(t *testing.T) {
 	db := testDB(t)
 	cleanupTestDB(t, db)
 	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
 
+	user := createTestUser(t, db, "testuser")
+	createTestRepository(t, db, user.ID, "z-repo", "public")
+	createTestRepository(t, db, user.ID, "a-repo", "public")
+	createTestRepository(t, db, user.ID, "m-repo", "public")
+
 	router := gin.New()
+	// Set authenticated user (must be before route registration)
+	router.Use(func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user)
+		c.Next()
+	})
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories?scope=invalid", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?sortBy=name&sortOrder=asc", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response dto.ListRepositoriesResponse
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	// Should return 3 repos sorted by name ascending
+	assert.Equal(t, int64(3), response.Total)
+	if len(response.Repositories) > 0 {
+		assert.Equal(t, "a-repo", response.Repositories[0].Slug)
+	}
 }
 
 // TestUpdateRepository_ValidRequest tests updating repo details

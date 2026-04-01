@@ -18,11 +18,15 @@ type UpdateRepositoryRequest struct {
 	Visibility  string `json:"visibility" binding:"required,oneof=public private"`
 }
 
-// SearchRepositoriesQuery represents query parameters for UC-04 (Search Repositories)
+// SearchRepositoriesQuery represents query parameters for both search endpoints
+// /v0/repositories (auth required) and /v0/search (optional auth)
+// Filters: visibility, search text, owner, sorting
 type SearchRepositoriesQuery struct {
-	Q     string `form:"q"`     // search text
-	Scope string `form:"scope"` // "mine", "shared-with-me", "all" (default: "all")
-	Owner string `form:"owner"` // when listing by owner
+	Q          string `form:"q"`          // search text (slug + description)
+	Visibility string `form:"visibility"` // "public", "private", or empty for all
+	Owner      string `form:"owner"`      // filter by owner username
+	SortBy     string `form:"sortBy"`     // "name", "updated", "created" (default: "updated")
+	SortOrder  string `form:"sortOrder"`  // "asc", "desc" (default: "desc")
 }
 
 // ── Response DTOs ─────────────────────────────────────────────────────────────
