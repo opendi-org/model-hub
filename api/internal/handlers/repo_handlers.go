@@ -20,7 +20,7 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, _ := middleware.GetCurrentUser(c)
 		if user == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "authenticated user missing from context"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
