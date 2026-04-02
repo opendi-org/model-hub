@@ -17,6 +17,8 @@ var (
 	ErrUsernameRequired     = errors.New("username required for first login")
 	ErrInvalidUsername      = errors.New("invalid username")
 	ErrUsernameAlreadyTaken = errors.New("username already taken")
+	ErrAccountAlreadyExists = errors.New("account already exists; please sign in instead")
+	ErrAccountNotFound      = errors.New("account not found; please sign up first")
 	ErrCLIInvalidOrExpired  = errors.New("invalid or expired cli approval code")
 	ErrCLINotFound          = errors.New("unknown code")
 	ErrCLIPending           = errors.New("pending")
@@ -115,11 +117,9 @@ func (s *AuthService) ResolveOrCreateUser(g *dto.GoogleIdentity, username string
 	var identity hub.OAuthIdentity
 	err := s.db.Where("provider = ? AND provider_user_id = ?", "google", g.Sub).First(&identity).Error
 	if err == nil {
-		var user hub.User
-		if err := s.db.First(&user, identity.UserID).Error; err != nil {
-			return nil, err
-		}
-		return &user, nil
+		// Google account is already linked to a ModelHub account
+		// Don't allow re-signup; user should use signin instead
+		return nil, ErrAccountAlreadyExists
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -176,6 +176,28 @@ func (s *AuthService) ResolveOrCreateUser(g *dto.GoogleIdentity, username string
 		return nil, err
 	}
 	return &created, nil
+}
+
+// ResolveExistingUser returns the user if their Google account is linked to a ModelHub account.
+// Returns ErrAccountNotFound if the account doesn't exist.
+func (s *AuthService) ResolveExistingUser(g *dto.GoogleIdentity) (*hub.User, error) {
+	if g == nil || strings.TrimSpace(g.Sub) == "" {
+		return nil, errors.New("invalid google identity")
+	}
+	var identity hub.OAuthIdentity
+	err := s.db.Where("provider = ? AND provider_user_id = ?", "google", g.Sub).First(&identity).Error
+	if err == nil {
+		var user hub.User
+		if err := s.db.First(&user, identity.UserID).Error; err != nil {
+			return nil, err
+		}
+		return &user, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	// Google account not linked to any ModelHub account
+	return nil, ErrAccountNotFound
 }
 
 func isValidUsername(username string) bool {

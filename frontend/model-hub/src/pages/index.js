@@ -98,14 +98,14 @@ const Home = () => {
                     >
                         <Typography variant="body1">No models found.</Typography>
                         <Typography variant="body2" sx={{ mt: 1 }}>
-                            Be the first to upload a model.
+                            Create a repository to start managing your models.
                         </Typography>
                         <Button
                             variant="contained"
-                            href="/uploadpage"
+                            href="/repositories"
                             sx={{ mt: 2 }}
                         >
-                            Upload a model
+                            Create a Repository
                         </Button>
                     </Box>
                 ) : (

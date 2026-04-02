@@ -32,7 +32,7 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 
 		// Validate slug format: alphanumeric, -, _, max 255 chars
 		if !isValidSlug(req.Slug) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name: must be 1-255 characters and contain only letters, numbers, hyphens (-), and underscores (_)"})
 			return
 		}
 
@@ -85,8 +85,8 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 }
 
 // ListRepositories handles UC-04: Search Repositories
-// GET /v0/repositories/?q=...&owner=...&visibility=...&sortBy=...&sortOrder=...
-// Search across user's repositories (owned or shared)
+// GET /v0/repositories/?q=...&scope=...&owner=...
+// Authentication is optional here; public requests are supported.
 func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query dto.SearchRepositoriesQuery
@@ -324,7 +324,7 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 
 		// Validate new slug
 		if !isValidSlug(req.Slug) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name: must be 1-255 characters and contain only letters, numbers, hyphens (-), and underscores (_)"})
 			return
 		}
 

@@ -109,6 +109,7 @@ export default function Navbar() {
     const handleLogout = () => {
         logout();
         handleMenuClose();
+        navigate('/', { replace: true });
     };
 
     const handleSearchSubmit = () => {
@@ -171,7 +172,7 @@ export default function Navbar() {
                     <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 0.5, alignItems: 'center' }}>
                         <NavButton component={NavLink} to="/search">Explore</NavButton>
                         <NavButton component={NavLink} to="/cli-download">Download</NavButton>
-                        <NavButton component={NavLink} to="/upload">Upload</NavButton>
+                        <NavButton component={NavLink} to="/repositories">Repositories</NavButton>
                         <NavButton href="https://opendi.org" target="_blank" rel="noopener noreferrer">About</NavButton>
                     </Box>
 
@@ -244,8 +245,8 @@ export default function Navbar() {
                                     <MenuItem component={NavLink} to="/user" onClick={handleMenuClose}>
                                         My Profile
                                     </MenuItem>
-                                    <MenuItem component={NavLink} to="/UploadPage" onClick={handleMenuClose}>
-                                        Upload Model
+                                    <MenuItem component={NavLink} to="/repositories" onClick={handleMenuClose}>
+                                        My Repositories
                                     </MenuItem>
                                     <Divider />
                                     <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
@@ -259,7 +260,7 @@ export default function Navbar() {
                                     variant="outlined"
                                     size="small"
                                     component={NavLink}
-                                    to="/login"
+                                    to="/signin"
                                     sx={{
                                         color: '#ffffff',
                                         borderColor: 'rgba(255,255,255,0.4)',
@@ -278,7 +279,7 @@ export default function Navbar() {
                                     variant="contained"
                                     size="small"
                                     component={NavLink}
-                                    to="/login"
+                                    to="/signup"
                                     sx={{
                                         backgroundColor: '#086DD7',
                                         '&:hover': { backgroundColor: '#0558AE' },

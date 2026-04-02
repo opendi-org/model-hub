@@ -14,6 +14,7 @@ import (
 	"opendi.org/model-hub/api/internal/config"
 	"opendi.org/model-hub/api/internal/dto"
 	"opendi.org/model-hub/api/internal/middleware"
+	"opendi.org/model-hub/api/internal/models/hub"
 	"opendi.org/model-hub/api/internal/services"
 )
 
@@ -94,22 +95,48 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if username == "" {
 			username = c.Query("username")
 		}
-		user, err := authSvc.ResolveOrCreateUser(&dto.GoogleIdentity{
-			Sub:   identity.Sub,
-			Email: identity.Email,
-			Name:  identity.Name,
-		}, username)
-		if err != nil {
-			if errors.Is(err, services.ErrUsernameRequired) || errors.Is(err, services.ErrInvalidUsername) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+
+		var user *hub.User
+		// If username is provided, it's a signup flow
+		if username != "" {
+			var err error
+			user, err = authSvc.ResolveOrCreateUser(&dto.GoogleIdentity{
+				Sub:   identity.Sub,
+				Email: identity.Email,
+				Name:  identity.Name,
+			}, username)
+			if err != nil {
+				if errors.Is(err, services.ErrUsernameRequired) || errors.Is(err, services.ErrInvalidUsername) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				if errors.Is(err, services.ErrUsernameAlreadyTaken) {
+					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+					return
+				}
+				if errors.Is(err, services.ErrAccountAlreadyExists) {
+					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
 				return
 			}
-			if errors.Is(err, services.ErrUsernameAlreadyTaken) {
-				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		} else {
+			// No username provided, it's a signin flow
+			var err error
+			user, err = authSvc.ResolveExistingUser(&dto.GoogleIdentity{
+				Sub:   identity.Sub,
+				Email: identity.Email,
+				Name:  identity.Name,
+			})
+			if err != nil {
+				if errors.Is(err, services.ErrAccountNotFound) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
 				return
 			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
-			return
 		}
 
 		if state.Mode == "cli" && state.CLICode != "" {

@@ -146,4 +146,61 @@ export default class APIClient {
     if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
     return response.json();
   }
+
+  // --- Repositories ---
+
+  /** GET /v0/repositories - list repos. scope: "mine" | "shared-with-me" | "all". */
+  static async getRepositories(scope = "mine") {
+    return HTTPClient.get(`/v0/repositories?scope=${encodeURIComponent(scope)}`);
+  }
+
+  /** GET /v0/repo/:id - get repository by ID. */
+  static async getRepositoryById(id) {
+    return HTTPClient.get(`/v0/repo/${encodeURIComponent(id)}`);
+  }
+
+  /** POST /v0/repositories - create a new repository. */
+  static async createRepository(data) {
+    return HTTPClient.post("/v0/repositories", data);
+  }
+
+  /** PATCH /v0/repo/:id - update repository metadata. */
+  static async updateRepository(id, data) {
+    return HTTPClient.patch(`/v0/repo/${encodeURIComponent(id)}`, data);
+  }
+
+  /** DELETE /v0/repo/:id - delete a repository (204 No Content). */
+  static async deleteRepository(id) {
+    const response = await fetch(HTTPClient.baseURL + `/v0/repo/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${response.status}`);
+    }
+    return {};
+  }
+
+  // --- Tags ---
+
+  /** GET /v0/repo/:id/tags - list tags for a repository. */
+  static async getRepositoryTags(repoId) {
+    return HTTPClient.get(`/v0/repo/${encodeURIComponent(repoId)}/tags`);
+  }
+
+  /** PUT /v0/repo/:id/tags/:tagName - create or overwrite a tag (upload CDM JSON). */
+  static async createOrUpdateTag(repoId, tagName, cdmJson) {
+    return HTTPClient.put(
+      `/v0/repo/${encodeURIComponent(repoId)}/tags/${encodeURIComponent(tagName)}`,
+      cdmJson
+    );
+  }
+
+  /** DELETE /v0/repo/:id/tags/:tagName - delete a tag. */
+  static async deleteTag(repoId, tagName) {
+    return HTTPClient.delete(
+      `/v0/repo/${encodeURIComponent(repoId)}/tags/${encodeURIComponent(tagName)}`
+    );
+  }
 }

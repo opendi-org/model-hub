@@ -1,6 +1,10 @@
-function handleResponse(response) {
+async function handleResponse(response) {
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    const errorData = await response.json();
+      // If the response has an 'error' field, use that message
+      if (errorData.error) {
+        throw new Error(errorData.error);
+      }
   }
   return response.json();
 }

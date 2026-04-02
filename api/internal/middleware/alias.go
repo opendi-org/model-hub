@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -58,12 +59,14 @@ func ResolveRepositoryByOwnerSlug(db *gorm.DB) gin.HandlerFunc {
 //   - Sends 500 if database error occurs
 func ResolveRepositoryByID(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		repoID := c.GetUint("repoID")
-		if repoID == 0 {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository ID not set in context"})
+		idParam := c.Param("id")
+		parsed, err := strconv.ParseUint(idParam, 10, 64)
+		if err != nil || parsed == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository ID"})
 			c.Abort()
 			return
 		}
+		repoID := uint(parsed)
 
 		var repo hub.Repository
 		if err := db.Preload("Owner").First(&repo, repoID).Error; err != nil {

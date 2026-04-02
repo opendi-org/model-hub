@@ -27,21 +27,34 @@ const AuthCallback = () => {
       try {
         const data = await APIClient.handleGoogleCallback(code, state);
         console.log('Full auth response:', data);
-        if (data.token) {
-          sessionStorage.setItem('auth_token', data.token);
+        if (data.access_token) {
+          sessionStorage.setItem('auth_token', data.access_token);
           console.log('Token stored in sessionStorage');
         }
-        const userData = data.user || data;
-        console.log('Setting user:', userData);
+        
+        // Fetch user data from /auth/me now that token is set
+        const userData = await APIClient.getCurrentUser();
+        console.log('User data from /auth/me:', userData);
         setUser(userData);
         navigate('/', { replace: true });
       } catch (err) {
         console.error('Auth error:', err);
-        setError(err.message);
+        const errorMsg = err.message || 'Authentication failed';
+        const encodedError = encodeURIComponent(errorMsg);
         
-        setTimeout(() => {
-          navigate('/login', { replace: true });
-        }, 3000);
+        // Determine which page to redirect to based on error message
+        let redirectPath = '/signin';
+        if (errorMsg.includes('account not found')) {
+          redirectPath = `/signup?error=${encodedError}`;
+        } else if (errorMsg.includes('account already exists')) {
+          redirectPath = `/signin?error=${encodedError}`;
+        } else {
+          // Default to signin with error
+          redirectPath = `/signin?error=${encodedError}`;
+        }
+        
+        // Redirect immediately with error in query params
+        navigate(redirectPath, { replace: true });
       }
     };
 
@@ -51,8 +64,10 @@ const AuthCallback = () => {
   if (error) {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 4 }}>
-        <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-        <Typography variant="body2">Redirecting to login...</Typography>
+        <CircularProgress size={60} />
+        <Typography variant="h6" sx={{ mt: 2 }}>
+          Signing you in...
+        </Typography>
       </Box>
     );
   }
