@@ -53,11 +53,11 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	auth.POST("/cli/login", handlers.CLILogin(db))
 	auth.POST("/cli/poll", handlers.CLIPoll(db))
 
-	// Repositories
-	repos := v0.Group("/repositories")
-	repos.GET("", handlers.ListRepositories(db))                                      // list (?scope, q, owner) - optional auth
-	repos.GET("/:owner", handlers.ListRepositories(db))                               // list by owner - optional auth
-	repos.POST("", middleware.RequireAuthentication(), handlers.CreateRepository(db)) // create - requires auth
+	// Repositories - requires authentication for searching own projects
+	repos := v0.Group("/repositories", middleware.RequireAuthentication())
+	repos.GET("", handlers.ListRepositories(db))        // list (?scope, q, owner, visibility) - requires auth
+	repos.GET("/:owner", handlers.ListRepositories(db)) // list by owner - requires auth
+	repos.POST("", handlers.CreateRepository(db))       // create - requires auth
 
 	// Repository by owner/slug with middleware: resolve repo, check access
 	ownerSlugGroup := repos.Group("/:owner/:slug",
@@ -83,5 +83,5 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	repoScope(idGroup)
 
 	// Search
-	v0.GET("/search", mock)
+	v0.GET("/search", handlers.GlobalSearch(db))
 }
