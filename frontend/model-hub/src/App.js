@@ -13,6 +13,8 @@ import ModelPage from './pages/modelPage';
 import CliDownloadPage from './pages/downloadPage';
 import AuthCallback from './pages/AuthCallback';
 import LoginPage from './pages/login'
+import SigninPage from './pages/signin';
+import SignupPage from './pages/signup';
 import Navbar from './components/Navbar';
 import { getTheme } from './Theme';
 import { ThemeProvider } from '@mui/material/styles';
@@ -63,6 +65,8 @@ function App() {
                 <Route path="/model/:uuid" element={<ModelPage />} />
                 <Route path="/model" element={<ModelPage />} />
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/signin" element={<SigninPage />} />
+                <Route path="/signup" element={<SignupPage />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/user" element={<UserPage />} />
                 <Route path="/search" element={<SearchPage />} />

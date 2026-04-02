@@ -109,6 +109,7 @@ export default function Navbar() {
     const handleLogout = () => {
         logout();
         handleMenuClose();
+        navigate('/', { replace: true });
     };
 
     const handleSearchSubmit = () => {
@@ -259,7 +260,7 @@ export default function Navbar() {
                                     variant="outlined"
                                     size="small"
                                     component={NavLink}
-                                    to="/login"
+                                    to="/signin"
                                     sx={{
                                         color: '#ffffff',
                                         borderColor: 'rgba(255,255,255,0.4)',
@@ -278,7 +279,7 @@ export default function Navbar() {
                                     variant="contained"
                                     size="small"
                                     component={NavLink}
-                                    to="/login"
+                                    to="/signup"
                                     sx={{
                                         backgroundColor: '#086DD7',
                                         '&:hover': { backgroundColor: '#0558AE' },

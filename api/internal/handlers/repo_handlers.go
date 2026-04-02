@@ -32,7 +32,7 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 
 		// Validate slug format: alphanumeric, -, _, max 255 chars
 		if !isValidSlug(req.Slug) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name: must be 1-255 characters and contain only letters, numbers, hyphens (-), and underscores (_)"})
 			return
 		}
 
@@ -324,7 +324,7 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 
 		// Validate new slug
 		if !isValidSlug(req.Slug) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name: must be 1-255 characters and contain only letters, numbers, hyphens (-), and underscores (_)"})
 			return
 		}
 
