@@ -154,6 +154,18 @@ export default class APIClient {
     return HTTPClient.get(`/v0/repositories?scope=${encodeURIComponent(scope)}`);
   }
 
+  /** GET /v0/search - global search repositories. Shows results based on auth status. Optional query params: q, visibility, owner, sortBy, sortOrder. */
+  static async globalSearch(q = '', visibility = '', owner = '', sortBy = 'updated', sortOrder = 'desc') {
+    const params = new URLSearchParams();
+    if (q) params.append('q', q);
+    if (visibility) params.append('visibility', visibility);
+    if (owner) params.append('owner', owner);
+    if (sortBy) params.append('sortBy', sortBy);
+    if (sortOrder) params.append('sortOrder', sortOrder);
+    const queryString = params.toString();
+    return HTTPClient.get(`/v0/search${queryString ? '?' + queryString : ''}`);
+  }
+
   /** GET /v0/repo/:id - get repository by ID. */
   static async getRepositoryById(id) {
     return HTTPClient.get(`/v0/repo/${encodeURIComponent(id)}`);
@@ -201,6 +213,54 @@ export default class APIClient {
   static async deleteTag(repoId, tagName) {
     return HTTPClient.delete(
       `/v0/repo/${encodeURIComponent(repoId)}/tags/${encodeURIComponent(tagName)}`
+    );
+  }
+
+  // --- Repository Management (UC-08, UC-09, UC-10, UC-11) ---
+
+  /** POST /v0/repositories/:owner/:slug/fork - fork a repository. */
+  static async forkRepository(owner, slug, data) {
+    return HTTPClient.post(
+      `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}/fork`,
+      data
+    );
+  }
+
+  /** PATCH /v0/repositories/:owner/:slug - set repository privacy. */
+  static async setRepositoryPrivacy(owner, slug, visibility) {
+    return HTTPClient.patch(
+      `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}`,
+      { visibility }
+    );
+  }
+
+  /** GET /v0/repositories/:owner/:slug/collaborators - list collaborators. */
+  static async listCollaborators(owner, slug) {
+    return HTTPClient.get(
+      `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}/collaborators`
+    );
+  }
+
+  /** PUT /v0/repositories/:owner/:slug/collaborators/:username - add/update collaborator. */
+  static async addCollaborator(owner, slug, username, role) {
+    return HTTPClient.put(
+      `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}/collaborators/${encodeURIComponent(username)}`,
+      { username, role }
+    );
+  }
+
+  /** DELETE /v0/repositories/:owner/:slug/collaborators/:username - remove collaborator. */
+  static async removeCollaborator(owner, slug, username) {
+    return HTTPClient.delete(
+      `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}/collaborators/${encodeURIComponent(username)}`
+    );
+  }
+
+  /** POST /v0/repositories/:owner/:slug/transfer - transfer repository ownership. */
+  static async transferRepositoryOwnership(owner, slug, newUsername) {
+    return HTTPClient.post(
+      `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}/transfer`,
+      { username: newUsername }
     );
   }
 }

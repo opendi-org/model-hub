@@ -36,6 +36,8 @@ import PublicIcon from '@mui/icons-material/Public';
 import LockIcon from '@mui/icons-material/Lock';
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
+import IosShareIcon from '@mui/icons-material/IosShare';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import { useDropzone } from 'react-dropzone';
 import APIClient from '../util/ApiClient';
 import { useUser } from '../context/UserContext';
@@ -78,6 +80,29 @@ const RepositoryDetailsPage = () => {
   const [editVisibility, setEditVisibility] = useState('private');
   const [editError, setEditError] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // Fork repository dialog state
+  const [forkOpen, setForkOpen] = useState(false);
+  const [forkSlug, setForkSlug] = useState('');
+  const [forkDescription, setForkDescription] = useState('');
+  const [forkTags, setForkTags] = useState([]);
+  const [forkError, setForkError] = useState('');
+  const [forkSubmitting, setForkSubmitting] = useState(false);
+
+  // Manage collaborators dialog state
+  const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
+  const [collaborators, setCollaborators] = useState([]);
+  const [newCollabUsername, setNewCollabUsername] = useState('');
+  const [newCollabRole, setNewCollabRole] = useState('read');
+  const [collabError, setCollabError] = useState('');
+  const [collabSubmitting, setCollabSubmitting] = useState(false);
+  const [collabLoading, setCollabLoading] = useState(false);
+
+  // Transfer ownership dialog state
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferUsername, setTransferUsername] = useState('');
+  const [transferError, setTransferError] = useState('');
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -262,6 +287,141 @@ const RepositoryDetailsPage = () => {
     }
   };
 
+  // --- Fork Repository ---
+  const handleForkOpen = () => {
+    setForkSlug('');
+    setForkDescription('');
+    setForkTags([]);
+    setForkError('');
+    setForkOpen(true);
+  };
+
+  const handleForkClose = () => setForkOpen(false);
+
+  const handleToggleForkTag = (tagName) => {
+    setForkTags((prev) =>
+      prev.includes(tagName)
+        ? prev.filter((t) => t !== tagName)
+        : [...prev, tagName]
+    );
+  };
+
+  const handleForkSubmit = async () => {
+    if (!forkSlug.trim()) {
+      setForkError('Repository name is required.');
+      return;
+    }
+    setForkSubmitting(true);
+    setForkError('');
+    try {
+      await APIClient.forkRepository(repo.owner, repo.slug, {
+        slug: forkSlug.trim(),
+        description: forkDescription.trim(),
+        tags: forkTags,
+      });
+      setForkOpen(false);
+      showNotification('Repository forked successfully', 'success');
+      navigate('/repositories');
+    } catch (err) {
+      setForkError(err.message || 'Failed to fork repository.');
+    } finally {
+      setForkSubmitting(false);
+    }
+  };
+
+  // --- Manage Collaborators ---
+  const handleCollaboratorsOpen = async () => {
+    setCollabLoading(true);
+    setCollabError('');
+    try {
+      const data = await APIClient.listCollaborators(repo.owner, repo.slug);
+      setCollaborators(data.collaborators || []);
+      setCollaboratorsOpen(true);
+    } catch (err) {
+      setCollabError(err.message || 'Failed to load collaborators.');
+    } finally {
+      setCollabLoading(false);
+    }
+  };
+
+  const handleCollaboratorsClose = () => setCollaboratorsOpen(false);
+
+  const handleAddCollaborator = async () => {
+    if (!newCollabUsername.trim()) {
+      setCollabError('Username is required.');
+      return;
+    }
+    setCollabSubmitting(true);
+    setCollabError('');
+    try {
+      const result = await APIClient.addCollaborator(
+        repo.owner,
+        repo.slug,
+        newCollabUsername.trim(),
+        newCollabRole
+      );
+      setCollaborators((prev) => {
+        const existing = prev.findIndex((c) => c.username === newCollabUsername.trim());
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = result;
+          return updated;
+        }
+        return [...prev, result];
+      });
+      setNewCollabUsername('');
+      setNewCollabRole('read');
+      showNotification('Collaborator added', 'success');
+    } catch (err) {
+      setCollabError(err.message || 'Failed to add collaborator.');
+    } finally {
+      setCollabSubmitting(false);
+    }
+  };
+
+  const handleRemoveCollaborator = async (username) => {
+    if (!window.confirm(`Remove ${username} from this repository?`)) return;
+    try {
+      await APIClient.removeCollaborator(repo.owner, repo.slug, username);
+      setCollaborators((prev) => prev.filter((c) => c.username !== username));
+      showNotification('Collaborator removed', 'success');
+    } catch (err) {
+      showNotification(err.message || 'Failed to remove collaborator.', 'error');
+    }
+  };
+
+  // --- Transfer Ownership ---
+  const handleTransferOpen = () => {
+    setTransferUsername('');
+    setTransferError('');
+    setTransferOpen(true);
+  };
+
+  const handleTransferClose = () => setTransferOpen(false);
+
+  const handleTransferSubmit = async () => {
+    if (!transferUsername.trim()) {
+      setTransferError('Username is required.');
+      return;
+    }
+    if (transferUsername.trim() === repo.owner) {
+      setTransferError('Cannot transfer to the current owner.');
+      return;
+    }
+    setTransferSubmitting(true);
+    setTransferError('');
+    try {
+      await APIClient.transferRepositoryOwnership(repo.owner, repo.slug, transferUsername.trim());
+      setTransferOpen(false);
+      showNotification('Repository ownership transferred', 'success');
+      navigate('/repositories');
+    } catch (err) {
+      setTransferError(err.message || 'Failed to transfer repository.');
+    } finally {
+      setTransferSubmitting(false);
+    }
+  };
+
   // --- Loading skeleton ---
   if (loading) {
     return (
@@ -308,7 +468,7 @@ const RepositoryDetailsPage = () => {
       </Button>
 
       <Card sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 3 }}>
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
               <Typography variant="h4" fontWeight="bold">
@@ -339,6 +499,26 @@ const RepositoryDetailsPage = () => {
               <EditOutlinedIcon />
             </IconButton>
           </Tooltip>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 2 }}>
+          {user && user.username === repo?.owner && (
+            <>
+              <Button size="small" onClick={handleForkOpen} variant="outlined">
+                Fork
+              </Button>
+              <Button size="small" onClick={handleCollaboratorsOpen} variant="outlined">
+                Collaborators
+              </Button>
+              <Button size="small" onClick={handleTransferOpen} variant="outlined" color="primary">
+                Transfer
+              </Button>
+            </>
+          )}
+          {user && user.username !== repo?.owner && (
+            <Button size="small" onClick={handleForkOpen} variant="outlined">
+              Fork
+            </Button>
+          )}
         </Box>
       </Card>
 
@@ -550,6 +730,170 @@ const RepositoryDetailsPage = () => {
           <Button onClick={handleEditClose} disabled={editSubmitting}>Cancel</Button>
           <Button variant="contained" onClick={handleEditSubmit} disabled={editSubmitting}>
             {editSubmitting ? <CircularProgress size={20} /> : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Fork Repository Dialog */}
+      <Dialog open={forkOpen} onClose={handleForkClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Fork Repository</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          {forkError && <Alert severity="error">{forkError}</Alert>}
+          <TextField
+            label="New Repository Name"
+            value={forkSlug}
+            onChange={(e) => setForkSlug(e.target.value)}
+            fullWidth
+            autoFocus
+            required
+            placeholder="e.g. my-fork"
+          />
+          <TextField
+            label="Description"
+            value={forkDescription}
+            onChange={(e) => setForkDescription(e.target.value)}
+            fullWidth
+            multiline
+            rows={2}
+          />
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Copy Tags (optional)</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Select which tags to copy from the source repository:
+            </Typography>
+            {tags.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">No tags available</Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {tags.map((tag) => (
+                  <Box key={tag.name} sx={{ display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={forkTags.includes(tag.name)}
+                      onChange={() => handleToggleForkTag(tag.name)}
+                      style={{ marginRight: '8px' }}
+                    />
+                    <Typography variant="body2">{tag.name}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleForkClose} disabled={forkSubmitting}>Cancel</Button>
+          <Button variant="contained" onClick={handleForkSubmit} disabled={forkSubmitting}>
+            {forkSubmitting ? <CircularProgress size={20} /> : 'Fork'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Manage Collaborators Dialog */}
+      <Dialog open={collaboratorsOpen} onClose={handleCollaboratorsClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Manage Collaborators</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important', maxHeight: '60vh', overflow: 'auto' }}>
+          {collabError && <Alert severity="error">{collabError}</Alert>}
+          
+          {/* Add Collaborator Section */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', pb: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Add Collaborator</Typography>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+              <TextField
+                label="Username"
+                value={newCollabUsername}
+                onChange={(e) => setNewCollabUsername(e.target.value)}
+                size="small"
+                sx={{ flex: 1 }}
+                placeholder="Enter username"
+              />
+              <ToggleButtonGroup
+                value={newCollabRole}
+                exclusive
+                onChange={(_, val) => { if (val) setNewCollabRole(val); }}
+                size="small"
+              >
+                <ToggleButton value="read">Read</ToggleButton>
+                <ToggleButton value="write">Write</ToggleButton>
+              </ToggleButtonGroup>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleAddCollaborator}
+                disabled={collabSubmitting}
+                startIcon={<PersonAddIcon />}
+              >
+                Add
+              </Button>
+            </Box>
+          </Box>
+
+          {/* Collaborators List */}
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Current Collaborators</Typography>
+            {collabLoading ? (
+              <CircularProgress size={24} />
+            ) : collaborators.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">No collaborators yet</Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {collaborators.map((collab) => (
+                  <Box
+                    key={collab.username}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      p: 1,
+                      backgroundColor: 'action.hover',
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Box>
+                      <Typography variant="body2" fontWeight={500}>{collab.username}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {collab.role}
+                      </Typography>
+                    </Box>
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => handleRemoveCollaborator(collab.username)}
+                    >
+                      Remove
+                    </Button>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCollaboratorsClose}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Transfer Ownership Dialog */}
+      <Dialog open={transferOpen} onClose={handleTransferClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Transfer Repository Ownership</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          {transferError && <Alert severity="error">{transferError}</Alert>}
+          <Alert severity="warning">
+            This action is permanent. After transfer, you will lose ownership of this repository.
+          </Alert>
+          <TextField
+            label="New Owner Username"
+            value={transferUsername}
+            onChange={(e) => setTransferUsername(e.target.value)}
+            fullWidth
+            autoFocus
+            required
+            placeholder="Enter username of new owner"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleTransferClose} disabled={transferSubmitting}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleTransferSubmit} disabled={transferSubmitting}>
+            {transferSubmitting ? <CircularProgress size={20} /> : 'Transfer'}
           </Button>
         </DialogActions>
       </Dialog>

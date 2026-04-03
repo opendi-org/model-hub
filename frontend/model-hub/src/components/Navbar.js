@@ -5,15 +5,13 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import opendiIcon from '../opendi-icon.png';
 import * as React from 'react';
-import { styled, alpha } from '@mui/material/styles';
+import { styled } from '@mui/material/styles';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
-import InputBase from '@mui/material/InputBase';
 import MenuItem from '@mui/material/MenuItem';
 import Menu from '@mui/material/Menu';
-import SearchIcon from '@mui/icons-material/Search';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Avatar from '@mui/material/Avatar';
@@ -23,55 +21,6 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useUser } from '../context/UserContext';
 import { useColorMode } from '../App';
-
-const Search = styled('div')(({ theme }) => ({
-    position: 'relative',
-    borderRadius: 20,
-    backgroundColor: alpha('#ffffff', 0.08),
-    border: '1px solid rgba(255,255,255,0.2)',
-    '&:hover': {
-        backgroundColor: alpha('#ffffff', 0.12),
-        borderColor: 'rgba(255,255,255,0.35)',
-    },
-    '&:focus-within': {
-        backgroundColor: alpha('#ffffff', 0.14),
-        borderColor: 'rgba(255,255,255,0.5)',
-    },
-    marginRight: theme.spacing(2),
-    marginLeft: theme.spacing(2),
-    width: '100%',
-    [theme.breakpoints.up('sm')]: {
-        width: 'auto',
-    },
-    transition: 'background-color 0.2s, border-color 0.2s',
-}));
-
-const SearchIconWrapper = styled('div')(({ theme }) => ({
-    padding: theme.spacing(0, 2),
-    height: '100%',
-    position: 'absolute',
-    pointerEvents: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: 'rgba(255,255,255,0.6)',
-}));
-
-const StyledInputBase = styled(InputBase)(() => ({
-    color: '#ffffff',
-    '& .MuiInputBase-input': {
-        padding: '8px 12px 8px 0',
-        paddingLeft: `calc(1em + 32px)`,
-        width: '100%',
-        '&::placeholder': {
-            color: 'rgba(255,255,255,0.5)',
-            opacity: 1,
-        },
-        '@media (min-width:900px)': {
-            width: '36ch',
-        },
-    },
-}));
 
 const NavButton = styled(Button)(() => ({
     color: 'rgba(255,255,255,0.85)',
@@ -95,7 +44,6 @@ export default function Navbar() {
     const { mode, toggleColorMode } = useColorMode();
     const [anchorEl, setAnchorEl] = React.useState(null);
     const [imageError, setImageError] = React.useState(false);
-    const [searchValue, setSearchValue] = React.useState('');
     const navigate = useNavigate();
 
     const handleMenuOpen = (event) => {
@@ -110,12 +58,6 @@ export default function Navbar() {
         logout();
         handleMenuClose();
         navigate('/', { replace: true });
-    };
-
-    const handleSearchSubmit = () => {
-        if (searchValue.trim()) {
-            navigate(`/search?term=${encodeURIComponent(searchValue.trim())}`);
-        }
     };
 
     const getInitials = () => {
@@ -150,29 +92,12 @@ export default function Navbar() {
                         </Typography>
                     </NavLink>
 
-                    {/* Search */}
-                    <Search>
-                        <SearchIconWrapper>
-                            <SearchIcon fontSize="small" />
-                        </SearchIconWrapper>
-                        <StyledInputBase
-                            placeholder="Search models..."
-                            inputProps={{ 'aria-label': 'search' }}
-                            value={searchValue}
-                            onChange={(e) => setSearchValue(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSearchSubmit();
-                            }}
-                        />
-                    </Search>
-
                     <Box sx={{ flexGrow: 1 }} />
 
                     {/* Nav links */}
                     <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 0.5, alignItems: 'center' }}>
-                        <NavButton component={NavLink} to="/search">Explore</NavButton>
-                        <NavButton component={NavLink} to="/cli-download">Download</NavButton>
-                        <NavButton component={NavLink} to="/repositories">Repositories</NavButton>
+                        <NavButton component={NavLink} to="/repositories">My Repositories</NavButton>
+                        <NavButton component={NavLink} to="/cli-tool">CLI Tool</NavButton>
                         <NavButton href="https://opendi.org" target="_blank" rel="noopener noreferrer">About</NavButton>
                     </Box>
 
@@ -244,9 +169,6 @@ export default function Navbar() {
                                     <Divider />
                                     <MenuItem component={NavLink} to="/user" onClick={handleMenuClose}>
                                         My Profile
-                                    </MenuItem>
-                                    <MenuItem component={NavLink} to="/repositories" onClick={handleMenuClose}>
-                                        My Repositories
                                     </MenuItem>
                                     <Divider />
                                     <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>

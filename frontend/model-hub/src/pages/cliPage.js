@@ -5,6 +5,7 @@
 import React from 'react';
 import {
     Box,
+    Button,
     Card,
     Typography,
     Container,
@@ -85,7 +86,7 @@ const CliDownloadPage = () => {
                 <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
                     Option 1: Using pip (standard)
                 </Typography>
-                <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1, mb: 3, fontFamily: 'monospace' }}>
+                <Box sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5', color: 'text.primary', p: 2, borderRadius: 1, mb: 3, fontFamily: 'monospace' }}>
                     pip install opendi
                 </Box>
 
@@ -95,7 +96,7 @@ const CliDownloadPage = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     pipx provides an isolated environment for CLI tools:
                 </Typography>
-                <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1, mb: 3, fontFamily: 'monospace' }}>
+                <Box sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5', color: 'text.primary', p: 2, borderRadius: 1, mb: 3, fontFamily: 'monospace' }}>
                     pipx install opendi
                 </Box>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -111,7 +112,7 @@ const CliDownloadPage = () => {
                 <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
                     1. Verify Installation
                 </Typography>
-                <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1, mb: 2, fontFamily: 'monospace' }}>
+                <Box sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5', color: 'text.primary', p: 2, borderRadius: 1, mb: 2, fontFamily: 'monospace' }}>
                     opendi --help
                 </Box>
 
@@ -121,7 +122,7 @@ const CliDownloadPage = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     Authenticate with your OpenDI account. This will open your browser to complete login:
                 </Typography>
-                <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1, mb: 2, fontFamily: 'monospace' }}>
+                <Box sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5', color: 'text.primary', p: 2, borderRadius: 1, mb: 2, fontFamily: 'monospace' }}>
                     opendi login
                 </Box>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -131,7 +132,7 @@ const CliDownloadPage = () => {
                 <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
                     3. Verify Login
                 </Typography>
-                <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1, mb: 2, fontFamily: 'monospace' }}>
+                <Box sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5', color: 'text.primary', p: 2, borderRadius: 1, mb: 2, fontFamily: 'monospace' }}>
                     opendi whoami
                 </Box>
 
@@ -202,16 +203,9 @@ const CliDownloadPage = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     Get help on any command:
                 </Typography>
-                <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1, fontFamily: 'monospace' }}>
+                <Box sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5', color: 'text.primary', p: 2, borderRadius: 1, fontFamily: 'monospace' }}>
                     opendi [command] --help
                 </Box>
-
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
-                    The OpenDI CLI is distributed via <strong>PyPI</strong> as the <code style={{ fontFamily: 'monospace' }}>opendi</code> package. For more information, visit the&nbsp;
-                    <a href="https://pypi.org/project/opendi/" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>
-                        opendi PyPI page
-                    </a>.
-                </Typography>
             </Card>
         </Container>
     );

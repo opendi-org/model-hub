@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -112,10 +113,21 @@ func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 
 		dbQuery := db.Model(&hub.Repository{})
 
-		// Show all accessible repositories: owned + shared (for personal search)
-		dbQuery = dbQuery.Where("owner_id = ? OR id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)", user.ID, user.ID)
-
-		// Apply visibility filter
+		// Apply scope filter
+		switch query.Scope {
+		case "mine":
+			// Only show repositories owned by user
+			dbQuery = dbQuery.Where("owner_id = ?", user.ID)
+		case "shared-with-me":
+			// Only show repositories shared with user (collaborator)
+			dbQuery = dbQuery.Where("id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)", user.ID)
+		case "all":
+			// Show all public repositories
+			dbQuery = dbQuery.Where("visibility = ?", "public")
+		default:
+			// Default: show owned + shared (for backward compatibility)
+			dbQuery = dbQuery.Where("owner_id = ? OR id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)", user.ID, user.ID)
+		}
 		if query.Visibility != "" && (query.Visibility == "public" || query.Visibility == "private") {
 			dbQuery = dbQuery.Where("visibility = ?", query.Visibility)
 		}
@@ -516,6 +528,484 @@ func GlobalSearch(db *gorm.DB) gin.HandlerFunc {
 			Repositories: items,
 			Total:        total,
 		})
+	}
+}
+
+// Forks Repository handles UC-08: Fork Repository
+// POST /v0/repositories/:owner/:slug/fork
+// Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Handler requires read access to source repository
+func ForkRepository(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, _ := middleware.GetCurrentUser(c)
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		sourceRepo := middleware.GetRepository(c)
+		if sourceRepo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		// Check read access to source repo
+		if middleware.GetRepositoryPermission(c) == middleware.PermissionNone {
+			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient access to source repository"})
+			return
+		}
+
+		var req dto.ForkRepositoryRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Validate slug format
+		if !isValidSlug(req.Slug) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name: must be 1-255 characters and contain only letters, numbers, hyphens (-), and underscores (_)"})
+			return
+		}
+
+		// Check for duplicate slug under this owner
+		var count int64
+		if err := db.Model(&hub.Repository{}).
+			Where("owner_id = ? AND slug = ?", user.ID, req.Slug).
+			Count(&count).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		if count > 0 {
+			c.JSON(http.StatusConflict, gin.H{"error": "repository name already exists"})
+			return
+		}
+
+		// Create forked repository
+		forkedRepo := &hub.Repository{
+			OwnerID:      user.ID,
+			Slug:         req.Slug,
+			Description:  req.Description,
+			Visibility:   "private", // Forks are always private initially
+			ForkedFromID: &sourceRepo.ID,
+		}
+
+		if err := db.Create(forkedRepo).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create forked repository"})
+			return
+		}
+
+		// Copy selected tags from source repository
+		if len(req.Tags) > 0 {
+			// Get tags from source repo
+			var sourceTags []hub.CDMTag
+			if err := db.Where("repo_id = ? AND name IN ?", sourceRepo.ID, req.Tags).Find(&sourceTags).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to copy tags"})
+				return
+			}
+
+			// Create new tags under forked repo
+			for _, srcTag := range sourceTags {
+				newTag := &hub.CDMTag{
+					RepoID:    forkedRepo.ID,
+					Name:      srcTag.Name,
+					ModelUUID: srcTag.ModelUUID,
+					SizeBytes: srcTag.SizeBytes,
+					CreatedBy: srcTag.CreatedBy,
+				}
+				if err := db.Create(newTag).Error; err != nil {
+					// Log but don't fail the fork operation
+					continue
+				}
+			}
+		}
+
+		// Fetch owner to build response
+		if err := db.Preload("Owner").Preload("ForkedFrom").First(forkedRepo, forkedRepo.ID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		response := dto.ForkRepositoryResponse{
+			ID:          forkedRepo.ID,
+			Owner:       user.Username,
+			Slug:        forkedRepo.Slug,
+			Description: forkedRepo.Description,
+			Visibility:  forkedRepo.Visibility,
+			CreatedAt:   forkedRepo.CreatedAt,
+		}
+
+		if forkedRepo.ForkedFromID != nil {
+			response.ForkedFrom = &struct {
+				ID    uint   `json:"id"`
+				Owner string `json:"owner"`
+				Slug  string `json:"slug"`
+			}{
+				ID:    sourceRepo.ID,
+				Owner: sourceRepo.Owner.Username,
+				Slug:  sourceRepo.Slug,
+			}
+		}
+
+		c.JSON(http.StatusCreated, response)
+	}
+}
+
+// SetRepositoryPrivacy handles UC-09: Set Repository Privacy
+// PATCH /v0/repositories/:owner/:slug (with visibility field)
+// Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Handler requires owner permission
+func SetRepositoryPrivacy(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, _ := middleware.GetCurrentUser(c)
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		if middleware.GetRepositoryPermission(c) != middleware.PermissionOwner {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can change repository privacy"})
+			return
+		}
+
+		var req dto.SetPrivacyRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Validate visibility value
+		if req.Visibility != "public" && req.Visibility != "private" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "visibility must be 'public' or 'private'"})
+			return
+		}
+
+		// Update visibility
+		if err := db.Model(repo).Update("visibility", req.Visibility).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update repository privacy"})
+			return
+		}
+
+		// Fetch updated repo with owner
+		if err := db.Preload("Owner").First(repo, repo.ID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		response := dto.RepositoryListItem{
+			ID:          repo.ID,
+			Owner:       repo.Owner.Username,
+			Slug:        repo.Slug,
+			Description: repo.Description,
+			Visibility:  repo.Visibility,
+			CreatedAt:   repo.CreatedAt,
+			UpdatedAt:   repo.UpdatedAt,
+		}
+
+		c.JSON(http.StatusOK, response)
+	}
+}
+
+// AddCollaborator handles UC-10: Add/Update Collaborator
+// PUT /v0/repositories/:owner/:slug/collaborators/:username
+// Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Handler requires owner permission
+func AddCollaborator(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, _ := middleware.GetCurrentUser(c)
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		if middleware.GetRepositoryPermission(c) != middleware.PermissionOwner {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can manage collaborators"})
+			return
+		}
+
+		username := c.Param("username")
+		if username == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "username is required"})
+			return
+		}
+
+		var req dto.AddCollaboratorRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Validate role
+		if req.Role != "read" && req.Role != "write" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "role must be 'read' or 'write'"})
+			return
+		}
+
+		// Find the user to add
+		var targetUser hub.User
+		if err := db.Where("username = ?", username).First(&targetUser).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		// Prevent sharing with self
+		if targetUser.ID == user.ID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot share repository with yourself"})
+			return
+		}
+
+		// Check for existing collaborator
+		var existingCollab hub.Collaborator
+		err := db.Where("repo_id = ? AND user_id = ?", repo.ID, targetUser.ID).First(&existingCollab).Error
+
+		if err == nil {
+			// Update existing collaborator
+			if existingCollab.Role == req.Role {
+				c.JSON(http.StatusConflict, gin.H{"error": "user already has this role"})
+				return
+			}
+			if err := db.Model(&existingCollab).Update("role", req.Role).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update collaborator role"})
+				return
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Create new collaborator
+			newCollab := &hub.Collaborator{
+				RepoID: repo.ID,
+				UserID: targetUser.ID,
+				Role:   req.Role,
+			}
+			if err := db.Create(newCollab).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to add collaborator"})
+				return
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		response := dto.CollaboratorResponse{
+			Username:  targetUser.Username,
+			Role:      req.Role,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		c.JSON(http.StatusOK, response)
+	}
+}
+
+// RemoveCollaborator handles UC-10: Remove Collaborator (revoke access)
+// DELETE /v0/repositories/:owner/:slug/collaborators/:username
+// Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Handler requires owner permission
+func RemoveCollaborator(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, _ := middleware.GetCurrentUser(c)
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		if middleware.GetRepositoryPermission(c) != middleware.PermissionOwner {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can manage collaborators"})
+			return
+		}
+
+		username := c.Param("username")
+		if username == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "username is required"})
+			return
+		}
+
+		// Find the user to remove
+		var targetUser hub.User
+		if err := db.Where("username = ?", username).First(&targetUser).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		// Remove the collaborator
+		result := db.Where("repo_id = ? AND user_id = ?", repo.ID, targetUser.ID).Delete(&hub.Collaborator{})
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to remove collaborator"})
+			return
+		}
+
+		if result.RowsAffected == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "collaborator not found"})
+			return
+		}
+
+		c.JSON(http.StatusNoContent, nil)
+	}
+}
+
+// ListCollaborators handles UC-10: List Collaborators
+// GET /v0/repositories/:owner/:slug/collaborators
+// Requires: ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Returns collaborators only to owner and explicit collaborators
+func ListCollaborators(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		permission := middleware.GetRepositoryPermission(c)
+
+		// Only show collaborators to owner and explicit collaborators
+		if permission != middleware.PermissionOwner && !middleware.IsRepositoryCollaborator(c) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient access to view collaborators"})
+			return
+		}
+
+		var collabs []hub.Collaborator
+		if err := db.Where("repo_id = ?", repo.ID).Preload("User").Find(&collabs).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		response := dto.ListCollaboratorsResponse{
+			Collaborators: make([]dto.CollaboratorResponse, len(collabs)),
+			Owner:         repo.Owner.Username,
+		}
+
+		for i, collab := range collabs {
+			response.Collaborators[i] = dto.CollaboratorResponse{
+				Username:  collab.User.Username,
+				Role:      collab.Role,
+				CreatedAt: collab.CreatedAt,
+				UpdatedAt: collab.UpdatedAt,
+			}
+		}
+
+		c.JSON(http.StatusOK, response)
+	}
+}
+
+// TransferRepositoryOwnership handles UC-11: Transfer Repository Ownership
+// POST /v0/repositories/:owner/:slug/transfer
+// Requires: RequireAuthentication, ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
+// Handler requires owner permission
+func TransferRepositoryOwnership(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, _ := middleware.GetCurrentUser(c)
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		if middleware.GetRepositoryPermission(c) != middleware.PermissionOwner {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can transfer the repository"})
+			return
+		}
+
+		var req dto.TransferRepositoryRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if req.Username == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "username is required"})
+			return
+		}
+
+		// Check if username is self-transfer
+		if req.Username == user.Username {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot transfer repository to yourself"})
+			return
+		}
+
+		// Find the new owner
+		var newOwner hub.User
+		if err := db.Where("username = ?", req.Username).First(&newOwner).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		// Store previous owner for response
+		previousOwner := user.Username
+
+		// Perform transfer within a transaction
+		err := db.Transaction(func(tx *gorm.DB) error {
+			// Update owner explicitly with WHERE clause
+			if result := tx.Model(&hub.Repository{}).Where("id = ?", repo.ID).Update("owner_id", newOwner.ID); result.Error != nil {
+				return result.Error
+			}
+
+			// Remove new owner from collaborators if they exist
+			if err := tx.Where("repo_id = ? AND user_id = ?", repo.ID, newOwner.ID).Delete(&hub.Collaborator{}).Error; err != nil {
+				return err
+			}
+
+			// Optionally: add previous owner as owner collaborator
+			// (The requirements document doesn't specify this behavior, so we skip it for now)
+
+			return nil
+		})
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to transfer repository"})
+			return
+		}
+
+		// Fetch updated repo with new owner (use fresh struct to ensure proper reload)
+		var updatedRepo hub.Repository
+		if err := db.Preload("Owner").First(&updatedRepo, repo.ID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+
+		response := dto.TransferRepositoryResponse{
+			ID:            updatedRepo.ID,
+			Owner:         updatedRepo.Owner.Username,
+			Slug:          updatedRepo.Slug,
+			Description:   updatedRepo.Description,
+			Visibility:    updatedRepo.Visibility,
+			UpdatedAt:     updatedRepo.UpdatedAt,
+			PreviousOwner: previousOwner,
+		}
+
+		c.JSON(http.StatusOK, response)
 	}
 }
 

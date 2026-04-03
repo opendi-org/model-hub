@@ -32,6 +32,34 @@ func repoScope(g *gin.RouterGroup) {
 	g.POST("/fork", mock)
 }
 
+// repoManagementScope mounts management routes with proper middleware (requires owner permission)
+func repoManagementScope(g *gin.RouterGroup, db *gorm.DB) {
+	// Collaborator management routes (requires owner)
+	g.GET("/collaborators",
+		middleware.RequireAuthentication(),
+		handlers.ListCollaborators(db))
+	g.PUT("/collaborators/:username",
+		middleware.RequireAuthentication(),
+		middleware.RequireRepositoryPermission(middleware.PermissionOwner),
+		handlers.AddCollaborator(db))
+	g.DELETE("/collaborators/:username",
+		middleware.RequireAuthentication(),
+		middleware.RequireRepositoryPermission(middleware.PermissionOwner),
+		handlers.RemoveCollaborator(db))
+
+	// Transfer ownership route (requires owner)
+	g.POST("/transfer",
+		middleware.RequireAuthentication(),
+		middleware.RequireRepositoryPermission(middleware.PermissionOwner),
+		handlers.TransferRepositoryOwnership(db))
+
+	// Fork repository route (requires read access)
+	g.POST("/fork",
+		middleware.RequireAuthentication(),
+		middleware.RequireRepositoryPermission(middleware.PermissionRead),
+		handlers.ForkRepository(db))
+}
+
 // RegisterRoutes mounts all v0 endpoints from endpoints.md.
 func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	v0 := r.Group("/v0")
@@ -67,8 +95,8 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	ownerSlugGroup.GET("", middleware.RequireRepositoryPermission(middleware.PermissionRead), handlers.GetRepository(db))
 	ownerSlugGroup.PATCH("", middleware.RequireAuthentication(), middleware.RequireRepositoryPermission(middleware.PermissionOwner), handlers.UpdateRepository(db))
 	ownerSlugGroup.DELETE("", middleware.RequireAuthentication(), middleware.RequireRepositoryPermission(middleware.PermissionOwner), handlers.DeleteRepository(db))
-	// Remaining routes under this scope (tags, collaborators, etc.)
-	repoScope(ownerSlugGroup)
+	// Management routes under this scope (tags, collaborators, transfer, fork, lineage)
+	repoManagementScope(ownerSlugGroup, db)
 
 	// Repo by id (alias): same routes as owner/slug, under /repo/:id.
 	// ResolveRepositoryByID requires repo ID lookup to be implemented.
@@ -79,8 +107,8 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	idGroup.GET("", middleware.RequireRepositoryPermission(middleware.PermissionRead), handlers.GetRepository(db))
 	idGroup.PATCH("", middleware.RequireAuthentication(), middleware.RequireRepositoryPermission(middleware.PermissionOwner), handlers.UpdateRepository(db))
 	idGroup.DELETE("", middleware.RequireAuthentication(), middleware.RequireRepositoryPermission(middleware.PermissionOwner), handlers.DeleteRepository(db))
-	// Remaining routes under this scope (tags, collaborators, etc.)
-	repoScope(idGroup)
+	// Management routes under this scope (tags, collaborators, transfer, fork, lineage)
+	repoManagementScope(idGroup, db)
 
 	// Search
 	v0.GET("/search", handlers.GlobalSearch(db))

@@ -2,22 +2,92 @@
 // COPYRIGHT OpenDI
 //
 
-import { Button, Container, Typography, Box } from '@mui/material';
+import { Button, Container, Typography, Box, TextField, InputAdornment, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import ModelMinicard from '../components/ModelMinicard';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useTheme } from '@mui/material/styles';
+import { useNavigate } from 'react-router-dom';
 import APIClient from '../util/ApiClient';
+import Card from '@mui/material/Card';
+import CardActionArea from '@mui/material/CardActionArea';
+import LockIcon from '@mui/icons-material/Lock';
+import PublicIcon from '@mui/icons-material/Public';
+import SearchIcon from '@mui/icons-material/Search';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+
+function timeAgo(dateString) {
+  if (!dateString) return '';
+  const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
 
 const Home = () => {
-    const [models, setModels] = useState([]);
+    const [repositories, setRepositories] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [visibility, setVisibility] = useState('');
+    const [sortBy, setSortBy] = useState('updated');
+    const [sortOrder, setSortOrder] = useState('desc');
     const theme = useTheme();
+    const navigate = useNavigate();
 
     useEffect(() => {
-        APIClient.getModels()
-            .then(data => setModels(data))
-            .catch(error => console.error('There was a problem with the fetch operation:', error));
+        APIClient.globalSearch()
+            .then(data => {
+                setRepositories(Array.isArray(data) ? data : data.repositories || []);
+            })
+            .catch(error => {
+                console.error('There was a problem fetching repositories:', error);
+                setRepositories([]);
+            })
+            .finally(() => setLoading(false));
     }, []);
+
+    const filtered = useMemo(() => {
+        let result = repositories;
+
+        // Filter by search query
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            result = result.filter((r) => {
+                return (r.slug || '').toLowerCase().includes(q) ||
+                       (r.description || '').toLowerCase().includes(q) ||
+                       (r.owner || '').toLowerCase().includes(q);
+            });
+        }
+
+        // Filter by visibility
+        if (visibility) {
+            result = result.filter((r) => r.visibility === visibility);
+        }
+
+        // Sort
+        result = [...result].sort((a, b) => {
+            let aVal, bVal;
+            if (sortBy === 'name') {
+                aVal = (a.slug || '').toLowerCase();
+                bVal = (b.slug || '').toLowerCase();
+            } else if (sortBy === 'created') {
+                aVal = new Date(a.created_at).getTime();
+                bVal = new Date(b.created_at).getTime();
+            } else {
+                aVal = new Date(a.updated_at).getTime();
+                bVal = new Date(b.updated_at).getTime();
+            }
+            return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+        });
+
+        return result;
+    }, [repositories, searchQuery, visibility, sortBy, sortOrder]);
 
     return (
         <Box sx={{ minHeight: '100vh', backgroundColor: theme.palette.background.default }}>
@@ -81,14 +151,73 @@ const Home = () => {
             <Container maxWidth="xl" sx={{ py: 4, px: { xs: 2, md: 4 } }}>
                 <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Typography variant="h6" fontWeight={600} color="text.primary">
-                        All Models
+                        Model Repositories
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                        {models.length} {models.length === 1 ? 'result' : 'results'}
+                        {repositories.length} {repositories.length === 1 ? 'repository' : 'repositories'}
                     </Typography>
                 </Box>
 
-                {models.length === 0 ? (
+                {/* Search & Filters */}
+                <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <TextField
+                        size="small"
+                        placeholder="Search repositories..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        slotProps={{
+                            input: {
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" color="action" />
+                                    </InputAdornment>
+                                ),
+                            },
+                        }}
+                        sx={{ minWidth: 240 }}
+                    />
+                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                        <InputLabel>Visibility</InputLabel>
+                        <Select
+                            value={visibility}
+                            label="Visibility"
+                            onChange={(e) => setVisibility(e.target.value)}
+                        >
+                            <MenuItem value="">All</MenuItem>
+                            <MenuItem value="public">Public</MenuItem>
+                            <MenuItem value="private">Private</MenuItem>
+                        </Select>
+                    </FormControl>
+                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                        <InputLabel>Sort By</InputLabel>
+                        <Select
+                            value={sortBy}
+                            label="Sort By"
+                            onChange={(e) => setSortBy(e.target.value)}
+                        >
+                            <MenuItem value="updated">Updated</MenuItem>
+                            <MenuItem value="created">Created</MenuItem>
+                            <MenuItem value="name">Name</MenuItem>
+                        </Select>
+                    </FormControl>
+                    <FormControl size="small" sx={{ minWidth: 100 }}>
+                        <InputLabel>Order</InputLabel>
+                        <Select
+                            value={sortOrder}
+                            label="Order"
+                            onChange={(e) => setSortOrder(e.target.value)}
+                        >
+                            <MenuItem value="desc">Newest</MenuItem>
+                            <MenuItem value="asc">Oldest</MenuItem>
+                        </Select>
+                    </FormControl>
+                </Box>
+
+                {loading ? (
+                    <Box sx={{ textAlign: 'center', py: 8 }}>
+                        <Typography variant="body2" color="text.secondary">Loading...</Typography>
+                    </Box>
+                ) : repositories.length === 0 ? (
                     <Box
                         sx={{
                             textAlign: 'center',
@@ -96,30 +225,58 @@ const Home = () => {
                             color: 'text.secondary',
                         }}
                     >
-                        <Typography variant="body1">No models found.</Typography>
+                        <Typography variant="body1">No repositories found.</Typography>
                         <Typography variant="body2" sx={{ mt: 1 }}>
-                            Create a repository to start managing your models.
+                            Create your own repository to get started.
                         </Typography>
-                        <Button
-                            variant="contained"
-                            href="/repositories"
-                            sx={{ mt: 2 }}
-                        >
-                            Create a Repository
-                        </Button>
+                    </Box>
+                ) : filtered.length === 0 ? (
+                    <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
+                        <SearchIcon sx={{ fontSize: 48, mb: 1 }} />
+                        <Typography variant="body1">No repositories match "{searchQuery}"</Typography>
                     </Box>
                 ) : (
                     <Grid container spacing={2}>
-                        {models.map((model) => (
-                            <ModelMinicard
-                                key={model.meta.UUID}
-                                name={model.meta.name}
-                                id={model.meta.UUID}
-                                author={model.meta.creator.username}
-                                summary={model.meta.summary}
-                                version={model.meta.version}
-                                updatedDate={model.meta.updatedDate}
-                            />
+                        {filtered.map((repo) => (
+                            <Grid key={repo.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                                <Card
+                                    sx={{
+                                        height: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                    }}
+                                >
+                                    <CardActionArea
+                                        onClick={() => navigate(`/repositories/${repo.id}`)}
+                                        sx={{ flexGrow: 1, p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
+                                    >
+                                        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 0.5 }}>
+                                            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                                                <Typography variant="caption" color="text.secondary" noWrap>
+                                                    {repo.owner}
+                                                </Typography>
+                                                <Typography variant="h6" fontWeight={600} noWrap>
+                                                    {repo.slug}
+                                                </Typography>
+                                            </Box>
+                                            {repo.visibility === 'public' ? (
+                                                <PublicIcon sx={{ fontSize: 20, color: 'success.main', ml: 1 }} />
+                                            ) : (
+                                                <LockIcon sx={{ fontSize: 20, color: 'warning.main', ml: 1 }} />
+                                            )}
+                                        </Box>
+                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                            {repo.description || 'No description'}
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 'auto' }}>
+                                            <AccessTimeIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                                            <Typography variant="caption" color="text.secondary">
+                                                Updated {timeAgo(repo.updatedAt)}
+                                            </Typography>
+                                        </Box>
+                                    </CardActionArea>
+                                </Card>
+                            </Grid>
                         ))}
                     </Grid>
                 )}
