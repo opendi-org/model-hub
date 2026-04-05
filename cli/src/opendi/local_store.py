@@ -1,6 +1,7 @@
 """Local SQLite cache for pulled models.
 
-Database location: ~/.opendi/models.db
+Database location: OS-appropriate user data directory (e.g. %APPDATA%\\opendi\\models.db
+on Windows, ~/.local/share/opendi/models.db on Linux, ~/Library/Application Support/opendi/models.db on macOS).
 
 Schema:
   pulled_models
@@ -17,9 +18,11 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from platformdirs import user_data_dir
+
 
 def _db_path() -> Path:
-    path = Path.home() / ".opendi" / "models.db"
+    path = Path(user_data_dir("opendi", appauthor=False)) / "models.db"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 

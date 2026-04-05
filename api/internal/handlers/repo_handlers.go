@@ -10,10 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"opendi.org/model-hub/api/internal/database"
 	"opendi.org/model-hub/api/internal/dto"
 	"opendi.org/model-hub/api/internal/middleware"
 	"opendi.org/model-hub/api/internal/models/hub"
+	"opendi.org/model-hub/api/internal/services"
 )
 
 // CreateRepository handles UC-03: Create Repository
@@ -33,57 +33,20 @@ func CreateRepository(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Validate slug format: alphanumeric, -, _, max 255 chars
-		if !isValidSlug(req.Slug) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name: must be 1-255 characters and contain only letters, numbers, hyphens (-), and underscores (_)"})
+		result, err := services.CreateRepository(db, user.ID, req)
+		if err != nil {
+			switch {
+			case errors.Is(err, services.ErrInvalidSlug):
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			case errors.Is(err, services.ErrRepoAlreadyExists):
+				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			default:
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			}
 			return
 		}
 
-		// Check for duplicate slug under this owner
-		var count int64
-		if err := db.Model(&hub.Repository{}).
-			Where("owner_id = ? AND slug = ?", user.ID, req.Slug).
-			Count(&count).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-			return
-		}
-
-		if count > 0 {
-			c.JSON(http.StatusConflict, gin.H{"error": "repository name already exists"})
-			return
-		}
-
-		// Create the repository
-		repo := &hub.Repository{
-			OwnerID:     user.ID,
-			Slug:        req.Slug,
-			Description: req.Description,
-			Visibility:  req.Visibility,
-		}
-
-		if err := db.Create(repo).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create repository"})
-			return
-		}
-
-		// Fetch owner user to get username
-		var ownerUser hub.User
-		if err := db.Model(&hub.User{}).Where("id = ?", user.ID).First(&ownerUser).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch user"})
-			return
-		}
-
-		response := dto.RepositoryListItem{
-			ID:          repo.ID,
-			Owner:       ownerUser.Username,
-			Slug:        repo.Slug,
-			Description: repo.Description,
-			Visibility:  repo.Visibility,
-			CreatedAt:   repo.CreatedAt,
-			UpdatedAt:   repo.UpdatedAt,
-		}
-
-		c.JSON(http.StatusCreated, response)
+		c.JSON(http.StatusCreated, result)
 	}
 }
 
@@ -98,127 +61,49 @@ func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Set defaults
-		if query.SortBy == "" {
-			query.SortBy = "updated"
-		}
-		if query.SortOrder == "" {
-			query.SortOrder = "desc"
+		if query.Scope == "" {
+			query.Scope = "all"
 		}
 
-		// Get authenticated user (required by middleware)
-		user, err := middleware.GetCurrentUser(c)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		user := middleware.OptionalGetCurrentUser(c)
+		params := services.ListRepositoriesParams{
+			Scope:           query.Scope,
+			Q:               query.Q,
+			Owner:           query.Owner,
+			IsAuthenticated: user != nil,
+			Visibility:      query.Visibility,
+			SortOrder:       query.SortOrder,
+			SortBy:          query.SortBy,
+		}
+
+		if user != nil {
+			params.UserID = user.ID
+		}
+
+		if (query.Scope == "mine" || query.Scope == "shared-with-me") && user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "must be authenticated to use this scope"})
 			return
 		}
 
-		dbQuery := db.Model(&hub.Repository{})
-
-		// Apply scope filter
-		switch query.Scope {
-		case "mine":
-			// Only show repositories owned by user
-			dbQuery = dbQuery.Where("owner_id = ?", user.ID)
-		case "shared-with-me":
-			// Only show repositories shared with user (collaborator)
-			dbQuery = dbQuery.Where("id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)", user.ID)
-		case "all":
-			// Show all public repositories
-			dbQuery = dbQuery.Where("visibility = ?", "public")
-		default:
-			// Default: show owned + shared (for backward compatibility)
-			dbQuery = dbQuery.Where("owner_id = ? OR id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)", user.ID, user.ID)
-		}
-		if query.Visibility != "" && (query.Visibility == "public" || query.Visibility == "private") {
-			dbQuery = dbQuery.Where("visibility = ?", query.Visibility)
-		}
-
-		// Apply search filter
-		if query.Q != "" {
-			searchTerm := "%" + strings.ToLower(query.Q) + "%"
-			dbQuery = dbQuery.Where("LOWER(slug) LIKE ? OR LOWER(description) LIKE ?", searchTerm, searchTerm)
-		}
-
-		// Apply owner filter
-		if query.Owner != "" {
-			ownerName := strings.ToLower(strings.TrimSpace(query.Owner))
-			var ownerUser hub.User
-			if err := db.Model(&hub.User{}).Where("username = ?", ownerName).First(&ownerUser).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					// No repos for this owner
-					c.JSON(http.StatusOK, dto.ListRepositoriesResponse{
-						Repositories: []dto.RepositoryListItem{},
-						Total:        0,
-					})
-					return
-				}
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		result, err := services.ListRepositories(db, params)
+		if err != nil {
+			if err.Error() == "invalid scope" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-			dbQuery = dbQuery.Where("owner_id = ?", ownerUser.ID)
-		}
-
-		// Get total count
-		var total int64
-		if err := dbQuery.Count(&total).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
 
-		// Apply sorting
-		sortColumn := "updated_at"
-		switch query.SortBy {
-		case "name":
-			sortColumn = "slug"
-		case "created":
-			sortColumn = "created_at"
-		case "updated":
-			sortColumn = "updated_at"
-		}
-
-		sortDir := "DESC"
-		if query.SortOrder == "asc" {
-			sortDir = "ASC"
-		}
-
-		// Apply sorting
-		dbQuery = dbQuery.Order(sortColumn + " " + sortDir)
-
-		// Fetch repositories
-		var repos []hub.Repository
-		if err := dbQuery.Preload("Owner").Find(&repos).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-			return
-		}
-
-		items := make([]dto.RepositoryListItem, len(repos))
-		for i, repo := range repos {
-			items[i] = dto.RepositoryListItem{
-				ID:          repo.ID,
-				Owner:       repo.Owner.Username,
-				Slug:        repo.Slug,
-				Description: repo.Description,
-				Visibility:  repo.Visibility,
-				CreatedAt:   repo.CreatedAt,
-				UpdatedAt:   repo.UpdatedAt,
-			}
-		}
-
-		c.JSON(http.StatusOK, dto.ListRepositoriesResponse{
-			Repositories: items,
-			Total:        total,
-		})
+		c.JSON(http.StatusOK, result)
 	}
 }
 
 // GetRepository handles UC-05: View Repository
 // GET /v0/repositories/:owner/:slug
-// Requires: ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware (no authentication required)
-// Handler enforces read access (permission != PermissionNone)
+// Requires: ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
 func GetRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Repository and permission already resolved by middleware
 		repo := middleware.GetRepository(c)
 		if repo == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
@@ -227,87 +112,14 @@ func GetRepository(db *gorm.DB) gin.HandlerFunc {
 
 		permission := middleware.GetRepositoryPermission(c)
 
-		// Build response
-		response := dto.RepositoryResponse{
-			ID:          repo.ID,
-			Owner:       repo.Owner.Username,
-			Slug:        repo.Slug,
-			Description: repo.Description,
-			Visibility:  repo.Visibility,
-			CreatedAt:   repo.CreatedAt,
-			UpdatedAt:   repo.UpdatedAt,
-		}
-
-		// Fetch tags
-		var tags []hub.CDMTag
-		if err := db.Where("repo_id = ?", repo.ID).Preload("CreatedBy").Find(&tags).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		includePrivate := permission == middleware.PermissionOwner || middleware.IsRepositoryCollaborator(c)
+		result, err := services.GetRepositoryDetails(db, repo, includePrivate)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
 
-		response.Tags = make([]dto.RepositoryTagInfo, len(tags))
-		for i, tag := range tags {
-			response.Tags[i] = dto.RepositoryTagInfo{
-				Name:        tag.Name,
-				Digest:      tag.ModelUUID,
-				Size:        tag.SizeBytes,
-				LastUpdated: tag.UpdatedAt,
-				CreatedBy:   tag.CreatedBy.Username,
-			}
-		}
-
-		// Fetch collaborators (only show to owner and explicit collaborators)
-		isOwner := permission == middleware.PermissionOwner
-		isExplicitCollaborator := middleware.IsRepositoryCollaborator(c)
-		if isOwner || isExplicitCollaborator {
-			var collabs []hub.Collaborator
-			if err := db.Where("repo_id = ?", repo.ID).Preload("User").Find(&collabs).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-				return
-			}
-
-			response.Collaborators = make([]dto.CollaboratorInfo, len(collabs))
-			for i, collab := range collabs {
-				response.Collaborators[i] = dto.CollaboratorInfo{
-					Username: collab.User.Username,
-					Role:     collab.Role,
-				}
-			}
-		}
-
-		// Fetch lineage if accessible (owner or explicit collab only)
-		if isOwner || isExplicitCollaborator {
-			lineage := dto.RepositoryLineageInfo{}
-
-			// Parent
-			if repo.ForkedFromID != nil {
-				var parent hub.Repository
-				if err := db.Unscoped().Preload("Owner").Where("id = ?", *repo.ForkedFromID).First(&parent).Error; err == nil {
-					lineage.Parent = &dto.RepositoryLineageRef{
-						ID:    parent.ID,
-						Owner: parent.Owner.Username,
-						Slug:  parent.Slug,
-					}
-				}
-			}
-
-			// Children
-			var children []hub.Repository
-			if err := db.Where("forked_from_id = ? AND deleted_at IS NULL", repo.ID).Preload("Owner").Find(&children).Error; err == nil {
-				lineage.Children = make([]dto.RepositoryLineageRef, len(children))
-				for i, child := range children {
-					lineage.Children[i] = dto.RepositoryLineageRef{
-						ID:    child.ID,
-						Owner: child.Owner.Username,
-						Slug:  child.Slug,
-					}
-				}
-			}
-
-			response.Lineage = lineage
-		}
-
-		c.JSON(http.StatusOK, response)
+		c.JSON(http.StatusOK, result)
 	}
 }
 
@@ -318,7 +130,6 @@ func GetRepository(db *gorm.DB) gin.HandlerFunc {
 // Handler enforces PermissionOwner
 func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Repository and permission already resolved by middleware
 		repo := middleware.GetRepository(c)
 		if repo == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
@@ -336,57 +147,20 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Validate new slug
-		if !isValidSlug(req.Slug) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repository name: must be 1-255 characters and contain only letters, numbers, hyphens (-), and underscores (_)"})
-			return
-		}
-
-		// Check for duplicate slug if changing the name
-		if req.Slug != repo.Slug {
-			var count int64
-			if err := db.Model(&hub.Repository{}).
-				Where("owner_id = ? AND slug = ?", repo.OwnerID, req.Slug).
-				Count(&count).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-				return
+		result, err := services.UpdateRepository(db, repo, req)
+		if err != nil {
+			switch {
+			case errors.Is(err, services.ErrInvalidSlug):
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			case errors.Is(err, services.ErrRepoAlreadyExists):
+				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			default:
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			}
-
-			if count > 0 {
-				c.JSON(http.StatusConflict, gin.H{"error": "repository name already exists"})
-				return
-			}
-		}
-
-		// Update repository
-		updateData := map[string]interface{}{
-			"slug":        req.Slug,
-			"description": req.Description,
-			"visibility":  req.Visibility,
-		}
-
-		if err := db.Model(repo).Updates(updateData).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update repository"})
 			return
 		}
 
-		// Fetch updated repo with owner
-		if err := db.Preload("Owner").First(repo, repo.ID).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-			return
-		}
-
-		response := dto.RepositoryListItem{
-			ID:          repo.ID,
-			Owner:       repo.Owner.Username,
-			Slug:        repo.Slug,
-			Description: repo.Description,
-			Visibility:  repo.Visibility,
-			CreatedAt:   repo.CreatedAt,
-			UpdatedAt:   repo.UpdatedAt,
-		}
-
-		c.JSON(http.StatusOK, response)
+		c.JSON(http.StatusOK, result)
 	}
 }
 
@@ -397,7 +171,6 @@ func UpdateRepository(db *gorm.DB) gin.HandlerFunc {
 // Handler enforces PermissionOwner only
 func DeleteRepository(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Repository and permission already resolved by middleware
 		repo := middleware.GetRepository(c)
 		if repo == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
@@ -409,8 +182,7 @@ func DeleteRepository(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Soft-delete the repository
-		if err := db.Delete(repo).Error; err != nil {
+		if err := services.DeleteRepository(db, repo); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete repository"})
 			return
 		}
@@ -1014,7 +786,6 @@ func TransferRepositoryOwnership(db *gorm.DB) gin.HandlerFunc {
 // PutTagModel handles UC-13: Upload Model
 // PUT /v0/repositories/:owner/:slug/tags/:tag
 // Requires: ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
-// Requires at least write permission. Validates CDM JSON, saves content, upserts tag.
 func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		repo := middleware.GetRepository(c)
@@ -1023,11 +794,7 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		permission := middleware.GetRepositoryPermission(c)
-		// When auth is not yet implemented, unauthenticated users get PermissionRead
-		// on public repos. Treat as write for demo purposes until auth is complete.
-		unauthenticated := middleware.OptionalGetCurrentUser(c) == nil
-		if !hasWritePermission(permission) && !unauthenticated {
+		if !middleware.HasRequiredPermission(middleware.GetRepositoryPermission(c), middleware.PermissionWrite) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
@@ -1048,63 +815,29 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		rootUUID, err := database.SaveCDM(db, raw)
+		user, err := middleware.GetCurrentUser(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		result, err := services.UploadModel(db, repo.ID, tagName, raw, user.ID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		// Upsert the tag
-		var tag hub.CDMTag
-		result := db.Where("repo_id = ? AND name = ?", repo.ID, tagName).First(&tag)
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			// Get uploader user ID if authenticated
-			var createdByID uint = 1 // fallback for dev mode
-			if user := middleware.OptionalGetCurrentUser(c); user != nil {
-				createdByID = user.ID
-			}
-			tag = hub.CDMTag{
-				RepoID:      repo.ID,
-				Name:        tagName,
-				ModelUUID:   rootUUID,
-				SizeBytes:   int64(len(raw)),
-				CreatedByID: createdByID,
-			}
-			if err := db.Create(&tag).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create tag"})
-				return
-			}
-		} else if result.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-			return
-		} else {
-			// Update existing tag
-			if err := db.Model(&tag).Updates(map[string]interface{}{
-				"model_uuid": rootUUID,
-				"size_bytes": int64(len(raw)),
-			}).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update tag"})
-				return
-			}
-		}
-
 		c.JSON(http.StatusOK, gin.H{
-			"tag":    tagName,
-			"digest": rootUUID,
-			"size":   len(raw),
+			"tag":    result.Tag,
+			"digest": result.Digest,
+			"size":   result.Size,
 		})
 	}
-}
-
-// hasWritePermission returns true if the permission level is write or owner.
-func hasWritePermission(permission string) bool {
-	return permission == middleware.PermissionWrite || permission == middleware.PermissionOwner
 }
 
 // GetTagModel handles UC-12: Download Model
 // GET /v0/repositories/:owner/:slug/tags/:tag/model
 // Requires: ResolveRepositoryByOwnerSlug, CheckRepositoryAccess middleware
-// Returns the CDM JSON for the given tag. Requires at least read permission.
 func GetTagModel(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		repo := middleware.GetRepository(c)
@@ -1118,29 +851,23 @@ func GetTagModel(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		tagName := c.Param("tag")
-
-		var tag hub.CDMTag
-		if err := db.Where("repo_id = ? AND name = ?", repo.ID, tagName).First(&tag).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "tag not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-			return
-		}
-
-		model, err := database.LoadCDM(db, tag.ModelUUID)
+		result, err := services.DownloadModel(db, repo.ID, c.Param("tag"))
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "model not found"})
+			if errors.Is(err, services.ErrTagNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "tag not found"})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load model"})
 			return
 		}
 
-		c.JSON(http.StatusOK, model)
+		c.Header("ETag", result.Digest)
+		if c.GetHeader("If-None-Match") == result.Digest {
+			c.Status(http.StatusNotModified)
+			return
+		}
+
+		c.JSON(http.StatusOK, result.Model)
 	}
 }
 
@@ -1163,13 +890,11 @@ func isValidTagName(tag string) bool {
 	return true
 }
 
-// isValidSlug checks if the slug is valid for use as a repository name.
-// Slugs must be alphanumeric, hyphens, and underscores, 1-255 chars.
+// isValidSlug checks that a slug is alphanumeric plus hyphens/underscores, 1-255 chars.
 func isValidSlug(slug string) bool {
 	if len(slug) == 0 || len(slug) > 255 {
 		return false
 	}
-
 	for _, ch := range slug {
 		if !((ch >= 'a' && ch <= 'z') ||
 			(ch >= 'A' && ch <= 'Z') ||
@@ -1178,6 +903,5 @@ func isValidSlug(slug string) bool {
 			return false
 		}
 	}
-
 	return true
 }

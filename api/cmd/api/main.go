@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 	"opendi.org/model-hub/api/internal/config"
 	"opendi.org/model-hub/api/internal/database"
 	"opendi.org/model-hub/api/internal/middleware"
@@ -19,13 +18,6 @@ import (
 )
 
 func main() {
-	// ── Load .env — try all common run locations ─────────────────────────────
-	for _, p := range []string{".env", "../.env", "../../.env", "../../../.env", "config/.env"} {
-		if godotenv.Load(p) == nil {
-			break
-		}
-	}
-
 	// ── Configuration ─────────────────────────────────────────────────────────
 	cfg, err := config.LoadConfig()
 	if err != nil {

@@ -117,11 +117,12 @@ def logout() -> None:
 @app.command()
 def pull(
     name: str = typer.Argument(..., help="Model ref to pull: owner/repo:tag"),
-    output: str = typer.Option(None, "--output", "-o", help="Output file path (default: <tag>.json)"),
 ) -> None:
-    """Pull a model from the hub and save it as a JSON file.
+    """Pull a model from the hub into the local cache.
 
     NAME format: owner/repo:tag  (e.g. alice/my-model:v1.0)
+
+    Use `opendi save` to write a working copy to disk.
     """
     # Parse owner/repo:tag
     if "/" not in name or ":" not in name:
@@ -162,10 +163,8 @@ def pull(
         typer.echo(f"Server error {response.status_code}: {response.text}", err=True)
         raise typer.Exit(1)
 
-    out_path = Path(output) if output else Path(f"{tag}.json")
-    out_path.write_text(response.text, encoding="utf-8")
     local_store.save_model(owner, repo_slug, tag, response.text)
-    typer.echo(f"Downloaded {name} → {out_path}")
+    typer.echo(f"Pulled {name} into local cache.")
 
 
 @app.command()
