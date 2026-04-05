@@ -221,8 +221,46 @@ def push(
         typer.echo("Access denied. You need write access to this repository.", err=True)
         raise typer.Exit(1)
     if response.status_code == 404:
-        typer.echo(f"Repository not found: {owner}/{repo_slug}", err=True)
-        raise typer.Exit(1)
+        create = typer.confirm(
+            f"Repository {owner}/{repo_slug} not found. Create it as a public repository?",
+            default=False,
+        )
+        if not create:
+            typer.echo("Aborted.", err=True)
+            raise typer.Exit(1)
+
+        create_url = f"{_API_BASE}/v0/repositories"
+        try:
+            create_resp = requests.post(
+                create_url,
+                json={"slug": repo_slug, "visibility": "public"},
+                headers=headers,
+                timeout=30,
+            )
+        except requests.ConnectionError:
+            typer.echo(f"Could not connect to {_API_BASE}. Is the server running?", err=True)
+            raise typer.Exit(1)
+
+        if not create_resp.ok:
+            typer.echo(
+                f"Failed to create repository: {create_resp.status_code} {create_resp.text}",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+        typer.echo(f"Created repository {owner}/{repo_slug}.")
+
+        # Retry the push now that the repo exists
+        try:
+            response = requests.put(url, data=raw, headers=headers, timeout=60)
+        except requests.ConnectionError:
+            typer.echo(f"Could not connect to {_API_BASE}. Is the server running?", err=True)
+            raise typer.Exit(1)
+
+        if not response.ok:
+            typer.echo(f"Server error {response.status_code}: {response.text}", err=True)
+            raise typer.Exit(1)
+
     if not response.ok:
         typer.echo(f"Server error {response.status_code}: {response.text}", err=True)
         raise typer.Exit(1)
