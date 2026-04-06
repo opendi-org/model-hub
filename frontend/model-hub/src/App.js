@@ -10,7 +10,7 @@ import {
 } from "react-router-dom";
 import Home from "./pages";
 import ModelPage from './pages/modelPage';
-import CliDownloadPage from './pages/downloadPage';
+import CliDownloadPage from './pages/cliPage';
 import AuthCallback from './pages/AuthCallback';
 import LoginPage from './pages/login'
 import SigninPage from './pages/signin';
@@ -20,7 +20,6 @@ import { getTheme } from './Theme';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import UserPage from "./pages/user";
-import SearchPage from "./pages/search";
 import NotFoundPage from "./pages/NotFound";
 import RepositoriesPage from "./pages/repositoriesPage";
 import RepositoryDetailsPage from "./pages/repositoryDetailsPage";
@@ -61,7 +60,7 @@ function App() {
                 <Route exact path="/" element={<Home />} />
                 <Route path="/repositories" element={<RepositoriesPage />} />
                 <Route path="/repositories/:repositoryId" element={<RepositoryDetailsPage />} />
-                <Route path="/cli-download" element={<CliDownloadPage />} />
+                <Route path="/cli-tool" element={<CliDownloadPage />} />
                 <Route path="/model/:uuid" element={<ModelPage />} />
                 <Route path="/model" element={<ModelPage />} />
                 <Route path="/login" element={<LoginPage />} />
@@ -69,7 +68,6 @@ function App() {
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/user" element={<UserPage />} />
-                <Route path="/search" element={<SearchPage />} />
               </Routes>
               </Router>
             </RepositoryProvider>

@@ -1,132 +1,142 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Container, TextField, IconButton, Box } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import { FormControl, InputLabel, MenuItem, Select } from '@mui/material';
-import ModelMinicard from '../components/ModelMinicard'
-import { useSearchParams } from "react-router-dom";
+import { Container, Typography, Box, TextField, InputAdornment } from '@mui/material';
+import Grid from '@mui/material/Grid';
+import { useEffect, useState, useMemo } from 'react';
+import { useTheme } from '@mui/material/styles';
+import { useNavigate } from 'react-router-dom';
 import APIClient from '../util/ApiClient';
+import Card from '@mui/material/Card';
+import CardActionArea from '@mui/material/CardActionArea';
+import LockIcon from '@mui/icons-material/Lock';
+import PublicIcon from '@mui/icons-material/Public';
+import SearchIcon from '@mui/icons-material/Search';
 
+const ExplorePage = () => {
+    const [repositories, setRepositories] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
+    const theme = useTheme();
+    const navigate = useNavigate();
 
-const SearchPage = () => {
-    const [searchParams, setSearchParams] = useSearchParams();
-    const [searchTerm, setSearchTerm] = useState(searchParams.get('term') ?? '');
-    const [results, setResults] = useState([]);
-    const [searchType, setSearchType] = useState(searchParams.get('type') ?? 'model');
-
-    const handleSearchChange = (event) => {
-        setSearchTerm(event.target.value);
-    };
-
-    const handleSearch = useCallback(() => {
-        if (!searchTerm.trim()) {
-            setResults([]);
-            return;
-        }
-
-        // Update URL params when searching
-        const newParams = new URLSearchParams();
-        if (searchTerm.trim()) {
-            newParams.set('term', searchTerm.trim());
-        }
-        if (searchType) {
-            newParams.set('type', searchType);
-        }
-        setSearchParams(newParams);
-
-        APIClient.searchModels(searchType, searchTerm.trim())
-            .then(data => setResults(data || []))
-            .catch(error => {
-                console.error('There was an error fetching search results:', error);
-                setResults([]);
-            });
-    }, [searchTerm, searchType, setSearchParams]);
-
-    // Run search when URL params change (e.g., from navbar search)
     useEffect(() => {
-        const termFromUrl = searchParams.get('term') ?? '';
-        const typeFromUrl = searchParams.get('type') ?? 'model';
-        
-        // Update local state to match URL params
-        setSearchTerm(termFromUrl);
-        setSearchType(typeFromUrl);
-        
-        // Trigger search if there's a term
-        if (termFromUrl.trim()) {
-            APIClient.searchModels(typeFromUrl, termFromUrl.trim())
-                .then(data => setResults(data || []))
-                .catch(error => {
-                    console.error('There was an error fetching search results:', error);
-                    setResults([]);
-                });
-        } else {
-            setResults([]);
-        }
-    }, [searchParams]);
+        APIClient.getRepositories('all')
+            .then(data => {
+                setRepositories(Array.isArray(data) ? data : data.repositories || []);
+            })
+            .catch(error => {
+                console.error('There was a problem fetching repositories:', error);
+                setRepositories([]);
+            })
+            .finally(() => setLoading(false));
+    }, []);
 
-    const handleChange = (event) => {
-        setSearchType(event.target.value);
-    };
+    const filtered = useMemo(() => {
+        const q = searchQuery.toLowerCase();
+        return repositories.filter((r) => {
+            return (r.slug || '').toLowerCase().includes(q) ||
+                   (r.description || '').toLowerCase().includes(q) ||
+                   (r.owner || '').toLowerCase().includes(q);
+        });
+    }, [repositories, searchQuery]);
 
     return (
-        <Container>
-            <Box display="flex" justifyContent="center" alignItems="center" mt={2}>
-                <TextField
-                    variant="outlined"
-                    placeholder="Search"
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    InputProps={{
-                        startAdornment: (
-                            <IconButton onClick={handleSearch}>
-                                <SearchIcon />
-                            </IconButton>
-                        ),
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            handleSearch();
-                        }
-                    }}
-                />
-                <FormControl sx={{ ml: 1, minWidth: 120 }}>
-                    <InputLabel>Filter</InputLabel>
-                    <Select
-                        labelId="select-search"
-                        id="select-search"
-                        value={searchType}
-                        label="Filter"
-                        onChange={handleChange}
+        <Box sx={{ minHeight: '100vh', backgroundColor: theme.palette.background.default }}>
+            <Container maxWidth="xl" sx={{ py: 4, px: { xs: 2, md: 4 } }}>
+                <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="h5" fontWeight={600} color="text.primary">
+                        Explore Public Repositories
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        {repositories.length} {repositories.length === 1 ? 'repository' : 'repositories'}
+                    </Typography>
+                </Box>
+
+                {/* Search Bar */}
+                <Box sx={{ mb: 3 }}>
+                    <TextField
+                        size="small"
+                        placeholder="Filter repositories..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        slotProps={{
+                            input: {
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" color="action" />
+                                    </InputAdornment>
+                                ),
+                            },
+                        }}
+                        sx={{ minWidth: 240 }}
+                    />
+                </Box>
+
+                {loading ? (
+                    <Box sx={{ textAlign: 'center', py: 8 }}>
+                        <Typography variant="body2" color="text.secondary">Loading...</Typography>
+                    </Box>
+                ) : repositories.length === 0 ? (
+                    <Box
+                        sx={{
+                            textAlign: 'center',
+                            py: 8,
+                            color: 'text.secondary',
+                        }}
                     >
-                        <MenuItem value={"model"}>Model Name</MenuItem>
-                        <MenuItem value={"user"}>Creator Name</MenuItem>
-                    </Select>
-                </FormControl>
-            </Box>
-            <Box display="flex" flexDirection="column" alignItems="center" mt={2}>
-                {results.map((result) => {
-                    // Handle both uuid and UUID casing (use whichever exists)
-                    const uuid = result.meta?.uuid || result.meta?.UUID;
-                    if (!uuid) {
-                        console.warn('Result missing UUID:', result);
-                        return null;
-                    }
-                    return (
-                        <React.Fragment key={uuid}>
-                            <ModelMinicard 
-                                name={result.meta?.name} 
-                                id={uuid} 
-                                author={result.meta?.creator?.username || 'Unknown'} 
-                                summary={result.meta?.summary || ''} 
-                                version={result.meta?.version} 
-                                updatedDate={result.meta?.updatedDate}
-                            />
-                            <Box mb={2} /> 
-                        </React.Fragment>
-                    );
-                })}
-            </Box>
-        </Container>
+                        <Typography variant="body1">No public repositories yet.</Typography>
+                        <Typography variant="body2" sx={{ mt: 1 }}>
+                            Check back later or create your own repository and make it public.
+                        </Typography>
+                    </Box>
+                ) : filtered.length === 0 ? (
+                    <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
+                        <SearchIcon sx={{ fontSize: 48, mb: 1 }} />
+                        <Typography variant="body1">No repositories match "{searchQuery}"</Typography>
+                    </Box>
+                ) : (
+                    <Grid container spacing={2}>
+                        {filtered.map((repo) => (
+                            <Grid key={repo.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                                <Card
+                                    sx={{
+                                        height: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                    }}
+                                >
+                                    <CardActionArea
+                                        onClick={() => navigate(`/repositories/${repo.id}`)}
+                                        sx={{ flexGrow: 1, p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
+                                    >
+                                        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 0.5 }}>
+                                            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                                                <Typography variant="caption" color="text.secondary" noWrap>
+                                                    {repo.owner}
+                                                </Typography>
+                                                <Typography variant="h6" fontWeight={600} noWrap>
+                                                    {repo.slug}
+                                                </Typography>
+                                            </Box>
+                                            {repo.visibility === 'public' ? (
+                                                <PublicIcon sx={{ fontSize: 20, color: 'success.main', ml: 1 }} />
+                                            ) : (
+                                                <LockIcon sx={{ fontSize: 20, color: 'warning.main', ml: 1 }} />
+                                            )}
+                                        </Box>
+                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                            {repo.description || 'No description'}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary" sx={{ mt: 'auto' }}>
+                                            Updated {new Date(repo.updated_at).toLocaleDateString()}
+                                        </Typography>
+                                    </CardActionArea>
+                                </Card>
+                            </Grid>
+                        ))}
+                    </Grid>
+                )}
+            </Container>
+        </Box>
     );
 };
 
-export default SearchPage
+export default ExplorePage;

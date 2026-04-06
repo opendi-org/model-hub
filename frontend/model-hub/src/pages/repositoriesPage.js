@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -20,6 +20,10 @@ import {
   Typography,
   Alert,
   CircularProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import AddIcon from '@mui/icons-material/Add';
@@ -61,6 +65,8 @@ const RepositoriesPage = () => {
   const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('updated');
+  const [sortOrder, setSortOrder] = useState('desc');
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState(null);
@@ -70,12 +76,32 @@ const RepositoriesPage = () => {
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const filtered = repositories.filter((r) => {
-    const q = searchQuery.toLowerCase();
-    return (r.slug || '').toLowerCase().includes(q) ||
-           (r.description || '').toLowerCase().includes(q) ||
-           (r.owner || '').toLowerCase().includes(q);
-  });
+  const filtered = useMemo(() => {
+    let result = repositories.filter((r) => {
+      const q = searchQuery.toLowerCase();
+      return (r.slug || '').toLowerCase().includes(q) ||
+             (r.description || '').toLowerCase().includes(q) ||
+             (r.owner || '').toLowerCase().includes(q);
+    });
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      let aVal, bVal;
+      if (sortBy === 'name') {
+        aVal = (a.slug || '').toLowerCase();
+        bVal = (b.slug || '').toLowerCase();
+      } else if (sortBy === 'created') {
+        aVal = new Date(a.created_at).getTime();
+        bVal = new Date(b.created_at).getTime();
+      } else {
+        aVal = new Date(a.updated_at).getTime();
+        bVal = new Date(b.updated_at).getTime();
+      }
+      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+
+    return result;
+  }, [repositories, searchQuery, sortBy, sortOrder]);
 
   const handleCreateOpen = () => {
     setFormSlug('');
@@ -180,7 +206,7 @@ const RepositoriesPage = () => {
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h4" fontWeight="bold">
-          Repositories
+          My Repositories
         </Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreateOpen}>
           Create Repository
@@ -195,28 +221,52 @@ const RepositoriesPage = () => {
           onChange={(_, val) => { if (val) changeScope(val); }}
           size="small"
         >
-          <ToggleButton value="mine">My Repos</ToggleButton>
+          <ToggleButton value="mine">Owned Repos</ToggleButton>
           <ToggleButton value="shared-with-me">Shared With Me</ToggleButton>
-          <ToggleButton value="all">All Public</ToggleButton>
         </ToggleButtonGroup>
 
-        {/* Search */}
-        <TextField
-          size="small"
-          placeholder="Filter repositories..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" color="action" />
-                </InputAdornment>
-              ),
-            },
-          }}
-          sx={{ minWidth: 240 }}
-        />
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: 1, alignItems: 'flex-end' }}>
+          {/* Search */}
+          <TextField
+            size="small"
+            placeholder="Search repositories..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" color="action" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+            sx={{ minWidth: 240 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Sort By</InputLabel>
+            <Select
+              value={sortBy}
+              label="Sort By"
+              onChange={(e) => setSortBy(e.target.value)}
+            >
+              <MenuItem value="updated">Updated</MenuItem>
+              <MenuItem value="created">Created</MenuItem>
+              <MenuItem value="name">Name</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 100 }}>
+            <InputLabel>Order</InputLabel>
+            <Select
+              value={sortOrder}
+              label="Order"
+              onChange={(e) => setSortOrder(e.target.value)}
+            >
+              <MenuItem value="desc">Newest</MenuItem>
+              <MenuItem value="asc">Oldest</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
       </Box>
 
       {/* Loading skeleton */}
@@ -236,13 +286,24 @@ const RepositoriesPage = () => {
       ) : repositories.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
           <FolderOffOutlinedIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
-          <Typography variant="body1">No repositories yet.</Typography>
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            Create your first repository to start managing models and tags.
-          </Typography>
-          <Button variant="contained" sx={{ mt: 2 }} onClick={handleCreateOpen}>
-            Create a Repository
-          </Button>
+          {scope === 'mine' ? (
+            <>
+              <Typography variant="body1">No repositories yet.</Typography>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Create your first repository to start managing models and tags.
+              </Typography>
+              <Button variant="contained" sx={{ mt: 2 }} onClick={handleCreateOpen}>
+                Create a Repository
+              </Button>
+            </>
+          ) : (
+            <>
+              <Typography variant="body1">No repositories shared with you.</Typography>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Ask others to add you as a collaborator to access their repositories.
+              </Typography>
+            </>
+          )}
         </Box>
       ) : filtered.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
