@@ -528,7 +528,7 @@ def test_pull_unauthenticated_public_repo() -> None:
     mock_response.status_code = 200
     mock_response.text = '{"meta": {"uuid": "abc"}}'
     with (
-        patch("opendi.main.credential_storage.load_creds", return_value=None),
+        patch("opendi.main.credential_storage.load_access_token", return_value=None),
         patch("opendi.main.requests.get", return_value=mock_response),
         patch("opendi.main.local_store.save_model") as mock_save,
     ):
@@ -544,7 +544,7 @@ def test_pull_not_found() -> None:
     mock_response.status_code = 404
     mock_response.ok = False
     with (
-        patch("opendi.main.credential_storage.load_creds", return_value=None),
+        patch("opendi.main.credential_storage.load_access_token", return_value=None),
         patch("opendi.main.requests.get", return_value=mock_response),
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
@@ -558,7 +558,7 @@ def test_pull_access_denied() -> None:
     mock_response.status_code = 403
     mock_response.ok = False
     with (
-        patch("opendi.main.credential_storage.load_creds", return_value=None),
+        patch("opendi.main.credential_storage.load_access_token", return_value=None),
         patch("opendi.main.requests.get", return_value=mock_response),
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
@@ -570,7 +570,7 @@ def test_pull_connection_error() -> None:
     """opendi pull exits 1 when server is unreachable."""
     import requests as req_lib
     with (
-        patch("opendi.main.credential_storage.load_creds", return_value=None),
+        patch("opendi.main.credential_storage.load_access_token", return_value=None),
         patch("opendi.main.requests.get", side_effect=req_lib.ConnectionError()),
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
@@ -590,7 +590,7 @@ def test_push_invalid_name_format() -> None:
 
 def test_push_file_not_found() -> None:
     """opendi push exits 1 when the local file does not exist."""
-    with patch("opendi.main.credential_storage.load_creds", return_value=None):
+    with patch("opendi.main.credential_storage.load_access_token", return_value=None):
         result = runner.invoke(app, ["push", "/nonexistent/model.json", "--name", "alice/repo:v1.0"])
     assert result.exit_code == 1
     assert "File not found" in result.output
@@ -607,7 +607,7 @@ def test_push_success() -> None:
         f.write(b'{"meta": {"uuid": "abc"}}')
         tmp_path = f.name
     with (
-        patch("opendi.main.credential_storage.load_creds", return_value=None),
+        patch("opendi.main.credential_storage.load_access_token", return_value=None),
         patch("opendi.main.requests.put", return_value=mock_response),
     ):
         result = runner.invoke(app, ["push", tmp_path, "--name", "alice/repo:v1.0"])
@@ -626,7 +626,7 @@ def test_push_access_denied() -> None:
         f.write(b'{}')
         tmp_path = f.name
     with (
-        patch("opendi.main.credential_storage.load_creds", return_value=None),
+        patch("opendi.main.credential_storage.load_access_token", return_value=None),
         patch("opendi.main.requests.put", return_value=mock_response),
     ):
         result = runner.invoke(app, ["push", tmp_path, "--name", "alice/repo:v1.0"])

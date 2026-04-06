@@ -1,6 +1,7 @@
 """CLI entry point. Called when the user runs the `opendi` command."""
 
 import os
+from pathlib import Path
 
 import requests
 import typer
@@ -138,13 +139,9 @@ def pull(
 
     # Try authenticated download first; fall back to unauthenticated for public repos.
     headers: dict[str, str] = {}
-    creds = credential_storage.load_creds()
-    if creds is not None:
-        try:
-            jwt = _require_credentials()
-            headers["Authorization"] = f"Bearer {jwt}"
-        except SystemExit:
-            pass  # expired/invalid — proceed unauthenticated
+    token = credential_storage.load_access_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
 
     url = f"{_API_BASE}/v0/repositories/{owner}/{repo_slug}/tags/{tag}/model"
     try:
@@ -199,13 +196,9 @@ def push(
 
     # Auth header (optional — works without auth in dev mode for public repos)
     headers: dict[str, str] = {"Content-Type": "application/json"}
-    creds = credential_storage.load_creds()
-    if creds is not None:
-        try:
-            jwt = _require_credentials()
-            headers["Authorization"] = f"Bearer {jwt}"
-        except SystemExit:
-            pass
+    token = credential_storage.load_access_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
 
     url = f"{_API_BASE}/v0/repositories/{owner}/{repo_slug}/tags/{tag}"
     try:

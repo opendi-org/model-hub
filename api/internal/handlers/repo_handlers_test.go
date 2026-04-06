@@ -270,12 +270,12 @@ func TestListRepositories_AuthenticatedUser(t *testing.T) {
 	})
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
 	var response dto.ListRepositoriesResponse
 	json.Unmarshal(w.Body.Bytes(), &response)
@@ -300,7 +300,7 @@ func TestListRepositories_UserOwnedRepos(t *testing.T) {
 		ListRepositories(db)(c)
 	})
 
-	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -315,7 +315,7 @@ func TestListRepositories_UserOwnedRepos(t *testing.T) {
 	assert.Equal(t, 2, len(response.Repositories))
 }
 
-// TestListRepositories_Unauthenticated tests that unauthenticated users cannot access ListRepositories
+// TestListRepositories_Unauthenticated tests that unauthenticated users cannot access private scopes.
 func TestListRepositories_Unauthenticated(t *testing.T) {
 	db := testDB(t)
 	cleanupTestDB(t, db)
@@ -324,7 +324,7 @@ func TestListRepositories_Unauthenticated(t *testing.T) {
 	router := gin.New()
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -385,7 +385,7 @@ func TestListRepositories_VisibilityFilter(t *testing.T) {
 	})
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories?visibility=private", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine&visibility=private", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -640,7 +640,7 @@ func TestPutTagModel_Upload(t *testing.T) {
 
 	user := createTestUser(t, db, "testuser")
 	repo := createTestRepository(t, db, user.ID, "test-repo", "public")
-	cdmJSON := loadExampleCDM(t, "coffee_noninteractive.json")
+	cdmJSON := loadExampleCDM(t, "coffee.json")
 
 	router := gin.New()
 	router.PUT("/repositories/:owner/:slug/tags/:tag", func(c *gin.Context) {
@@ -655,7 +655,7 @@ func TestPutTagModel_Upload(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "v1.0", resp["tag"])
@@ -721,7 +721,7 @@ func TestGetTagModel_DownloadAndETag(t *testing.T) {
 
 	user := createTestUser(t, db, "testuser")
 	repo := createTestRepository(t, db, user.ID, "test-repo", "public")
-	cdmJSON := loadExampleCDM(t, "coffee_noninteractive.json")
+	cdmJSON := loadExampleCDM(t, "coffee.json")
 
 	// Upload first
 	putRouter := gin.New()
@@ -735,11 +735,14 @@ func TestGetTagModel_DownloadAndETag(t *testing.T) {
 	putReq.Header.Set("Content-Type", "application/json")
 	putW := httptest.NewRecorder()
 	putRouter.ServeHTTP(putW, putReq)
-	assert.Equal(t, http.StatusOK, putW.Code)
+	assert.Equal(t, http.StatusOK, putW.Code, putW.Body.String())
 
 	var putResp map[string]interface{}
 	json.Unmarshal(putW.Body.Bytes(), &putResp)
-	digest := putResp["digest"].(string)
+	digest, ok := putResp["digest"].(string)
+	if !ok || digest == "" {
+		t.Fatalf("expected upload digest in response, got: %s", putW.Body.String())
+	}
 
 	getRouter := gin.New()
 	getRouter.GET("/repositories/:owner/:slug/tags/:tag/model", func(c *gin.Context) {
