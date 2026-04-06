@@ -11,6 +11,11 @@ The skip message looks like:
 
 If you see that message, integration coverage did not run.
 
+Fixture-dependent handler tests also rely on files under
+`api/cdm-json-schema/examples`. If that directory is missing (for example, a
+checkout without submodule content), those tests intentionally skip instead of
+failing.
+
 ## Recommended local commands
 
 ### Fast local run (may skip DB-backed integration tests)
@@ -34,3 +39,4 @@ Notes:
 - Use `-p openditest` to keep test containers isolated from your normal stack.
 - Use `go test -p 1` for the Docker-backed integration run to avoid cross-package migration races.
 - `docker compose ... down` (without `-v`) keeps DB volumes intact.
+- If fixture-based tests are skipped in CI, ensure schema/example files are present (e.g. submodule content checked out).
