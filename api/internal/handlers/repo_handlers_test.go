@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -632,6 +633,36 @@ func loadExampleCDM(t *testing.T, filename string) []byte {
 	return data
 }
 
+// loadAnyExampleCDM reads the first available fixture from a preferred list.
+// This avoids brittle failures when one fixture file is missing in CI checkouts.
+func loadAnyExampleCDM(t *testing.T, preferred ...string) []byte {
+	t.Helper()
+	base := filepath.Join(apiRoot(), "cdm-json-schema", "examples")
+	for _, name := range preferred {
+		p := filepath.Join(base, name)
+		if data, err := os.ReadFile(p); err == nil {
+			return data
+		}
+	}
+
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		t.Fatalf("read examples directory %s: %v", base, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
+			continue
+		}
+		p := filepath.Join(base, e.Name())
+		if data, err := os.ReadFile(p); err == nil {
+			return data
+		}
+	}
+
+	t.Fatalf("no readable CDM fixture found in %s", base)
+	return nil
+}
+
 // TestPutTagModel_Upload tests uploading a model to a tag
 func TestPutTagModel_Upload(t *testing.T) {
 	db := testDB(t)
@@ -640,7 +671,7 @@ func TestPutTagModel_Upload(t *testing.T) {
 
 	user := createTestUser(t, db, "testuser")
 	repo := createTestRepository(t, db, user.ID, "test-repo", "public")
-	cdmJSON := loadExampleCDM(t, "coffee.json")
+	cdmJSON := loadAnyExampleCDM(t, "coffee_noninteractive.json", "coffee.json")
 
 	router := gin.New()
 	router.PUT("/repositories/:owner/:slug/tags/:tag", func(c *gin.Context) {
@@ -721,7 +752,7 @@ func TestGetTagModel_DownloadAndETag(t *testing.T) {
 
 	user := createTestUser(t, db, "testuser")
 	repo := createTestRepository(t, db, user.ID, "test-repo", "public")
-	cdmJSON := loadExampleCDM(t, "coffee.json")
+	cdmJSON := loadAnyExampleCDM(t, "coffee_noninteractive.json", "coffee.json")
 
 	// Upload first
 	putRouter := gin.New()
