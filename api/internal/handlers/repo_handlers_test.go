@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -270,12 +271,12 @@ func TestListRepositories_AuthenticatedUser(t *testing.T) {
 	})
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
 	var response dto.ListRepositoriesResponse
 	json.Unmarshal(w.Body.Bytes(), &response)
@@ -300,7 +301,7 @@ func TestListRepositories_UserOwnedRepos(t *testing.T) {
 		ListRepositories(db)(c)
 	})
 
-	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -315,7 +316,7 @@ func TestListRepositories_UserOwnedRepos(t *testing.T) {
 	assert.Equal(t, 2, len(response.Repositories))
 }
 
-// TestListRepositories_Unauthenticated tests that unauthenticated users cannot access ListRepositories
+// TestListRepositories_Unauthenticated tests that unauthenticated users cannot access private scopes.
 func TestListRepositories_Unauthenticated(t *testing.T) {
 	db := testDB(t)
 	cleanupTestDB(t, db)
@@ -324,7 +325,7 @@ func TestListRepositories_Unauthenticated(t *testing.T) {
 	router := gin.New()
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -385,7 +386,7 @@ func TestListRepositories_VisibilityFilter(t *testing.T) {
 	})
 	router.GET("/repositories", ListRepositories(db))
 
-	httpReq, _ := http.NewRequest("GET", "/repositories?visibility=private", nil)
+	httpReq, _ := http.NewRequest("GET", "/repositories?scope=mine&visibility=private", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, httpReq)
@@ -598,34 +599,243 @@ func TestDeleteRepository_NoPermission(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
-// TestIsValidSlug tests the slug validation function
-func TestIsValidSlug(t *testing.T) {
+// TestIsValidTagName tests the tag name validation helper
+func TestIsValidTagName(t *testing.T) {
 	tests := []struct {
-		slug  string
+		tag   string
 		valid bool
 	}{
-		{"valid-slug", true},
-		{"valid_slug", true},
-		{"valid123", true},
-		{"123", true},
-		{"a", true},
-		{"a-_B-_0", true},
+		{"latest", true},
+		{"v1.0", true},
+		{"my-tag", true},
+		{"my_tag", true},
+		{"v1.0.0-beta", true},
 		{"", false},
-		{"slug with spaces", false},
-		{"slug@special", false},
-		{"slug#chars", false},
-		{"slug.dot", false},
+		{"tag with spaces", false},
+		{"tag@special", false},
 		{string(make([]byte, 256)), false}, // too long
 	}
 
 	for _, tc := range tests {
-		result := isValidSlug(tc.slug)
-		assert.Equal(t, tc.valid, result, "slug %q", tc.slug)
+		result := isValidTagName(tc.tag)
+		assert.Equal(t, tc.valid, result, "tag %q", tc.tag)
 	}
+}
+
+// loadExampleCDM reads a CDM JSON fixture from the cdm-json-schema/examples directory.
+func loadExampleCDM(t *testing.T, filename string) []byte {
+	t.Helper()
+	path := filepath.Join(apiRoot(), "cdm-json-schema", "examples", filename)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("load CDM fixture %s: %v", filename, err)
+	}
+	return data
+}
+
+// loadAnyExampleCDM reads the first available fixture from a preferred list.
+// This avoids brittle failures when one fixture file is missing in CI checkouts.
+func loadAnyExampleCDM(t *testing.T, preferred ...string) []byte {
+	t.Helper()
+	base := filepath.Join(apiRoot(), "cdm-json-schema", "examples")
+	if _, err := os.Stat(base); err != nil {
+		t.Skipf("cdm-json-schema/examples not found at %s: %v (init submodule: git submodule update --init)", base, err)
+		return nil
+	}
+	for _, name := range preferred {
+		p := filepath.Join(base, name)
+		if data, err := os.ReadFile(p); err == nil {
+			return data
+		}
+	}
+
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		t.Skipf("read examples directory %s: %v", base, err)
+		return nil
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
+			continue
+		}
+		p := filepath.Join(base, e.Name())
+		if data, err := os.ReadFile(p); err == nil {
+			return data
+		}
+	}
+
+	t.Skipf("no readable CDM fixture found in %s", base)
+	return nil
+}
+
+// TestPutTagModel_Upload tests uploading a model to a tag
+func TestPutTagModel_Upload(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer cleanupTestDB(t, db)
+
+	user := createTestUser(t, db, "testuser")
+	repo := createTestRepository(t, db, user.ID, "test-repo", "public")
+	cdmJSON := loadAnyExampleCDM(t, "coffee_noninteractive.json", "coffee.json")
+
+	router := gin.New()
+	router.PUT("/repositories/:owner/:slug/tags/:tag", func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user)
+		c.Set("repository", repo)
+		c.Set("permission", middleware.PermissionOwner)
+		PutTagModel(db)(c)
+	})
+
+	req, _ := http.NewRequest("PUT", "/repositories/testuser/test-repo/tags/v1.0", bytes.NewReader(cdmJSON))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "v1.0", resp["tag"])
+	assert.NotEmpty(t, resp["digest"])
+	assert.NotEmpty(t, resp["size"])
+}
+
+// TestPutTagModel_InvalidTag tests that invalid tag names are rejected
+func TestPutTagModel_InvalidTag(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer cleanupTestDB(t, db)
+
+	user := createTestUser(t, db, "testuser")
+	repo := createTestRepository(t, db, user.ID, "test-repo", "public")
+
+	router := gin.New()
+	router.PUT("/repositories/:owner/:slug/tags/:tag", func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user)
+		c.Set("repository", repo)
+		c.Set("permission", middleware.PermissionOwner)
+		PutTagModel(db)(c)
+	})
+
+	req, _ := http.NewRequest("PUT", "/repositories/testuser/test-repo/tags/bad tag!", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestPutTagModel_NoWritePermission tests that read-only users cannot upload
+func TestPutTagModel_NoWritePermission(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer cleanupTestDB(t, db)
+
+	user := createTestUser(t, db, "testuser")
+	repo := createTestRepository(t, db, user.ID, "test-repo", "public")
+
+	router := gin.New()
+	router.PUT("/repositories/:owner/:slug/tags/:tag", func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user)
+		c.Set("repository", repo)
+		c.Set("permission", middleware.PermissionRead)
+		PutTagModel(db)(c)
+	})
+
+	req, _ := http.NewRequest("PUT", "/repositories/testuser/test-repo/tags/v1.0", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+// TestGetTagModel_DownloadAndETag tests downloading a model and ETag cache validation
+func TestGetTagModel_DownloadAndETag(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer cleanupTestDB(t, db)
+
+	user := createTestUser(t, db, "testuser")
+	repo := createTestRepository(t, db, user.ID, "test-repo", "public")
+	cdmJSON := loadAnyExampleCDM(t, "coffee_noninteractive.json", "coffee.json")
+
+	// Upload first
+	putRouter := gin.New()
+	putRouter.PUT("/repositories/:owner/:slug/tags/:tag", func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user)
+		c.Set("repository", repo)
+		c.Set("permission", middleware.PermissionOwner)
+		PutTagModel(db)(c)
+	})
+	putReq, _ := http.NewRequest("PUT", "/repositories/testuser/test-repo/tags/v1.0", bytes.NewReader(cdmJSON))
+	putReq.Header.Set("Content-Type", "application/json")
+	putW := httptest.NewRecorder()
+	putRouter.ServeHTTP(putW, putReq)
+	assert.Equal(t, http.StatusOK, putW.Code, putW.Body.String())
+
+	var putResp map[string]interface{}
+	json.Unmarshal(putW.Body.Bytes(), &putResp)
+	digest, ok := putResp["digest"].(string)
+	if !ok || digest == "" {
+		t.Fatalf("expected upload digest in response, got: %s", putW.Body.String())
+	}
+
+	getRouter := gin.New()
+	getRouter.GET("/repositories/:owner/:slug/tags/:tag/model", func(c *gin.Context) {
+		c.Set("repository", repo)
+		c.Set("permission", middleware.PermissionRead)
+		GetTagModel(db)(c)
+	})
+
+	// Fresh download — should return 200 with ETag header
+	getReq, _ := http.NewRequest("GET", "/repositories/testuser/test-repo/tags/v1.0/model", nil)
+	getW := httptest.NewRecorder()
+	getRouter.ServeHTTP(getW, getReq)
+	assert.Equal(t, http.StatusOK, getW.Code)
+	assert.Equal(t, digest, getW.Header().Get("ETag"))
+
+	// Conditional request with matching ETag — should return 304
+	cachedReq, _ := http.NewRequest("GET", "/repositories/testuser/test-repo/tags/v1.0/model", nil)
+	cachedReq.Header.Set("If-None-Match", digest)
+	cachedW := httptest.NewRecorder()
+	getRouter.ServeHTTP(cachedW, cachedReq)
+	assert.Equal(t, http.StatusNotModified, cachedW.Code)
+
+	// Conditional request with stale ETag — should return 200 with new model
+	staleReq, _ := http.NewRequest("GET", "/repositories/testuser/test-repo/tags/v1.0/model", nil)
+	staleReq.Header.Set("If-None-Match", "stale-digest-that-does-not-match")
+	staleW := httptest.NewRecorder()
+	getRouter.ServeHTTP(staleW, staleReq)
+	assert.Equal(t, http.StatusOK, staleW.Code)
+	assert.Equal(t, digest, staleW.Header().Get("ETag"))
+}
+
+// TestGetTagModel_NotFound tests downloading a non-existent tag
+func TestGetTagModel_NotFound(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer cleanupTestDB(t, db)
+
+	user := createTestUser(t, db, "testuser")
+	repo := createTestRepository(t, db, user.ID, "test-repo", "public")
+
+	router := gin.New()
+	router.GET("/repositories/:owner/:slug/tags/:tag/model", func(c *gin.Context) {
+		c.Set("repository", repo)
+		c.Set("permission", middleware.PermissionRead)
+		GetTagModel(db)(c)
+	})
+
+	req, _ := http.NewRequest("GET", "/repositories/testuser/test-repo/tags/nonexistent/model", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // cleanupTestDB removes all test data from the database
 func cleanupTestDB(t *testing.T, db *gorm.DB) {
+	db.Exec("DELETE FROM hub_cdm_tags")
 	db.Exec("DELETE FROM hub_repositories")
 	db.Exec("DELETE FROM hub_collaborators")
 	db.Exec("DELETE FROM hub_users")

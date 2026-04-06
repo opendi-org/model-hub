@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -30,7 +31,16 @@ import (
 
 // cdmSchemaPath is the path to the root CDM JSON Schema file.
 // Override in tests by setting this before the first call to validateSchema.
-var cdmSchemaPath = "./cdm-json-schema/schema-source/Causal-Decision-Model.json"
+var cdmSchemaPath = defaultCDMSchemaPath()
+
+func defaultCDMSchemaPath() string {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		return "./cdm-json-schema/schema-source/Causal-Decision-Model.json"
+	}
+	// internal/database/validate.go -> api/
+	return filepath.Join(filepath.Dir(thisFile), "..", "..", "cdm-json-schema", "schema-source", "Causal-Decision-Model.json")
+}
 
 // schemaURLPrefix is the $id prefix used in OpenDI schema files.
 // All $ref URIs starting with this prefix are resolved to local files.

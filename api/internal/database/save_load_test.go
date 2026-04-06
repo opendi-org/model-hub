@@ -50,7 +50,7 @@ func testDB(t *testing.T) *gorm.DB {
 		}
 		dbname := os.Getenv("DB_NAME")
 		if dbname == "" {
-			dbname = "modelhub_db"
+			dbname = "modelhub_test"
 		}
 		dsn = "host=" + host + " port=" + port + " user=" + user + " password=" + pass + " dbname=" + dbname + " sslmode=disable"
 	}

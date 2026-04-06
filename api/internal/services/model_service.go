@@ -1,0 +1,88 @@
+package services
+
+import (
+	"errors"
+
+	"gorm.io/gorm"
+
+	"opendi.org/model-hub/api/internal/database"
+	"opendi.org/model-hub/api/internal/models/cdm"
+	"opendi.org/model-hub/api/internal/models/hub"
+)
+
+// ErrTagNotFound is returned when the requested tag does not exist.
+var ErrTagNotFound = errors.New("tag not found")
+
+// UploadModelResult holds the outcome of a successful model upload.
+type UploadModelResult struct {
+	Tag    string
+	Digest string
+	Size   int
+}
+
+// UploadModel validates, stores the CDM payload, and upserts the tag record.
+// repoID is the repository to attach the tag to; createdByID is the uploader's user ID.
+func UploadModel(db *gorm.DB, repoID uint, tagName string, raw []byte, createdByID uint) (*UploadModelResult, error) {
+	rootUUID, err := database.SaveCDM(db, raw)
+	if err != nil {
+		return nil, err
+	}
+
+	var tag hub.CDMTag
+	result := db.Where("repo_id = ? AND name = ?", repoID, tagName).First(&tag)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		tag = hub.CDMTag{
+			RepoID:      repoID,
+			Name:        tagName,
+			ModelUUID:   rootUUID,
+			SizeBytes:   int64(len(raw)),
+			CreatedByID: createdByID,
+		}
+		if err := db.Create(&tag).Error; err != nil {
+			return nil, err
+		}
+	} else if result.Error != nil {
+		return nil, result.Error
+	} else {
+		if err := db.Model(&tag).Updates(map[string]interface{}{
+			"model_uuid": rootUUID,
+			"size_bytes": int64(len(raw)),
+		}).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	return &UploadModelResult{
+		Tag:    tagName,
+		Digest: rootUUID,
+		Size:   len(raw),
+	}, nil
+}
+
+// DownloadModelResult holds the outcome of a successful model download.
+type DownloadModelResult struct {
+	Model  *cdm.CausalDecisionModel
+	Digest string // tag.ModelUUID — suitable for use as an ETag
+}
+
+// DownloadModel retrieves the CDM for the named tag in the given repository.
+// Returns ErrTagNotFound if the tag does not exist.
+func DownloadModel(db *gorm.DB, repoID uint, tagName string) (*DownloadModelResult, error) {
+	var tag hub.CDMTag
+	if err := db.Where("repo_id = ? AND name = ?", repoID, tagName).First(&tag).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTagNotFound
+		}
+		return nil, err
+	}
+
+	model, err := database.LoadCDM(db, tag.ModelUUID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTagNotFound
+		}
+		return nil, err
+	}
+
+	return &DownloadModelResult{Model: model, Digest: tag.ModelUUID}, nil
+}
