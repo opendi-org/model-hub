@@ -209,11 +209,6 @@ const RepositoryDetailsPage = () => {
     setAddSubmitting(true);
     setAddError('');
     try {
-      if (user) {
-        tagFileData.meta = tagFileData.meta || {};
-        tagFileData.meta.creator = tagFileData.meta.creator || {};
-        tagFileData.meta.creator.email = user.email;
-      }
       await APIClient.createOrUpdateTag(repositoryId, tagName.trim(), tagFileData);
       setAddOpen(false);
       showNotification('Tag created successfully', 'success');

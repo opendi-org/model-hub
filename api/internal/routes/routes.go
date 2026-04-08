@@ -34,6 +34,15 @@ func repoScope(g *gin.RouterGroup, db *gorm.DB) {
 
 // repoManagementScope mounts management routes with proper middleware (requires owner permission)
 func repoManagementScope(g *gin.RouterGroup, db *gorm.DB) {
+	// Tag routes
+	g.GET("/tags/:tag/model",
+		middleware.RequireRepositoryPermission(middleware.PermissionRead),
+		handlers.GetTagModel(db))
+	g.PUT("/tags/:tag",
+		middleware.RequireAuthentication(),
+		middleware.RequireRepositoryPermission(middleware.PermissionWrite),
+		handlers.PutTagModel(db))
+
 	// Collaborator management routes (requires owner)
 	g.GET("/collaborators",
 		middleware.RequireAuthentication(),

@@ -1,12 +1,24 @@
 async function handleResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  
   if (!response.ok) {
-    const errorData = await response.json();
-      // If the response has an 'error' field, use that message
-      if (errorData.error) {
+    if (isJson) {
+      const errorData = await response.json().catch(() => ({}));
+      if (errorData && errorData.error) {
         throw new Error(errorData.error);
       }
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
   }
-  return response.json();
+
+  if (isJson) {
+    return response.json();
+  }
+  const text = await response.text();
+  return text ? { message: text } : {};
 }
 
 export default class HTTPClient {
