@@ -86,3 +86,16 @@ func DownloadModel(db *gorm.DB, repoID uint, tagName string) (*DownloadModelResu
 
 	return &DownloadModelResult{Model: model, Digest: tag.ModelUUID}, nil
 }
+
+// DeleteTag deletes the named tag in the given repository.
+// Returns ErrTagNotFound if the tag does not exist.
+func DeleteTag(db *gorm.DB, repoID uint, tagName string) error {
+	result := db.Where("repo_id = ? AND name = ?", repoID, tagName).Delete(&hub.CDMTag{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrTagNotFound
+	}
+	return nil
+}

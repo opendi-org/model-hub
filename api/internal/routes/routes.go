@@ -42,7 +42,10 @@ func repoManagementScope(g *gin.RouterGroup, db *gorm.DB) {
 		middleware.RequireAuthentication(),
 		middleware.RequireRepositoryPermission(middleware.PermissionWrite),
 		handlers.PutTagModel(db))
-
+	g.DELETE("/tags/:tag",
+		middleware.RequireAuthentication(),
+		middleware.RequireRepositoryPermission(middleware.PermissionWrite),
+		handlers.DeleteTag(db))
 	// Collaborator management routes (requires owner)
 	g.GET("/collaborators",
 		middleware.RequireAuthentication(),

@@ -982,6 +982,35 @@ func GetTagModel(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// DeleteTag handles tag deletion.
+// DELETE /v0/repositories/:owner/:slug/tags/:tag
+// DELETE /v0/repo/:id/tags/:tag
+// Requires: ResolveRepository..., CheckRepositoryAccess, RequireAuthentication, RequireRepositoryPermission(write)
+func DeleteTag(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+		tagName := c.Param("tag")
+		if !isValidTagName(tagName) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tag name"})
+			return
+		}
+		if err := services.DeleteTag(db, repo.ID, tagName); err != nil {
+			if errors.Is(err, services.ErrTagNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "tag not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete tag"})
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}
+
+
 // ── Helper functions ──────────────────────────────────────────────────────────
 
 // isValidTagName checks if the tag name is valid. Tags allow alphanumeric,
