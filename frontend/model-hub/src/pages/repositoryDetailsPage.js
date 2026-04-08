@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useParams, useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -52,8 +52,9 @@ import { useNotification } from '../context/NotificationContext';
 const RepositoryDetailsPage = () => {
   const { repositoryId, owner, slug } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useUser();
-  const { updateRepository: updateRepoInContext } = useRepositories();
+  const { updateRepository: updateRepoInContext, refreshRepositories } = useRepositories();
   const { showNotification } = useNotification();
 
   const [repo, setRepo] = useState(null);
@@ -75,6 +76,9 @@ const RepositoryDetailsPage = () => {
   const [addOverwrite, setAddOverwrite] = useState(false);
   const [addError, setAddError] = useState('');
   const [addSubmitting, setAddSubmitting] = useState(false);
+  // When set, we are using the Add Tag dialog to overwrite an existing tag.
+  // In this mode the tag name is locked and the overwrite checkbox is hidden.
+  const [tagEditTarget, setTagEditTarget] = useState(null);
 
   // Delete-tag dialog state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -136,7 +140,7 @@ const RepositoryDetailsPage = () => {
   }, [fetchData]);
 
   const activeRepoId = repo?.id ?? repositoryId;
-  const backTarget = user ? '/repositories' : '/';
+  const backTarget = location?.state?.from || (user ? '/repositories' : '/');
   const trimmedTagName = tagName.trim();
   const tagNameAlreadyExists = useMemo(
     () => trimmedTagName !== '' && tags.some((t) => t.name === trimmedTagName),
@@ -150,12 +154,34 @@ const RepositoryDetailsPage = () => {
   }, [user, repo]);
   const canEditRepo = !!user && !!repo && user.username === repo.owner;
 
+  const getRepoSlugValidationError = (value) => {
+    const slug = (value || '').trim();
+    if (!slug) return 'Repository name is required.';
+    if (slug.length > 255) return 'Repository name must be 255 characters or less.';
+    if (/\s/.test(slug)) return 'Repository name cannot contain spaces.';
+    if (!/^[A-Za-z0-9_-]+$/.test(slug)) {
+      return "Repository name may contain only letters, numbers, '-' and '_' (no spaces).";
+    }
+    return '';
+  };
+
+  const getTagNameValidationError = (value) => {
+    const name = (value || '').trim();
+    if (!name) return 'Tag name is required.';
+    if (name.length > 255) return 'Tag name must be 255 characters or less.';
+    if (/\s/.test(name)) return 'Tag name cannot contain spaces.';
+    if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+      return "Tag name may contain only letters, numbers, '.', '-', and '_' (no spaces).";
+    }
+    return '';
+  };
+
   // If the user changes the name to a non-existing tag, drop overwrite.
   useEffect(() => {
-    if (!tagNameAlreadyExists && addOverwrite) {
+    if (!tagNameAlreadyExists && addOverwrite && !tagEditTarget) {
       setAddOverwrite(false);
     }
-  }, [tagNameAlreadyExists, addOverwrite]);
+  }, [tagNameAlreadyExists, addOverwrite, tagEditTarget]);
 
   // --- Sorting ---
   const handleSort = (field) => {
@@ -200,7 +226,7 @@ const RepositoryDetailsPage = () => {
 
   const handleCopyPermalink = () => {
     if (!repo?.id) return;
-    const permalink = `${window.location.origin}/repo/${repo.id}`;
+    const permalink = `${window.location.origin}/repositories/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.slug)}`;
     navigator.clipboard.writeText(permalink).then(() => {
       showNotification('Permalink copied to clipboard', 'info');
     });
@@ -230,6 +256,7 @@ const RepositoryDetailsPage = () => {
   // --- Add Tag ---
   const handleAddOpen = () => {
     setAddMode('upload');
+    setTagEditTarget(null);
     setTagName('');
     setSourceTagName('');
     setTagFile(null);
@@ -239,7 +266,25 @@ const RepositoryDetailsPage = () => {
     setAddOpen(true);
   };
 
-  const handleAddClose = () => setAddOpen(false);
+  const handleEditTagOpen = (tag) => {
+    const targetName = tag?.name;
+    if (!targetName) return;
+
+    setAddMode('upload');
+    setTagEditTarget(targetName);
+    setTagName(targetName);
+    setSourceTagName('');
+    setTagFile(null);
+    setTagFileData(null);
+    setAddOverwrite(true); // forced overwrite (no checkbox needed)
+    setAddError('');
+    setAddOpen(true);
+  };
+
+  const handleAddClose = () => {
+    setAddOpen(false);
+    setTagEditTarget(null);
+  };
 
   const onDrop = useCallback(async (acceptedFiles) => {
     if (addMode !== 'upload') return;
@@ -266,8 +311,9 @@ const RepositoryDetailsPage = () => {
   });
 
   const handleAddSubmit = async () => {
-    if (!tagName.trim()) {
-      setAddError('Tag name is required.');
+    const validationError = getTagNameValidationError(tagName);
+    if (validationError) {
+      setAddError(validationError);
       return;
     }
     if (tagNameAlreadyExists && !addOverwrite) {
@@ -302,7 +348,14 @@ const RepositoryDetailsPage = () => {
       showNotification('Tag created successfully', 'success');
       await fetchData();
     } catch (err) {
-      setAddError(err.message || 'Failed to create tag.');
+      const msg = err?.message || '';
+      if (msg.toLowerCase().includes('invalid tag name')) {
+        setAddError("Invalid tag name. Use 1-255 characters with letters/numbers and only '-', '_', and '.' (no spaces).");
+      } else if (msg.toLowerCase().includes('tag already exists')) {
+        setAddError('Tag already exists. Enable overwrite to replace it.');
+      } else {
+        setAddError(msg || 'Failed to create tag.');
+      }
     } finally {
       setAddSubmitting(false);
     }
@@ -347,8 +400,9 @@ const RepositoryDetailsPage = () => {
   const handleEditClose = () => setEditOpen(false);
 
   const handleEditSubmit = async () => {
-    if (!editSlug.trim()) {
-      setEditError('Repository name is required.');
+    const validationError = getRepoSlugValidationError(editSlug);
+    if (validationError) {
+      setEditError(validationError);
       return;
     }
     setEditSubmitting(true);
@@ -361,12 +415,20 @@ const RepositoryDetailsPage = () => {
       });
       setRepo((prev) => ({ ...prev, ...updated }));
       updateRepoInContext(Number(activeRepoId), updated);
+      await refreshRepositories();
       setEditOpen(false);
       showNotification('Repository updated', 'success');
 
-      navigate(`/repo/${activeRepoId}`);
-    } catch (err) {
-      setEditError(err.message || 'Failed to update repository.');
+      navigate(`/repositories/${updated.owner}/${updated.slug}`, {
+        state: { from: location?.state?.from },
+      });
+    } catch (err) { 
+      const msg = err?.message || '';
+      if (msg.toLowerCase().includes('invalid repository name') || msg.toLowerCase().includes('invalid slug')) {
+        setEditError("Invalid repository name. Use 1-255 characters with letters/numbers and only '-' or '_' (no spaces).");
+      } else {
+        setEditError(msg || 'Failed to update repository.');
+      }
     } finally {
       setEditSubmitting(false);
     }
@@ -392,8 +454,9 @@ const RepositoryDetailsPage = () => {
   };
 
   const handleForkSubmit = async () => {
-    if (!forkSlug.trim()) {
-      setForkError('Repository name is required.');
+    const validationError = getRepoSlugValidationError(forkSlug);
+    if (validationError) {
+      setForkError(validationError);
       return;
     }
     setForkSubmitting(true);
@@ -406,13 +469,16 @@ const RepositoryDetailsPage = () => {
       });
       setForkOpen(false);
       showNotification('Repository forked successfully', 'success');
-      if (createdRepo?.id) {
-        navigate(`/repo/${createdRepo.id}`);
-      } else {
-        navigate('/repositories');
-      }
+      await refreshRepositories();
+      // After forking, return to My Repositories so the new repo is visible in the list.
+      navigate('/repositories');
     } catch (err) {
-      setForkError(err.message || 'Failed to fork repository.');
+      const msg = err?.message || '';
+      if (msg.toLowerCase().includes('invalid repository name') || msg.toLowerCase().includes('invalid slug')) {
+        setForkError("Invalid repository name. Use 1-255 characters with letters/numbers and only '-' or '_' (no spaces).");
+      } else {
+        setForkError(msg || 'Failed to fork repository.');
+      }
     } finally {
       setForkSubmitting(false);
     }
@@ -503,7 +569,8 @@ const RepositoryDetailsPage = () => {
       await APIClient.transferRepositoryOwnership(repo.owner, repo.slug, transferUsername.trim());
       setTransferOpen(false);
       showNotification('Repository ownership transferred', 'success');
-      navigate('/repositories');
+      await refreshRepositories();
+      navigate(backTarget, { state: { from: location?.state?.from } });
     } catch (err) {
       setTransferError(err.message || 'Failed to transfer repository.');
     } finally {
@@ -729,24 +796,37 @@ const RepositoryDetailsPage = () => {
                     ) : '—'}
                   </TableCell>
                   <TableCell align="right">
-                    <Tooltip title="Download model">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDownloadTagModel(tag.name)}
-                        sx={{ color: 'text.secondary', mr: 0.5, '&:hover': { color: 'primary.main' } }}
-                      >
-                        <DownloadOutlinedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    {canEditTags && (
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDeleteOpen(tag)}
-                        sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-                      >
-                        <DeleteOutlineIcon fontSize="small" />
-                      </IconButton>
-                    )}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                      {canEditTags && (
+                        <Tooltip title="Edit tag">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditTagOpen(tag)}
+                            sx={{ color: 'text.secondary', '&:hover': { color: 'warning.main' } }}
+                          >
+                            <EditOutlinedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {canEditTags && (
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteOpen(tag)}
+                          sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                      <Tooltip title="Download model">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDownloadTagModel(tag.name)}
+                          sx={{ color: 'primary.main', '&:hover': { color: 'primary.main' } }}
+                        >
+                          <DownloadOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}
@@ -767,6 +847,7 @@ const RepositoryDetailsPage = () => {
             fullWidth
             autoFocus
             required
+            disabled={!!tagEditTarget}
             placeholder="e.g. v1.0, latest"
           />
           <ToggleButtonGroup
@@ -851,25 +932,30 @@ const RepositoryDetailsPage = () => {
                 </Typography>
               </Box>
             )}
-            {tagNameAlreadyExists && (
-            <>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={addOverwrite}
-                    onChange={(e) => setAddOverwrite(e.target.checked)}
-                  />
-                }
-                label="Overwrite existing tag (replaces the model this tag points to)"
-              />
-              {addOverwrite && (
-                <Alert severity="warning">
-                  This will overwrite the existing tag <strong>{trimmedTagName}</strong>. Existing references to this
-                  tag will now point to the new model.
-                </Alert>
-              )}
-            </>
-          )}
+            {tagNameAlreadyExists && !tagEditTarget && (
+              <>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={addOverwrite}
+                      onChange={(e) => setAddOverwrite(e.target.checked)}
+                    />
+                  }
+                  label="Overwrite existing tag (replaces the model this tag points to)"
+                />
+                {addOverwrite && (
+                  <Alert severity="warning">
+                    This will overwrite the existing tag <strong>{trimmedTagName}</strong>. Existing references to this
+                    tag will now point to the new model.
+                  </Alert>
+                )}
+              </>
+            )}
+            {tagNameAlreadyExists && tagEditTarget && (
+              <Alert severity="warning">
+                This will overwrite <strong>{trimmedTagName}</strong>.
+              </Alert>
+            )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleAddClose} disabled={addSubmitting}>Cancel</Button>

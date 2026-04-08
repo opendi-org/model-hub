@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"gorm.io/gorm"
@@ -281,9 +282,29 @@ func UpdateRepository(db *gorm.DB, repo *hub.Repository, req dto.UpdateRepositor
 	}, nil
 }
 
-// DeleteRepository soft-deletes the given repository.
+// DeleteRepository soft-deletes the repository, but first mutates the slug so it
+// can be reused immediately. We can't hard-delete because other tables (e.g.
+// tags) have foreign keys pointing at repositories.
 func DeleteRepository(db *gorm.DB, repo *hub.Repository) error {
-	return db.Delete(repo).Error
+	return db.Transaction(func(tx *gorm.DB) error {
+		// Keep within the API validation limit (<=255).
+		suffix := fmt.Sprintf("__deleted__%d", repo.ID)
+		base := repo.Slug
+		maxLen := 255
+		baseMax := maxLen - len(suffix)
+		if baseMax < 1 {
+			baseMax = 1
+		}
+		if len(base) > baseMax {
+			base = base[:baseMax]
+		}
+		newSlug := base + suffix
+
+		if err := tx.Model(repo).Update("slug", newSlug).Error; err != nil {
+			return err
+		}
+		return tx.Delete(repo).Error
+	})
 }
 
 // isValidSlug checks that a slug is alphanumeric plus hyphens/underscores, 1-255 chars.

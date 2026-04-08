@@ -23,10 +23,9 @@ const (
 //               to explicit collaborators (UC-05).
 //   "private" — only the owner and explicit collaborators can access anything.
 //
-// Soft-delete is intentional: a deleted Repository row is retained so that
-// ForkedFromID references on child repos remain resolvable. Deleted repos are
-// excluded from all normal queries by GORM's default WHERE deleted_at IS NULL
-// scope; the lineage walk uses Unscoped() to cross deleted ancestors.
+// Soft-delete: a deleted Repository row is retained so that foreign key
+// references (e.g. tags) remain valid, but the slug is mutated on delete so the
+// original slug can be reused immediately.
 //
 // Lineage (UC-08):
 //   ForkedFromID NULL  = original repository.

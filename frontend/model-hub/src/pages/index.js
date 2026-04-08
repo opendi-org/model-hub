@@ -6,7 +6,7 @@ import { Button, Container, Typography, Box, TextField, InputAdornment, FormCont
 import Grid from '@mui/material/Grid';
 import { useEffect, useState, useMemo } from 'react';
 import { useTheme } from '@mui/material/styles';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import APIClient from '../util/ApiClient';
 import Card from '@mui/material/Card';
 import CardActionArea from '@mui/material/CardActionArea';
@@ -40,6 +40,7 @@ const Home = () => {
     const [sortOrder, setSortOrder] = useState('desc');
     const theme = useTheme();
     const navigate = useNavigate();
+    const location = useLocation();
 
     useEffect(() => {
         APIClient.globalSearch('', 'public', owner || '')
@@ -78,11 +79,23 @@ const Home = () => {
                 aVal = (a.slug || '').toLowerCase();
                 bVal = (b.slug || '').toLowerCase();
             } else if (sortBy === 'created') {
-                aVal = new Date(a.created_at).getTime();
-                bVal = new Date(b.created_at).getTime();
+        const getRepoDate = (repo, camelKey, snakeKey) => {
+          const v = repo?.[camelKey] ?? repo?.[snakeKey];
+          if (!v) return 0;
+          const t = new Date(v).getTime();
+          return Number.isFinite(t) ? t : 0;
+        };
+        aVal = getRepoDate(a, 'createdAt', 'created_at');
+        bVal = getRepoDate(b, 'createdAt', 'created_at');
             } else {
-                aVal = new Date(a.updated_at).getTime();
-                bVal = new Date(b.updated_at).getTime();
+        const getRepoDate = (repo, camelKey, snakeKey) => {
+          const v = repo?.[camelKey] ?? repo?.[snakeKey];
+          if (!v) return 0;
+          const t = new Date(v).getTime();
+          return Number.isFinite(t) ? t : 0;
+        };
+        aVal = getRepoDate(a, 'updatedAt', 'updated_at');
+        bVal = getRepoDate(b, 'updatedAt', 'updated_at');
             }
             return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
         });
@@ -208,8 +221,8 @@ const Home = () => {
                             label="Order"
                             onChange={(e) => setSortOrder(e.target.value)}
                         >
-                            <MenuItem value="desc">Newest</MenuItem>
-                            <MenuItem value="asc">Oldest</MenuItem>
+                            <MenuItem value="desc">Descending</MenuItem>
+                            <MenuItem value="asc">Ascending</MenuItem>
                         </Select>
                     </FormControl>
                 </Box>
@@ -248,7 +261,7 @@ const Home = () => {
                                     }}
                                 >
                                     <CardActionArea
-                                        onClick={() => navigate(`/repositories/${repo.owner}/${repo.slug}`)}
+                                        onClick={() => navigate(`/repositories/${repo.owner}/${repo.slug}`, { state: { from: location.pathname } })}
                                         sx={{ flexGrow: 1, p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
                                     >
                                         <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 0.5 }}>

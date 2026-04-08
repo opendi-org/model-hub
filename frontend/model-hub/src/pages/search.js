@@ -104,7 +104,7 @@ const ExplorePage = () => {
                                     }}
                                 >
                                     <CardActionArea
-                                        onClick={() => navigate(`/repo/${repo.id}`)}
+                                        onClick={() => navigate(`/repositories/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.slug)}`)}
                                         sx={{ flexGrow: 1, p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
                                     >
                                         <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 0.5 }}>
@@ -126,7 +126,7 @@ const ExplorePage = () => {
                                             {repo.description || 'No description'}
                                         </Typography>
                                         <Typography variant="caption" color="text.secondary" sx={{ mt: 'auto' }}>
-                                            Updated {new Date(repo.updated_at).toLocaleDateString()}
+                                            Updated {new Date(repo.updatedAt ?? repo.updated_at).toLocaleDateString()}
                                         </Typography>
                                     </CardActionArea>
                                 </Card>

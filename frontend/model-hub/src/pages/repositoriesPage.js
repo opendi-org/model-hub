@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -63,6 +63,7 @@ const RepositoriesPage = () => {
   } = useRepositories();
   const { showNotification } = useNotification();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('updated');
@@ -84,6 +85,13 @@ const RepositoriesPage = () => {
              (r.owner || '').toLowerCase().includes(q);
     });
 
+    const getRepoDate = (repo, camelKey, snakeKey) => {
+      const v = repo?.[camelKey] ?? repo?.[snakeKey];
+      if (!v) return 0;
+      const t = new Date(v).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+
     // Sort
     result = [...result].sort((a, b) => {
       let aVal, bVal;
@@ -91,11 +99,11 @@ const RepositoriesPage = () => {
         aVal = (a.slug || '').toLowerCase();
         bVal = (b.slug || '').toLowerCase();
       } else if (sortBy === 'created') {
-        aVal = new Date(a.created_at).getTime();
-        bVal = new Date(b.created_at).getTime();
+        aVal = getRepoDate(a, 'createdAt', 'created_at');
+        bVal = getRepoDate(b, 'createdAt', 'created_at');
       } else {
-        aVal = new Date(a.updated_at).getTime();
-        bVal = new Date(b.updated_at).getTime();
+        aVal = getRepoDate(a, 'updatedAt', 'updated_at');
+        bVal = getRepoDate(b, 'updatedAt', 'updated_at');
       }
       return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
     });
@@ -118,11 +126,26 @@ const RepositoriesPage = () => {
       setFormError('Repository name is required.');
       return;
     }
+
+    const slug = formSlug.trim();
+    if (slug.length > 255) {
+      setFormError('Repository name must be 255 characters or less.');
+      return;
+    }
+    if (/\s/.test(slug)) {
+      setFormError('Repository name cannot contain spaces.');
+      return;
+    }
+    if (!/^[A-Za-z0-9_-]+$/.test(slug)) {
+      setFormError("Repository name may contain only letters, numbers, '-' and '_' (no spaces).");
+      return;
+    }
+
     setSubmitting(true);
     setFormError('');
     try {
       const repo = await APIClient.createRepository({
-        slug: formSlug.trim(),
+        slug,
         description: formDescription.trim(),
         visibility: formVisibility,
       });
@@ -130,7 +153,12 @@ const RepositoriesPage = () => {
       setCreateOpen(false);
       showNotification('Repository created successfully', 'success');
     } catch (err) {
-      setFormError(err.message || 'Failed to create repository.');
+      const msg = err?.message || '';
+      if (msg.toLowerCase().includes('invalid repository name')) {
+        setFormError("Invalid repository name. Use 1-255 characters with letters/numbers and only '-' or '_' (no spaces).");
+      } else {
+        setFormError(msg || 'Failed to create repository.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -262,8 +290,8 @@ const RepositoriesPage = () => {
               label="Order"
               onChange={(e) => setSortOrder(e.target.value)}
             >
-              <MenuItem value="desc">Newest</MenuItem>
-              <MenuItem value="asc">Oldest</MenuItem>
+              <MenuItem value="desc">Descending</MenuItem>
+              <MenuItem value="asc">Ascending</MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -322,7 +350,7 @@ const RepositoriesPage = () => {
                 }}
               >
                 <CardActionArea
-                  onClick={() => navigate(`/repositories/${repo.owner}/${repo.slug}`)}
+                  onClick={() => navigate(`/repositories/${repo.owner}/${repo.slug}`, { state: { from: location.pathname } })}
                   sx={{ flexGrow: 1, p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 0.5 }}>
