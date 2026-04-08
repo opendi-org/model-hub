@@ -6,7 +6,7 @@ import { Button, Container, Typography, Box, TextField, InputAdornment, FormCont
 import Grid from '@mui/material/Grid';
 import { useEffect, useState, useMemo } from 'react';
 import { useTheme } from '@mui/material/styles';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import APIClient from '../util/ApiClient';
 import Card from '@mui/material/Card';
 import CardActionArea from '@mui/material/CardActionArea';
@@ -31,6 +31,7 @@ function timeAgo(dateString) {
 }
 
 const Home = () => {
+    const { owner } = useParams();
     const [repositories, setRepositories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -41,7 +42,7 @@ const Home = () => {
     const navigate = useNavigate();
 
     useEffect(() => {
-        APIClient.globalSearch()
+        APIClient.globalSearch('', 'public', owner || '')
             .then(data => {
                 setRepositories(Array.isArray(data) ? data : data.repositories || []);
             })
@@ -50,7 +51,7 @@ const Home = () => {
                 setRepositories([]);
             })
             .finally(() => setLoading(false));
-    }, []);
+    }, [owner]);
 
     const filtered = useMemo(() => {
         let result = repositories;
@@ -98,28 +99,28 @@ const Home = () => {
                         ? 'linear-gradient(135deg, #1E2130 0%, #0D2B55 100%)'
                         : 'linear-gradient(135deg, #0D1117 0%, #0D2244 100%)',
                     color: '#ffffff',
-                    py: { xs: 6, md: 8 },
+                    py: { xs: 4, md: 5 },
                     px: 3,
                     textAlign: 'center',
                 }}
             >
                 <Container maxWidth="md">
                     <Typography
-                        variant="h4"
+                        variant="h5"
                         fontWeight={700}
                         gutterBottom
-                        sx={{ letterSpacing: '-0.02em', mb: 2 }}
+                        sx={{ letterSpacing: '-0.02em', mb: 1.25 }}
                     >
                         Get started with OpenDI
                     </Typography>
                     <Typography
-                        variant="subtitle1"
+                        variant="body1"
                         sx={{
                             color: 'rgba(255,255,255,0.75)',
                             maxWidth: 680,
                             mx: 'auto',
-                            lineHeight: 1.7,
-                            mb: 3,
+                            lineHeight: 1.6,
+                            mb: 2,
                         }}
                     >
                         The purpose of the OpenDI initiative is to foster a vibrant and healthy
@@ -129,17 +130,17 @@ const Home = () => {
                     </Typography>
                     <Button
                         variant="contained"
-                        size="large"
+                        size="medium"
                         href="https://opendi.org"
                         target="_blank"
                         rel="noopener noreferrer"
                         sx={{
                             backgroundColor: '#086DD7',
                             '&:hover': { backgroundColor: '#0558AE' },
-                            px: 4,
-                            py: 1.25,
+                            px: 3,
+                            py: 0.9,
                             fontWeight: 700,
-                            fontSize: '0.95rem',
+                            fontSize: '0.9rem',
                         }}
                     >
                         Start Here
@@ -151,7 +152,7 @@ const Home = () => {
             <Container maxWidth="xl" sx={{ py: 4, px: { xs: 2, md: 4 } }}>
                 <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Typography variant="h6" fontWeight={600} color="text.primary">
-                        Model Repositories
+                        {owner ? `${owner}'s Repositories` : 'Model Repositories'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                         {repositories.length} {repositories.length === 1 ? 'repository' : 'repositories'}

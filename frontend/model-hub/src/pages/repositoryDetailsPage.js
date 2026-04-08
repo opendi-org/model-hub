@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -31,6 +31,7 @@ import {
   ToggleButtonGroup,
   Tooltip,
   Typography,
+  Link as MuiLink,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
@@ -41,7 +42,6 @@ import LockIcon from '@mui/icons-material/Lock';
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
-import IosShareIcon from '@mui/icons-material/IosShare';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import { useDropzone } from 'react-dropzone';
 import APIClient from '../util/ApiClient';
@@ -136,11 +136,19 @@ const RepositoryDetailsPage = () => {
   }, [fetchData]);
 
   const activeRepoId = repo?.id ?? repositoryId;
+  const backTarget = user ? '/repositories' : '/';
   const trimmedTagName = tagName.trim();
   const tagNameAlreadyExists = useMemo(
     () => trimmedTagName !== '' && tags.some((t) => t.name === trimmedTagName),
     [tags, trimmedTagName]
   );
+  const canEditTags = useMemo(() => {
+    if (!user || !repo) return false;
+    if (user.username === repo.owner) return true;
+    const myCollab = (repo.collaborators || []).find((c) => c.username === user.username);
+    return myCollab?.role === 'write' || myCollab?.role === 'owner';
+  }, [user, repo]);
+  const canEditRepo = !!user && !!repo && user.username === repo.owner;
 
   // If the user changes the name to a non-existing tag, drop overwrite.
   useEffect(() => {
@@ -187,6 +195,14 @@ const RepositoryDetailsPage = () => {
   const handleCopyDigest = (digest) => {
     navigator.clipboard.writeText(digest).then(() => {
       showNotification('Digest copied to clipboard', 'info');
+    });
+  };
+
+  const handleCopyPermalink = () => {
+    if (!repo?.id) return;
+    const permalink = `${window.location.origin}/repo/${repo.id}`;
+    navigator.clipboard.writeText(permalink).then(() => {
+      showNotification('Permalink copied to clipboard', 'info');
     });
   };
 
@@ -348,12 +364,7 @@ const RepositoryDetailsPage = () => {
       setEditOpen(false);
       showNotification('Repository updated', 'success');
 
-      // If the slug changed, navigate to the new canonical URL.
-      const nextOwner = updated?.owner || repo?.owner;
-      const nextSlug = updated?.slug || editSlug.trim();
-      if (nextOwner && nextSlug && (slug || owner)) {
-        navigate(`/repositories/${encodeURIComponent(nextOwner)}/${encodeURIComponent(nextSlug)}`);
-      }
+      navigate(`/repo/${activeRepoId}`);
     } catch (err) {
       setEditError(err.message || 'Failed to update repository.');
     } finally {
@@ -388,14 +399,18 @@ const RepositoryDetailsPage = () => {
     setForkSubmitting(true);
     setForkError('');
     try {
-      await APIClient.forkRepository(repo.owner, repo.slug, {
+      const createdRepo = await APIClient.forkRepository(repo.owner, repo.slug, {
         slug: forkSlug.trim(),
         description: forkDescription.trim(),
         tags: forkTags,
       });
       setForkOpen(false);
       showNotification('Repository forked successfully', 'success');
-      navigate('/repositories');
+      if (createdRepo?.id) {
+        navigate(`/repo/${createdRepo.id}`);
+      } else {
+        navigate('/repositories');
+      }
     } catch (err) {
       setForkError(err.message || 'Failed to fork repository.');
     } finally {
@@ -519,7 +534,7 @@ const RepositoryDetailsPage = () => {
     return (
       <Container maxWidth="md" sx={{ py: 8 }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/repositories')}>
+        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(backTarget)}>
           Back to Repositories
         </Button>
       </Container>
@@ -537,7 +552,7 @@ const RepositoryDetailsPage = () => {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Header */}
-      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/repositories')} sx={{ mb: 2 }}>
+      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(backTarget)} sx={{ mb: 2 }}>
         Back to Repositories
       </Button>
 
@@ -554,6 +569,13 @@ const RepositoryDetailsPage = () => {
                   label={repo.visibility}
                   size="small"
                   variant="outlined"
+                  sx={{
+                    color: repo.visibility === 'public' ? 'success.main' : 'text.secondary',
+                    borderColor: repo.visibility === 'public' ? 'success.main' : 'text.secondary',
+                    '& .MuiChip-icon': {
+                      color: repo.visibility === 'public' ? 'success.main' : 'text.secondary',
+                    },
+                  }}
                 />
               )}
             </Box>
@@ -564,15 +586,31 @@ const RepositoryDetailsPage = () => {
             )}
             {repo?.owner && (
               <Typography variant="body2" color="text.secondary">
-                Owner: {repo.owner}
+                Owner:{' '}
+                <MuiLink
+                  component={RouterLink}
+                  to={`/repositories/${encodeURIComponent(repo.owner)}`}
+                  underline="hover"
+                >
+                  {repo.owner}
+                </MuiLink>
               </Typography>
             )}
           </Box>
-          <Tooltip title="Edit repository">
-            <IconButton onClick={handleEditOpen} sx={{ color: 'text.secondary' }}>
-              <EditOutlinedIcon />
-            </IconButton>
-          </Tooltip>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Tooltip title="Copy permalink">
+              <IconButton onClick={handleCopyPermalink} sx={{ color: 'text.secondary' }}>
+                <ContentCopyOutlinedIcon />
+              </IconButton>
+            </Tooltip>
+            {canEditRepo && (
+              <Tooltip title="Edit repository">
+                <IconButton onClick={handleEditOpen} sx={{ color: 'text.secondary' }}>
+                  <EditOutlinedIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 2 }}>
           {user && user.username === repo?.owner && (
@@ -603,9 +641,21 @@ const RepositoryDetailsPage = () => {
         <Typography variant="h5" fontWeight={600}>
           Tags
         </Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddOpen}>
-          Add Tag
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Tooltip title="Compare tags coming soon">
+            <span>
+              <Button variant="outlined" disabled>
+                Compare tags
+              </Button>
+            </span>
+          </Tooltip>
+          {canEditTags && (
+              <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddOpen}>
+                Add Tag
+              </Button>
+            )}
+        </Box>
+        
       </Box>
 
       {tags.length === 0 ? (
@@ -668,7 +718,15 @@ const RepositoryDetailsPage = () => {
                       : '—'}
                   </TableCell>
                   <TableCell>
-                    {tag.createdBy || '—'}
+                    {tag.createdBy ? (
+                      <MuiLink
+                        component={RouterLink}
+                        to={`/repositories/${encodeURIComponent(tag.createdBy)}`}
+                        underline="hover"
+                      >
+                        {tag.createdBy}
+                      </MuiLink>
+                    ) : '—'}
                   </TableCell>
                   <TableCell align="right">
                     <Tooltip title="Download model">
@@ -680,13 +738,15 @@ const RepositoryDetailsPage = () => {
                         <DownloadOutlinedIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDeleteOpen(tag)}
-                      sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-                    >
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
+                    {canEditTags && (
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDeleteOpen(tag)}
+                        sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -866,10 +926,10 @@ const RepositoryDetailsPage = () => {
               size="small"
             >
               <ToggleButton value="public">
-                <PublicIcon fontSize="small" sx={{ mr: 0.5 }} /> Public
+                <PublicIcon fontSize="small" sx={{ mr: 0.5, color: 'success.main' }} /> Public
               </ToggleButton>
               <ToggleButton value="private">
-                <LockIcon fontSize="small" sx={{ mr: 0.5 }} /> Private
+                <LockIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} /> Private
               </ToggleButton>
             </ToggleButtonGroup>
           </Box>
@@ -914,27 +974,34 @@ const RepositoryDetailsPage = () => {
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {tags.map((tag) => (
-                  <Box key={tag.name} sx={{ display: 'flex', alignItems: 'center' }}>
-                    <input
-                      type="checkbox"
+                  <FormControlLabel
+                  key={tag.name}
+                  control={
+                    <Checkbox
+                      size="small"
                       checked={forkTags.includes(tag.name)}
                       onChange={() => handleToggleForkTag(tag.name)}
-                      style={{ marginRight: '8px' }}
                     />
-                    <Typography variant="body2">{tag.name}</Typography>
-                  </Box>
-                ))}
-              </Box>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleForkClose} disabled={forkSubmitting}>Cancel</Button>
-          <Button variant="contained" onClick={handleForkSubmit} disabled={forkSubmitting}>
-            {forkSubmitting ? <CircularProgress size={20} /> : 'Fork'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+                  }
+                  label={
+                    <Typography variant="body2">
+                      {tag.name}
+                    </Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+              ))}
+            </Box>
+          )}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleForkClose} disabled={forkSubmitting}>Cancel</Button>
+        <Button variant="contained" onClick={handleForkSubmit} disabled={forkSubmitting}>
+          {forkSubmitting ? <CircularProgress size={20} /> : 'Fork'}
+        </Button>
+      </DialogActions>
+    </Dialog>
 
       {/* Manage Collaborators Dialog */}
       <Dialog open={collaboratorsOpen} onClose={handleCollaboratorsClose} maxWidth="sm" fullWidth>

@@ -93,14 +93,17 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	auth.POST("/cli/login", handlers.CLILogin(db))
 	auth.POST("/cli/poll", handlers.CLIPoll(db))
 
-	// Repositories - requires authentication for searching own projects
-	repos := v0.Group("/repositories", middleware.RequireAuthentication())
-	repos.GET("", handlers.ListRepositories(db))        // list (?scope, q, owner, visibility) - requires auth
-	repos.GET("/:owner", handlers.ListRepositories(db)) // list by owner - requires auth
-	repos.POST("", handlers.CreateRepository(db))       // create - requires auth
+	// Repositories - authenticated routes for listing/creating.
+	reposAuth := v0.Group("/repositories", middleware.RequireAuthentication())
+	reposAuth.GET("", handlers.ListRepositories(db))        // list (?scope, q, owner, visibility) - requires auth
+	reposAuth.GET("/:owner", handlers.ListRepositories(db)) // list by owner - requires auth
+	reposAuth.POST("", handlers.CreateRepository(db))       // create - requires auth
 
-	// Repository by owner/slug with middleware: resolve repo, check access
-	ownerSlugGroup := repos.Group("/:owner/:slug",
+
+	// Repository by owner/slug (publicly viewable for public repos).
+	// Access is still enforced by ResolveRepositoryByOwnerSlug + CheckRepositoryAccess +
+	// RequireRepositoryPermission(read), which returns 404 for private repos when unauthenticated.
+	ownerSlugGroup := v0.Group("/repositories/:owner/:slug",
 		middleware.ResolveRepositoryByOwnerSlug(db),
 		middleware.CheckRepositoryAccess(db),
 	)

@@ -383,11 +383,11 @@ func ForkRepository(db *gorm.DB) gin.HandlerFunc {
 			// Create new tags under forked repo
 			for _, srcTag := range sourceTags {
 				newTag := &hub.CDMTag{
-					RepoID:    forkedRepo.ID,
-					Name:      srcTag.Name,
-					ModelUUID: srcTag.ModelUUID,
-					SizeBytes: srcTag.SizeBytes,
-					CreatedBy: srcTag.CreatedBy,
+					RepoID:      forkedRepo.ID,
+					Name:        srcTag.Name,
+					ModelUUID:   srcTag.ModelUUID,
+					SizeBytes:   srcTag.SizeBytes,
+					CreatedByID: srcTag.CreatedByID,
 				}
 				if err := db.Create(newTag).Error; err != nil {
 					// Log but don't fail the fork operation
