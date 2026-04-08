@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"opendi.org/model-hub/api/internal/dto"
+	"opendi.org/model-hub/api/internal/database"
 	"opendi.org/model-hub/api/internal/middleware"
 	"opendi.org/model-hub/api/internal/models/hub"
 	"opendi.org/model-hub/api/internal/services"
@@ -821,6 +823,115 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Support retagging by reference to an existing tag/digest.
+		// If the request body matches the retag shape, we avoid schema validation
+		// and just copy the already-stored model UUID + size into the target tag.
+		type tagRetagRequest struct {
+			SourceTag    *string `json:"sourceTag"`
+			SourceDigest *string `json:"sourceDigest"`
+		}
+		var retagReq tagRetagRequest
+		if err := json.Unmarshal(raw, &retagReq); err == nil && (retagReq.SourceTag != nil || retagReq.SourceDigest != nil) {
+			// --- sourceTag retag ---
+			if retagReq.SourceTag != nil && strings.TrimSpace(*retagReq.SourceTag) != "" {
+				srcTagName := strings.TrimSpace(*retagReq.SourceTag)
+				var srcTag hub.CDMTag
+				if err := db.Where("repo_id = ? AND name = ?", repo.ID, srcTagName).First(&srcTag).Error; err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "source tag not found"})
+					return
+				}
+		
+				// Upsert target tag by copying existing tag reference.
+				var dstTag hub.CDMTag
+				err := db.Where("repo_id = ? AND name = ?", repo.ID, tagName).First(&dstTag).Error
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					dstTag = hub.CDMTag{
+						RepoID:      repo.ID,
+						Name:        tagName,
+						ModelUUID:   srcTag.ModelUUID,
+						SizeBytes:   srcTag.SizeBytes,
+						CreatedByID: user.ID,
+					}
+					if err := db.Create(&dstTag).Error; err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create tag"})
+						return
+					}
+				} else if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load tag"})
+					return
+				} else {
+					if err := db.Model(&dstTag).Updates(map[string]any{
+						"model_uuid": srcTag.ModelUUID,
+						"size_bytes": srcTag.SizeBytes,
+					}).Error; err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update tag"})
+						return
+					}
+				}
+
+				c.JSON(http.StatusOK, gin.H{
+					"tag":    tagName,
+					"digest": srcTag.ModelUUID,
+					"size":   srcTag.SizeBytes,
+				})
+				return
+			}
+			// --- sourceDigest retag ---
+			// Digest retag needs loading to compute a best-effort served-size.
+			// (Retag from tag is recommended because it can reuse stored size_bytes.)
+			if retagReq.SourceDigest != nil && strings.TrimSpace(*retagReq.SourceDigest) != "" {
+				digest := strings.TrimSpace(*retagReq.SourceDigest)
+				// Ensure digest exists by loading the CDM; this validates referential integrity.
+				model, err := database.LoadCDM(db, digest)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "source digest not found"})
+					return
+				}
+				servedJSON, err := json.Marshal(model)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to marshal served model"})
+					return
+				}
+
+				sizeBytes := int64(len(servedJSON))
+				var dstTag hub.CDMTag
+				err = db.Where("repo_id = ? AND name = ?", repo.ID, tagName).First(&dstTag).Error
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					dstTag = hub.CDMTag{
+						RepoID:      repo.ID,
+						Name:        tagName,
+						ModelUUID:   digest,
+						SizeBytes:   sizeBytes,
+						CreatedByID: user.ID,
+					}
+					if err := db.Create(&dstTag).Error; err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create tag"})
+						return
+					}
+				} else if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load tag"})
+					return
+				} else {
+					if err := db.Model(&dstTag).Updates(map[string]any{
+						"model_uuid": digest,
+						"size_bytes": sizeBytes,
+					}).Error; err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update tag"})
+						return
+					}
+				}
+				c.JSON(http.StatusOK, gin.H{
+					"tag":    tagName,
+					"digest": digest,
+					"size":   sizeBytes,
+				})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid retag request (missing sourceTag/sourceDigest)"})
+			return
+		}
+
+		
 		result, err := services.UploadModel(db, repo.ID, tagName, raw, user.ID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

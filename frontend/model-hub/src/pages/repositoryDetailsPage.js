@@ -22,6 +22,8 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
+  Select,
+  MenuItem,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -63,9 +65,11 @@ const RepositoryDetailsPage = () => {
 
   // Add-tag dialog state
   const [addOpen, setAddOpen] = useState(false);
+  const [addMode, setAddMode] = useState('upload'); // 'upload' | 'retag'
   const [tagName, setTagName] = useState('');
   const [tagFile, setTagFile] = useState(null);
   const [tagFileData, setTagFileData] = useState(null);
+  const [sourceTagName, setSourceTagName] = useState('');
   const [addError, setAddError] = useState('');
   const [addSubmitting, setAddSubmitting] = useState(false);
 
@@ -187,7 +191,9 @@ const RepositoryDetailsPage = () => {
 
   // --- Add Tag ---
   const handleAddOpen = () => {
+    setAddMode('upload');
     setTagName('');
+    setSourceTagName('');
     setTagFile(null);
     setTagFileData(null);
     setAddError('');
@@ -197,6 +203,7 @@ const RepositoryDetailsPage = () => {
   const handleAddClose = () => setAddOpen(false);
 
   const onDrop = useCallback(async (acceptedFiles) => {
+    if (addMode !== 'upload') return;
     const file = acceptedFiles[0];
     if (!file) return;
     try {
@@ -210,7 +217,7 @@ const RepositoryDetailsPage = () => {
       setTagFile(null);
       setTagFileData(null);
     }
-  }, []);
+  }, [addMode]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -224,14 +231,26 @@ const RepositoryDetailsPage = () => {
       setAddError('Tag name is required.');
       return;
     }
-    if (!tagFileData) {
-      setAddError('Please upload a CDM JSON file.');
-      return;
+    if (addMode === 'upload') {
+      if (!tagFileData) {
+        setAddError('Please upload a CDM JSON file.');
+        return;
+      }
+    }
+    if (addMode === 'retag') {
+      if (!sourceTagName) {
+        setAddError('Please select a source tag.');
+        return;
+      }
     }
     setAddSubmitting(true);
     setAddError('');
     try {
-      await APIClient.createOrUpdateTag(repositoryId, tagName.trim(), tagFileData);
+      const payload =
+        addMode === 'upload'
+          ? tagFileData
+          : { sourceTag: sourceTagName };
+      await APIClient.createOrUpdateTag(repositoryId, tagName.trim(), payload);
       setAddOpen(false);
       showNotification('Tag created successfully', 'success');
       await fetchData();
@@ -652,47 +671,94 @@ const RepositoryDetailsPage = () => {
             required
             placeholder="e.g. v1.0, latest"
           />
-          <Box
-            {...getRootProps()}
-            sx={{
-              border: '2px dashed',
-              borderColor: isDragActive ? 'primary.main' : 'divider',
-              borderRadius: 2,
-              p: 4,
-              textAlign: 'center',
-              cursor: 'pointer',
-              backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
-              transition: 'all 0.2s ease-in-out',
-              '&:hover': {
-                backgroundColor: 'action.hover',
-                borderColor: 'primary.main',
-              },
+          <ToggleButtonGroup
+            value={addMode}
+            exclusive
+            onChange={(_, next) => {
+              if (!next) return;
+              setAddMode(next);
+              setAddError('');
+              // Reset inputs for clarity
+              setTagFile(null);
+              setTagFileData(null);
             }}
           >
-            <input {...getInputProps()} />
-            {tagFile ? (
-              <Typography variant="body1" color="primary">
-                {tagFile.name}
-              </Typography>
-            ) : (
-              <>
-                <Typography variant="body1" gutterBottom>
-                  {isDragActive ? 'Drop the JSON file here' : 'Drag & drop a CDM JSON file here'}
+            <ToggleButton value="upload" sx={{ textTransform: 'none' }}>
+              Upload new
+            </ToggleButton>
+            <ToggleButton value="retag" sx={{ textTransform: 'none' }}>
+              Use existing tag
+            </ToggleButton>
+          </ToggleButtonGroup>
+          {addMode === 'retag' && (
+            <TextField
+              select
+              label="Source tag"
+              value={sourceTagName}
+              onChange={(e) => setSourceTagName(e.target.value)}
+              fullWidth
+              required
+              disabled={tags.length === 0}
+              helperText={
+                tags.length === 0
+                  ? 'No tags available to retag.'
+                  : 'The new tag will point to the same model as the selected source tag (one-time copy).'
+              }
+            >
+              <MenuItem value="" disabled>
+                Select a tag
+              </MenuItem>
+              {tags.map((t) => (
+                <MenuItem key={t.name} value={t.name}>
+                  {t.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+
+{addMode === 'upload' && (
+            <Box
+              {...getRootProps()}
+              sx={{
+                border: '2px dashed',
+                borderColor: isDragActive ? 'primary.main' : 'divider',
+                borderRadius: 2,
+                p: 4,
+                textAlign: 'center',
+                cursor: 'pointer',
+                backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
+                transition: 'all 0.2s ease-in-out',
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                  borderColor: 'primary.main',
+                },
+              }}
+            >
+              <input {...getInputProps()} />
+              {tagFile ? (
+                <Typography variant="body1" color="primary">
+                  {tagFile.name}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  or click to select a file
+                ) : (
+                  <>
+                    <Typography variant="body1" gutterBottom>
+                      {isDragActive ? 'Drop the JSON file here' : 'Drag & drop a CDM JSON file here'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      or click to select a file
+                    </Typography>
+                  </>
+                )}
+                <Typography variant="caption" display="block" sx={{ mt: 1 }} color="text.secondary">
+                  Only .json files are accepted
                 </Typography>
-              </>
+              </Box>
             )}
-            <Typography variant="caption" display="block" sx={{ mt: 1 }} color="text.secondary">
-              Only .json files are accepted
-            </Typography>
-          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleAddClose} disabled={addSubmitting}>Cancel</Button>
           <Button variant="contained" onClick={handleAddSubmit} disabled={addSubmitting}>
-            {addSubmitting ? <CircularProgress size={20} /> : 'Upload & Create Tag'}
+            {addSubmitting ? <CircularProgress size={20} /> : addMode === 'upload' ? 'Upload & Create Tag' : 'Create Tag From Existing'}
           </Button>
         </DialogActions>
       </Dialog>
