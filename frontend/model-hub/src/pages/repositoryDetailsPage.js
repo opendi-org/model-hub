@@ -35,6 +35,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import PublicIcon from '@mui/icons-material/Public';
 import LockIcon from '@mui/icons-material/Lock';
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
+import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
 import IosShareIcon from '@mui/icons-material/IosShare';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -161,6 +162,27 @@ const RepositoryDetailsPage = () => {
     navigator.clipboard.writeText(digest).then(() => {
       showNotification('Digest copied to clipboard', 'info');
     });
+  };
+
+  const handleDownloadTagModel = async (tagName) => {
+    try {
+      const model = await APIClient.getTagModel(repositoryId, tagName);
+      const json = JSON.stringify(model, null, 2);
+      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const safeRepo = (repo?.slug || 'repository').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeTag = tagName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${safeRepo} ${safeTag}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showNotification(`Downloaded ${tagName}`, 'success');
+    } catch (err) {
+      showNotification(err.message || 'Failed to download tag model.', 'error');
+    }
   };
 
   // --- Add Tag ---
@@ -592,6 +614,15 @@ const RepositoryDetailsPage = () => {
                     {tag.createdBy || '—'}
                   </TableCell>
                   <TableCell align="right">
+                    <Tooltip title="Download model">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDownloadTagModel(tag.name)}
+                        sx={{ color: 'text.secondary', mr: 0.5, '&:hover': { color: 'primary.main' } }}
+                      >
+                        <DownloadOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                     <IconButton
                       size="small"
                       onClick={() => handleDeleteOpen(tag)}

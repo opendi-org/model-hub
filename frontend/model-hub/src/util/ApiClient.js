@@ -201,6 +201,13 @@ export default class APIClient {
     return HTTPClient.get(`/v0/repo/${encodeURIComponent(repoId)}/tags`);
   }
 
+  /** GET /v0/repo/:id/tags/:tagName/model - download full CDM JSON for a tag. */
+  static async getTagModel(repoId, tagName) {
+    return HTTPClient.get(
+      `/v0/repo/${encodeURIComponent(repoId)}/tags/${encodeURIComponent(tagName)}/model`
+    );
+  }
+
   /** PUT /v0/repo/:id/tags/:tagName - create or overwrite a tag (upload CDM JSON). */
   static async createOrUpdateTag(repoId, tagName, cdmJson) {
     return HTTPClient.put(
