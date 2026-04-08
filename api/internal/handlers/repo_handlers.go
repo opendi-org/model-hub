@@ -823,6 +823,8 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		overwrite := strings.EqualFold(strings.TrimSpace(c.Query("overwrite")), "true")
+
 		// Support retagging by reference to an existing tag/digest.
 		// If the request body matches the retag shape, we avoid schema validation
 		// and just copy the already-stored model UUID + size into the target tag.
@@ -832,42 +834,44 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 		}
 		var retagReq tagRetagRequest
 		if err := json.Unmarshal(raw, &retagReq); err == nil && (retagReq.SourceTag != nil || retagReq.SourceDigest != nil) {
+			
 			// --- sourceTag retag ---
 			if retagReq.SourceTag != nil && strings.TrimSpace(*retagReq.SourceTag) != "" {
 				srcTagName := strings.TrimSpace(*retagReq.SourceTag)
+				if srcTagName == tagName {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "source tag must be different from the new tag name"})
+					return
+				}
 				var srcTag hub.CDMTag
 				if err := db.Where("repo_id = ? AND name = ?", repo.ID, srcTagName).First(&srcTag).Error; err != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"error": "source tag not found"})
 					return
 				}
 		
-				// Upsert target tag by copying existing tag reference.
-				var dstTag hub.CDMTag
-				err := db.Where("repo_id = ? AND name = ?", repo.ID, tagName).First(&dstTag).Error
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					dstTag = hub.CDMTag{
-						RepoID:      repo.ID,
-						Name:        tagName,
-						ModelUUID:   srcTag.ModelUUID,
-						SizeBytes:   srcTag.SizeBytes,
-						CreatedByID: user.ID,
-					}
-					if err := db.Create(&dstTag).Error; err != nil {
-						c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create tag"})
+				// Create target tag by copying existing tag reference.
+				dstTag := hub.CDMTag{
+					RepoID:      repo.ID,
+					Name:        tagName,
+					ModelUUID:   srcTag.ModelUUID,
+					SizeBytes:   srcTag.SizeBytes,
+					CreatedByID: user.ID,
+				}
+				if err := db.Create(&dstTag).Error; err != nil {
+					if !overwrite {
+						c.JSON(http.StatusConflict, gin.H{"error": "tag already exists"})
 						return
 					}
-				} else if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load tag"})
-					return
-				} else {
-					if err := db.Model(&dstTag).Updates(map[string]any{
-						"model_uuid": srcTag.ModelUUID,
-						"size_bytes": srcTag.SizeBytes,
-					}).Error; err != nil {
+					if err := db.Model(&hub.CDMTag{}).
+						Where("repo_id = ? AND name = ?", repo.ID, tagName).
+						Updates(map[string]any{
+							"model_uuid": srcTag.ModelUUID,
+							"size_bytes": srcTag.SizeBytes,
+						}).Error; err != nil {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update tag"})
 						return
 					}
 				}
+				
 
 				c.JSON(http.StatusOK, gin.H{
 					"tag":    tagName,
@@ -894,32 +898,29 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 				}
 
 				sizeBytes := int64(len(servedJSON))
-				var dstTag hub.CDMTag
-				err = db.Where("repo_id = ? AND name = ?", repo.ID, tagName).First(&dstTag).Error
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					dstTag = hub.CDMTag{
-						RepoID:      repo.ID,
-						Name:        tagName,
-						ModelUUID:   digest,
-						SizeBytes:   sizeBytes,
-						CreatedByID: user.ID,
-					}
-					if err := db.Create(&dstTag).Error; err != nil {
-						c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create tag"})
+				dstTag := hub.CDMTag{
+					RepoID:      repo.ID,
+					Name:        tagName,
+					ModelUUID:   digest,
+					SizeBytes:   sizeBytes,
+					CreatedByID: user.ID,
+				}
+				if err := db.Create(&dstTag).Error; err != nil {
+					if !overwrite {
+						c.JSON(http.StatusConflict, gin.H{"error": "tag already exists"})
 						return
 					}
-				} else if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load tag"})
-					return
-				} else {
-					if err := db.Model(&dstTag).Updates(map[string]any{
-						"model_uuid": digest,
-						"size_bytes": sizeBytes,
-					}).Error; err != nil {
+					if err := db.Model(&hub.CDMTag{}).
+						Where("repo_id = ? AND name = ?", repo.ID, tagName).
+						Updates(map[string]any{
+							"model_uuid": digest,
+							"size_bytes": sizeBytes,
+						}).Error; err != nil {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update tag"})
 						return
 					}
 				}
+
 				c.JSON(http.StatusOK, gin.H{
 					"tag":    tagName,
 					"digest": digest,
@@ -932,8 +933,12 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		
-		result, err := services.UploadModel(db, repo.ID, tagName, raw, user.ID)
+		result, err := services.UploadModel(db, repo.ID, tagName, raw, user.ID, overwrite)
 		if err != nil {
+			if errors.Is(err, services.ErrTagAlreadyExists) {
+				c.JSON(http.StatusConflict, gin.H{"error": "tag already exists"})
+				return
+			}
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}

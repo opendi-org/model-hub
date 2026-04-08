@@ -322,7 +322,7 @@ const RepositoriesPage = () => {
                 }}
               >
                 <CardActionArea
-                  onClick={() => navigate(`/repositories/${repo.id}`)}
+                  onClick={() => navigate(`/repositories/${repo.owner}/${repo.slug}`)}
                   sx={{ flexGrow: 1, p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 0.5 }}>
@@ -356,6 +356,13 @@ const RepositoriesPage = () => {
                         label={repo.visibility}
                         size="small"
                         variant="outlined"
+                        sx={{
+                          color: repo.visibility === 'public' ? 'success.main' : 'text.secondary',
+                          borderColor: repo.visibility === 'public' ? 'success.main' : 'text.secondary',
+                          '& .MuiChip-icon': {
+                            color: repo.visibility === 'public' ? 'success.main' : 'text.secondary',
+                          },
+                        }}
                       />
                     )}
                     {(repo.tags || []).map((tag) => (
@@ -416,10 +423,10 @@ const RepositoriesPage = () => {
               size="small"
             >
               <ToggleButton value="public">
-                <PublicIcon fontSize="small" sx={{ mr: 0.5 }} /> Public
+                <PublicIcon fontSize="small" sx={{ mr: 0.5, color: 'success.main' }} /> Public
               </ToggleButton>
               <ToggleButton value="private">
-                <LockIcon fontSize="small" sx={{ mr: 0.5 }} /> Private
+                <LockIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} /> Private
               </ToggleButton>
             </ToggleButtonGroup>
           </Box>

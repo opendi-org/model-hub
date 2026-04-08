@@ -104,7 +104,7 @@ const ExplorePage = () => {
                                     }}
                                 >
                                     <CardActionArea
-                                        onClick={() => navigate(`/repositories/${repo.id}`)}
+                                        onClick={() => navigate(`/repositories/${repo.owner}/${repo.slug}`)}
                                         sx={{ flexGrow: 1, p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
                                     >
                                         <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 0.5 }}>

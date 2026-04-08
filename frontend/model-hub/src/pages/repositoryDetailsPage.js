@@ -15,6 +15,8 @@ import {
   Divider,
   IconButton,
   Skeleton,
+  FormControlLabel,
+  Checkbox,
   Table,
   TableBody,
   TableCell,
@@ -48,7 +50,7 @@ import { useRepositories } from '../context/RepositoryContext';
 import { useNotification } from '../context/NotificationContext';
 
 const RepositoryDetailsPage = () => {
-  const { repositoryId } = useParams();
+  const { repositoryId, owner, slug } = useParams();
   const navigate = useNavigate();
   const { user } = useUser();
   const { updateRepository: updateRepoInContext } = useRepositories();
@@ -70,6 +72,7 @@ const RepositoryDetailsPage = () => {
   const [tagFile, setTagFile] = useState(null);
   const [tagFileData, setTagFileData] = useState(null);
   const [sourceTagName, setSourceTagName] = useState('');
+  const [addOverwrite, setAddOverwrite] = useState(false);
   const [addError, setAddError] = useState('');
   const [addSubmitting, setAddSubmitting] = useState(false);
 
@@ -113,7 +116,12 @@ const RepositoryDetailsPage = () => {
     setLoading(true);
     setError('');
     try {
-      const repoData = await APIClient.getRepositoryById(repositoryId);
+      let repoData;
+      if (repositoryId) {
+        repoData = await APIClient.getRepositoryById(repositoryId);
+      } else {
+        repoData = await APIClient.getRepositoryByOwnerSlug(owner, slug);
+      }
       setRepo(repoData);
       setTags(repoData.tags ?? []);
     } catch (err) {
@@ -121,11 +129,25 @@ const RepositoryDetailsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [repositoryId]);
+  }, [repositoryId, owner, slug]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const activeRepoId = repo?.id ?? repositoryId;
+  const trimmedTagName = tagName.trim();
+  const tagNameAlreadyExists = useMemo(
+    () => trimmedTagName !== '' && tags.some((t) => t.name === trimmedTagName),
+    [tags, trimmedTagName]
+  );
+
+  // If the user changes the name to a non-existing tag, drop overwrite.
+  useEffect(() => {
+    if (!tagNameAlreadyExists && addOverwrite) {
+      setAddOverwrite(false);
+    }
+  }, [tagNameAlreadyExists, addOverwrite]);
 
   // --- Sorting ---
   const handleSort = (field) => {
@@ -170,7 +192,7 @@ const RepositoryDetailsPage = () => {
 
   const handleDownloadTagModel = async (tagName) => {
     try {
-      const model = await APIClient.getTagModel(repositoryId, tagName);
+      const model = await APIClient.getTagModel(activeRepoId, tagName);
       const json = JSON.stringify(model, null, 2);
       const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -196,6 +218,7 @@ const RepositoryDetailsPage = () => {
     setSourceTagName('');
     setTagFile(null);
     setTagFileData(null);
+    setAddOverwrite(false);
     setAddError('');
     setAddOpen(true);
   };
@@ -231,6 +254,10 @@ const RepositoryDetailsPage = () => {
       setAddError('Tag name is required.');
       return;
     }
+    if (tagNameAlreadyExists && !addOverwrite) {
+      setAddError('Tag already exists. Enable overwrite to replace it.');
+      return;
+    }
     if (addMode === 'upload') {
       if (!tagFileData) {
         setAddError('Please upload a CDM JSON file.');
@@ -242,6 +269,10 @@ const RepositoryDetailsPage = () => {
         setAddError('Please select a source tag.');
         return;
       }
+      if (sourceTagName === trimmedTagName) {
+        setAddError('Source tag must be different from the new tag name.');
+        return;
+      }
     }
     setAddSubmitting(true);
     setAddError('');
@@ -250,7 +281,7 @@ const RepositoryDetailsPage = () => {
         addMode === 'upload'
           ? tagFileData
           : { sourceTag: sourceTagName };
-      await APIClient.createOrUpdateTag(repositoryId, tagName.trim(), payload);
+      await APIClient.createOrUpdateTag(activeRepoId, trimmedTagName, payload, { overwrite: addOverwrite });
       setAddOpen(false);
       showNotification('Tag created successfully', 'success');
       await fetchData();
@@ -276,7 +307,7 @@ const RepositoryDetailsPage = () => {
     if (!selectedTag) return;
     setDeleteSubmitting(true);
     try {
-      await APIClient.deleteTag(repositoryId, selectedTag.name);
+      await APIClient.deleteTag(activeRepoId, selectedTag.name);
       setTags((prev) => prev.filter((t) => t.name !== selectedTag.name));
       setDeleteOpen(false);
       setSelectedTag(null);
@@ -307,15 +338,22 @@ const RepositoryDetailsPage = () => {
     setEditSubmitting(true);
     setEditError('');
     try {
-      const updated = await APIClient.updateRepository(repositoryId, {
+      const updated = await APIClient.updateRepository(activeRepoId, {
         slug: editSlug.trim(),
         description: editDescription.trim(),
         visibility: editVisibility,
       });
       setRepo((prev) => ({ ...prev, ...updated }));
-      updateRepoInContext(Number(repositoryId), updated);
+      updateRepoInContext(Number(activeRepoId), updated);
       setEditOpen(false);
       showNotification('Repository updated', 'success');
+
+      // If the slug changed, navigate to the new canonical URL.
+      const nextOwner = updated?.owner || repo?.owner;
+      const nextSlug = updated?.slug || editSlug.trim();
+      if (nextOwner && nextSlug && (slug || owner)) {
+        navigate(`/repositories/${encodeURIComponent(nextOwner)}/${encodeURIComponent(nextSlug)}`);
+      }
     } catch (err) {
       setEditError(err.message || 'Failed to update repository.');
     } finally {
@@ -715,7 +753,6 @@ const RepositoryDetailsPage = () => {
               ))}
             </TextField>
           )}
-
 {addMode === 'upload' && (
             <Box
               {...getRootProps()}
@@ -754,6 +791,25 @@ const RepositoryDetailsPage = () => {
                 </Typography>
               </Box>
             )}
+            {tagNameAlreadyExists && (
+            <>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={addOverwrite}
+                    onChange={(e) => setAddOverwrite(e.target.checked)}
+                  />
+                }
+                label="Overwrite existing tag (replaces the model this tag points to)"
+              />
+              {addOverwrite && (
+                <Alert severity="warning">
+                  This will overwrite the existing tag <strong>{trimmedTagName}</strong>. Existing references to this
+                  tag will now point to the new model.
+                </Alert>
+              )}
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleAddClose} disabled={addSubmitting}>Cancel</Button>
