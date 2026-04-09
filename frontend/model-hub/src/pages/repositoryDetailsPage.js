@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -15,6 +15,8 @@ import {
   Divider,
   IconButton,
   Skeleton,
+  FormControlLabel,
+  Checkbox,
   Table,
   TableBody,
   TableCell,
@@ -22,11 +24,14 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
+  Select,
+  MenuItem,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
   Typography,
+  Link as MuiLink,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
@@ -35,8 +40,8 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import PublicIcon from '@mui/icons-material/Public';
 import LockIcon from '@mui/icons-material/Lock';
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
+import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
-import IosShareIcon from '@mui/icons-material/IosShare';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import { useDropzone } from 'react-dropzone';
 import APIClient from '../util/ApiClient';
@@ -45,10 +50,11 @@ import { useRepositories } from '../context/RepositoryContext';
 import { useNotification } from '../context/NotificationContext';
 
 const RepositoryDetailsPage = () => {
-  const { repositoryId } = useParams();
+  const { repositoryId, owner, slug } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useUser();
-  const { updateRepository: updateRepoInContext } = useRepositories();
+  const { updateRepository: updateRepoInContext, refreshRepositories } = useRepositories();
   const { showNotification } = useNotification();
 
   const [repo, setRepo] = useState(null);
@@ -62,11 +68,17 @@ const RepositoryDetailsPage = () => {
 
   // Add-tag dialog state
   const [addOpen, setAddOpen] = useState(false);
+  const [addMode, setAddMode] = useState('upload'); // 'upload' | 'retag'
   const [tagName, setTagName] = useState('');
   const [tagFile, setTagFile] = useState(null);
   const [tagFileData, setTagFileData] = useState(null);
+  const [sourceTagName, setSourceTagName] = useState('');
+  const [addOverwrite, setAddOverwrite] = useState(false);
   const [addError, setAddError] = useState('');
   const [addSubmitting, setAddSubmitting] = useState(false);
+  // When set, we are using the Add Tag dialog to overwrite an existing tag.
+  // In this mode the tag name is locked and the overwrite checkbox is hidden.
+  const [tagEditTarget, setTagEditTarget] = useState(null);
 
   // Delete-tag dialog state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -108,7 +120,12 @@ const RepositoryDetailsPage = () => {
     setLoading(true);
     setError('');
     try {
-      const repoData = await APIClient.getRepositoryById(repositoryId);
+      let repoData;
+      if (repositoryId) {
+        repoData = await APIClient.getRepositoryById(repositoryId);
+      } else {
+        repoData = await APIClient.getRepositoryByOwnerSlug(owner, slug);
+      }
       setRepo(repoData);
       setTags(repoData.tags ?? []);
     } catch (err) {
@@ -116,11 +133,55 @@ const RepositoryDetailsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [repositoryId]);
+  }, [repositoryId, owner, slug]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const activeRepoId = repo?.id ?? repositoryId;
+  const backTarget = location?.state?.from || (user ? '/repositories' : '/');
+  const trimmedTagName = tagName.trim();
+  const tagNameAlreadyExists = useMemo(
+    () => trimmedTagName !== '' && tags.some((t) => t.name === trimmedTagName),
+    [tags, trimmedTagName]
+  );
+  const canEditTags = useMemo(() => {
+    if (!user || !repo) return false;
+    if (user.username === repo.owner) return true;
+    const myCollab = (repo.collaborators || []).find((c) => c.username === user.username);
+    return myCollab?.role === 'write' || myCollab?.role === 'owner';
+  }, [user, repo]);
+  const canEditRepo = !!user && !!repo && user.username === repo.owner;
+
+  const getRepoSlugValidationError = (value) => {
+    const slug = (value || '').trim();
+    if (!slug) return 'Repository name is required.';
+    if (slug.length > 255) return 'Repository name must be 255 characters or less.';
+    if (/\s/.test(slug)) return 'Repository name cannot contain spaces.';
+    if (!/^[A-Za-z0-9_-]+$/.test(slug)) {
+      return "Repository name may contain only letters, numbers, '-' and '_' (no spaces).";
+    }
+    return '';
+  };
+
+  const getTagNameValidationError = (value) => {
+    const name = (value || '').trim();
+    if (!name) return 'Tag name is required.';
+    if (name.length > 255) return 'Tag name must be 255 characters or less.';
+    if (/\s/.test(name)) return 'Tag name cannot contain spaces.';
+    if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+      return "Tag name may contain only letters, numbers, '.', '-', and '_' (no spaces).";
+    }
+    return '';
+  };
+
+  // If the user changes the name to a non-existing tag, drop overwrite.
+  useEffect(() => {
+    if (!tagNameAlreadyExists && addOverwrite && !tagEditTarget) {
+      setAddOverwrite(false);
+    }
+  }, [tagNameAlreadyExists, addOverwrite, tagEditTarget]);
 
   // --- Sorting ---
   const handleSort = (field) => {
@@ -163,18 +224,70 @@ const RepositoryDetailsPage = () => {
     });
   };
 
+  const handleCopyPermalink = () => {
+    if (!repo?.id) return;
+    const permalink = `${window.location.origin}/repositories/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.slug)}`;
+    navigator.clipboard.writeText(permalink).then(() => {
+      showNotification('Permalink copied to clipboard', 'info');
+    });
+  };
+
+  const handleDownloadTagModel = async (tagName) => {
+    try {
+      const model = await APIClient.getTagModel(activeRepoId, tagName);
+      const json = JSON.stringify(model, null, 2);
+      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const safeRepo = (repo?.slug || 'repository').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeTag = tagName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${safeRepo} ${safeTag}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showNotification(`Downloaded ${tagName}`, 'success');
+    } catch (err) {
+      showNotification(err.message || 'Failed to download tag model.', 'error');
+    }
+  };
+
   // --- Add Tag ---
   const handleAddOpen = () => {
+    setAddMode('upload');
+    setTagEditTarget(null);
     setTagName('');
+    setSourceTagName('');
     setTagFile(null);
     setTagFileData(null);
+    setAddOverwrite(false);
     setAddError('');
     setAddOpen(true);
   };
 
-  const handleAddClose = () => setAddOpen(false);
+  const handleEditTagOpen = (tag) => {
+    const targetName = tag?.name;
+    if (!targetName) return;
+
+    setAddMode('upload');
+    setTagEditTarget(targetName);
+    setTagName(targetName);
+    setSourceTagName('');
+    setTagFile(null);
+    setTagFileData(null);
+    setAddOverwrite(true); // forced overwrite (no checkbox needed)
+    setAddError('');
+    setAddOpen(true);
+  };
+
+  const handleAddClose = () => {
+    setAddOpen(false);
+    setTagEditTarget(null);
+  };
 
   const onDrop = useCallback(async (acceptedFiles) => {
+    if (addMode !== 'upload') return;
     const file = acceptedFiles[0];
     if (!file) return;
     try {
@@ -188,7 +301,7 @@ const RepositoryDetailsPage = () => {
       setTagFile(null);
       setTagFileData(null);
     }
-  }, []);
+  }, [addMode]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -198,28 +311,51 @@ const RepositoryDetailsPage = () => {
   });
 
   const handleAddSubmit = async () => {
-    if (!tagName.trim()) {
-      setAddError('Tag name is required.');
+    const validationError = getTagNameValidationError(tagName);
+    if (validationError) {
+      setAddError(validationError);
       return;
     }
-    if (!tagFileData) {
-      setAddError('Please upload a CDM JSON file.');
+    if (tagNameAlreadyExists && !addOverwrite) {
+      setAddError('Tag already exists. Enable overwrite to replace it.');
       return;
+    }
+    if (addMode === 'upload') {
+      if (!tagFileData) {
+        setAddError('Please upload a CDM JSON file.');
+        return;
+      }
+    }
+    if (addMode === 'retag') {
+      if (!sourceTagName) {
+        setAddError('Please select a source tag.');
+        return;
+      }
+      if (sourceTagName === trimmedTagName) {
+        setAddError('Source tag must be different from the new tag name.');
+        return;
+      }
     }
     setAddSubmitting(true);
     setAddError('');
     try {
-      if (user) {
-        tagFileData.meta = tagFileData.meta || {};
-        tagFileData.meta.creator = tagFileData.meta.creator || {};
-        tagFileData.meta.creator.email = user.email;
-      }
-      await APIClient.createOrUpdateTag(repositoryId, tagName.trim(), tagFileData);
+      const payload =
+        addMode === 'upload'
+          ? tagFileData
+          : { sourceTag: sourceTagName };
+      await APIClient.createOrUpdateTag(activeRepoId, trimmedTagName, payload, { overwrite: addOverwrite });
       setAddOpen(false);
       showNotification('Tag created successfully', 'success');
       await fetchData();
     } catch (err) {
-      setAddError(err.message || 'Failed to create tag.');
+      const msg = err?.message || '';
+      if (msg.toLowerCase().includes('invalid tag name')) {
+        setAddError("Invalid tag name. Use 1-255 characters with letters/numbers and only '-', '_', and '.' (no spaces).");
+      } else if (msg.toLowerCase().includes('tag already exists')) {
+        setAddError('Tag already exists. Enable overwrite to replace it.');
+      } else {
+        setAddError(msg || 'Failed to create tag.');
+      }
     } finally {
       setAddSubmitting(false);
     }
@@ -240,7 +376,7 @@ const RepositoryDetailsPage = () => {
     if (!selectedTag) return;
     setDeleteSubmitting(true);
     try {
-      await APIClient.deleteTag(repositoryId, selectedTag.name);
+      await APIClient.deleteTag(activeRepoId, selectedTag.name);
       setTags((prev) => prev.filter((t) => t.name !== selectedTag.name));
       setDeleteOpen(false);
       setSelectedTag(null);
@@ -264,24 +400,35 @@ const RepositoryDetailsPage = () => {
   const handleEditClose = () => setEditOpen(false);
 
   const handleEditSubmit = async () => {
-    if (!editSlug.trim()) {
-      setEditError('Repository name is required.');
+    const validationError = getRepoSlugValidationError(editSlug);
+    if (validationError) {
+      setEditError(validationError);
       return;
     }
     setEditSubmitting(true);
     setEditError('');
     try {
-      const updated = await APIClient.updateRepository(repositoryId, {
+      const updated = await APIClient.updateRepository(activeRepoId, {
         slug: editSlug.trim(),
         description: editDescription.trim(),
         visibility: editVisibility,
       });
       setRepo((prev) => ({ ...prev, ...updated }));
-      updateRepoInContext(Number(repositoryId), updated);
+      updateRepoInContext(Number(activeRepoId), updated);
+      await refreshRepositories();
       setEditOpen(false);
       showNotification('Repository updated', 'success');
-    } catch (err) {
-      setEditError(err.message || 'Failed to update repository.');
+
+      navigate(`/repositories/${updated.owner}/${updated.slug}`, {
+        state: { from: location?.state?.from },
+      });
+    } catch (err) { 
+      const msg = err?.message || '';
+      if (msg.toLowerCase().includes('invalid repository name') || msg.toLowerCase().includes('invalid slug')) {
+        setEditError("Invalid repository name. Use 1-255 characters with letters/numbers and only '-' or '_' (no spaces).");
+      } else {
+        setEditError(msg || 'Failed to update repository.');
+      }
     } finally {
       setEditSubmitting(false);
     }
@@ -307,23 +454,31 @@ const RepositoryDetailsPage = () => {
   };
 
   const handleForkSubmit = async () => {
-    if (!forkSlug.trim()) {
-      setForkError('Repository name is required.');
+    const validationError = getRepoSlugValidationError(forkSlug);
+    if (validationError) {
+      setForkError(validationError);
       return;
     }
     setForkSubmitting(true);
     setForkError('');
     try {
-      await APIClient.forkRepository(repo.owner, repo.slug, {
+      const createdRepo = await APIClient.forkRepository(repo.owner, repo.slug, {
         slug: forkSlug.trim(),
         description: forkDescription.trim(),
         tags: forkTags,
       });
       setForkOpen(false);
       showNotification('Repository forked successfully', 'success');
+      await refreshRepositories();
+      // After forking, return to My Repositories so the new repo is visible in the list.
       navigate('/repositories');
     } catch (err) {
-      setForkError(err.message || 'Failed to fork repository.');
+      const msg = err?.message || '';
+      if (msg.toLowerCase().includes('invalid repository name') || msg.toLowerCase().includes('invalid slug')) {
+        setForkError("Invalid repository name. Use 1-255 characters with letters/numbers and only '-' or '_' (no spaces).");
+      } else {
+        setForkError(msg || 'Failed to fork repository.');
+      }
     } finally {
       setForkSubmitting(false);
     }
@@ -414,7 +569,8 @@ const RepositoryDetailsPage = () => {
       await APIClient.transferRepositoryOwnership(repo.owner, repo.slug, transferUsername.trim());
       setTransferOpen(false);
       showNotification('Repository ownership transferred', 'success');
-      navigate('/repositories');
+      await refreshRepositories();
+      navigate(backTarget, { state: { from: location?.state?.from } });
     } catch (err) {
       setTransferError(err.message || 'Failed to transfer repository.');
     } finally {
@@ -445,7 +601,7 @@ const RepositoryDetailsPage = () => {
     return (
       <Container maxWidth="md" sx={{ py: 8 }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/repositories')}>
+        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(backTarget)}>
           Back to Repositories
         </Button>
       </Container>
@@ -463,7 +619,7 @@ const RepositoryDetailsPage = () => {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Header */}
-      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/repositories')} sx={{ mb: 2 }}>
+      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(backTarget)} sx={{ mb: 2 }}>
         Back to Repositories
       </Button>
 
@@ -480,6 +636,13 @@ const RepositoryDetailsPage = () => {
                   label={repo.visibility}
                   size="small"
                   variant="outlined"
+                  sx={{
+                    color: repo.visibility === 'public' ? 'success.main' : 'text.secondary',
+                    borderColor: repo.visibility === 'public' ? 'success.main' : 'text.secondary',
+                    '& .MuiChip-icon': {
+                      color: repo.visibility === 'public' ? 'success.main' : 'text.secondary',
+                    },
+                  }}
                 />
               )}
             </Box>
@@ -490,15 +653,31 @@ const RepositoryDetailsPage = () => {
             )}
             {repo?.owner && (
               <Typography variant="body2" color="text.secondary">
-                Owner: {repo.owner}
+                Owner:{' '}
+                <MuiLink
+                  component={RouterLink}
+                  to={`/repositories/${encodeURIComponent(repo.owner)}`}
+                  underline="hover"
+                >
+                  {repo.owner}
+                </MuiLink>
               </Typography>
             )}
           </Box>
-          <Tooltip title="Edit repository">
-            <IconButton onClick={handleEditOpen} sx={{ color: 'text.secondary' }}>
-              <EditOutlinedIcon />
-            </IconButton>
-          </Tooltip>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Tooltip title="Copy permalink">
+              <IconButton onClick={handleCopyPermalink} sx={{ color: 'text.secondary' }}>
+                <ContentCopyOutlinedIcon />
+              </IconButton>
+            </Tooltip>
+            {canEditRepo && (
+              <Tooltip title="Edit repository">
+                <IconButton onClick={handleEditOpen} sx={{ color: 'text.secondary' }}>
+                  <EditOutlinedIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 2 }}>
           {user && user.username === repo?.owner && (
@@ -529,9 +708,21 @@ const RepositoryDetailsPage = () => {
         <Typography variant="h5" fontWeight={600}>
           Tags
         </Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddOpen}>
-          Add Tag
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Tooltip title="Compare tags coming soon">
+            <span>
+              <Button variant="outlined" disabled>
+                Compare tags
+              </Button>
+            </span>
+          </Tooltip>
+          {canEditTags && (
+              <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddOpen}>
+                Add Tag
+              </Button>
+            )}
+        </Box>
+        
       </Box>
 
       {tags.length === 0 ? (
@@ -594,16 +785,48 @@ const RepositoryDetailsPage = () => {
                       : '—'}
                   </TableCell>
                   <TableCell>
-                    {tag.createdBy || '—'}
+                    {tag.createdBy ? (
+                      <MuiLink
+                        component={RouterLink}
+                        to={`/repositories/${encodeURIComponent(tag.createdBy)}`}
+                        underline="hover"
+                      >
+                        {tag.createdBy}
+                      </MuiLink>
+                    ) : '—'}
                   </TableCell>
                   <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDeleteOpen(tag)}
-                      sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-                    >
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                      {canEditTags && (
+                        <Tooltip title="Edit tag">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditTagOpen(tag)}
+                            sx={{ color: 'text.secondary', '&:hover': { color: 'warning.main' } }}
+                          >
+                            <EditOutlinedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {canEditTags && (
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteOpen(tag)}
+                          sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                      <Tooltip title="Download model">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDownloadTagModel(tag.name)}
+                          sx={{ color: 'primary.main', '&:hover': { color: 'primary.main' } }}
+                        >
+                          <DownloadOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}
@@ -624,49 +847,120 @@ const RepositoryDetailsPage = () => {
             fullWidth
             autoFocus
             required
+            disabled={!!tagEditTarget}
             placeholder="e.g. v1.0, latest"
           />
-          <Box
-            {...getRootProps()}
-            sx={{
-              border: '2px dashed',
-              borderColor: isDragActive ? 'primary.main' : 'divider',
-              borderRadius: 2,
-              p: 4,
-              textAlign: 'center',
-              cursor: 'pointer',
-              backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
-              transition: 'all 0.2s ease-in-out',
-              '&:hover': {
-                backgroundColor: 'action.hover',
-                borderColor: 'primary.main',
-              },
+          <ToggleButtonGroup
+            value={addMode}
+            exclusive
+            onChange={(_, next) => {
+              if (!next) return;
+              setAddMode(next);
+              setAddError('');
+              // Reset inputs for clarity
+              setTagFile(null);
+              setTagFileData(null);
             }}
           >
-            <input {...getInputProps()} />
-            {tagFile ? (
-              <Typography variant="body1" color="primary">
-                {tagFile.name}
-              </Typography>
-            ) : (
+            <ToggleButton value="upload" sx={{ textTransform: 'none' }}>
+              Upload new
+            </ToggleButton>
+            <ToggleButton value="retag" sx={{ textTransform: 'none' }}>
+              Use existing tag
+            </ToggleButton>
+          </ToggleButtonGroup>
+          {addMode === 'retag' && (
+            <TextField
+              select
+              label="Source tag"
+              value={sourceTagName}
+              onChange={(e) => setSourceTagName(e.target.value)}
+              fullWidth
+              required
+              disabled={tags.length === 0}
+              helperText={
+                tags.length === 0
+                  ? 'No tags available to retag.'
+                  : 'The new tag will point to the same model as the selected source tag (one-time copy).'
+              }
+            >
+              <MenuItem value="" disabled>
+                Select a tag
+              </MenuItem>
+              {tags.map((t) => (
+                <MenuItem key={t.name} value={t.name}>
+                  {t.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+{addMode === 'upload' && (
+            <Box
+              {...getRootProps()}
+              sx={{
+                border: '2px dashed',
+                borderColor: isDragActive ? 'primary.main' : 'divider',
+                borderRadius: 2,
+                p: 4,
+                textAlign: 'center',
+                cursor: 'pointer',
+                backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
+                transition: 'all 0.2s ease-in-out',
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                  borderColor: 'primary.main',
+                },
+              }}
+            >
+              <input {...getInputProps()} />
+              {tagFile ? (
+                <Typography variant="body1" color="primary">
+                  {tagFile.name}
+                </Typography>
+                ) : (
+                  <>
+                    <Typography variant="body1" gutterBottom>
+                      {isDragActive ? 'Drop the JSON file here' : 'Drag & drop a CDM JSON file here'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      or click to select a file
+                    </Typography>
+                  </>
+                )}
+                <Typography variant="caption" display="block" sx={{ mt: 1 }} color="text.secondary">
+                  Only .json files are accepted
+                </Typography>
+              </Box>
+            )}
+            {tagNameAlreadyExists && !tagEditTarget && (
               <>
-                <Typography variant="body1" gutterBottom>
-                  {isDragActive ? 'Drop the JSON file here' : 'Drag & drop a CDM JSON file here'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  or click to select a file
-                </Typography>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={addOverwrite}
+                      onChange={(e) => setAddOverwrite(e.target.checked)}
+                    />
+                  }
+                  label="Overwrite existing tag (replaces the model this tag points to)"
+                />
+                {addOverwrite && (
+                  <Alert severity="warning">
+                    This will overwrite the existing tag <strong>{trimmedTagName}</strong>. Existing references to this
+                    tag will now point to the new model.
+                  </Alert>
+                )}
               </>
             )}
-            <Typography variant="caption" display="block" sx={{ mt: 1 }} color="text.secondary">
-              Only .json files are accepted
-            </Typography>
-          </Box>
+            {tagNameAlreadyExists && tagEditTarget && (
+              <Alert severity="warning">
+                This will overwrite <strong>{trimmedTagName}</strong>.
+              </Alert>
+            )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleAddClose} disabled={addSubmitting}>Cancel</Button>
           <Button variant="contained" onClick={handleAddSubmit} disabled={addSubmitting}>
-            {addSubmitting ? <CircularProgress size={20} /> : 'Upload & Create Tag'}
+            {addSubmitting ? <CircularProgress size={20} /> : addMode === 'upload' ? 'Upload & Create Tag' : 'Create Tag From Existing'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -718,10 +1012,10 @@ const RepositoryDetailsPage = () => {
               size="small"
             >
               <ToggleButton value="public">
-                <PublicIcon fontSize="small" sx={{ mr: 0.5 }} /> Public
+                <PublicIcon fontSize="small" sx={{ mr: 0.5, color: 'success.main' }} /> Public
               </ToggleButton>
               <ToggleButton value="private">
-                <LockIcon fontSize="small" sx={{ mr: 0.5 }} /> Private
+                <LockIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} /> Private
               </ToggleButton>
             </ToggleButtonGroup>
           </Box>
@@ -766,27 +1060,34 @@ const RepositoryDetailsPage = () => {
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {tags.map((tag) => (
-                  <Box key={tag.name} sx={{ display: 'flex', alignItems: 'center' }}>
-                    <input
-                      type="checkbox"
+                  <FormControlLabel
+                  key={tag.name}
+                  control={
+                    <Checkbox
+                      size="small"
                       checked={forkTags.includes(tag.name)}
                       onChange={() => handleToggleForkTag(tag.name)}
-                      style={{ marginRight: '8px' }}
                     />
-                    <Typography variant="body2">{tag.name}</Typography>
-                  </Box>
-                ))}
-              </Box>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleForkClose} disabled={forkSubmitting}>Cancel</Button>
-          <Button variant="contained" onClick={handleForkSubmit} disabled={forkSubmitting}>
-            {forkSubmitting ? <CircularProgress size={20} /> : 'Fork'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+                  }
+                  label={
+                    <Typography variant="body2">
+                      {tag.name}
+                    </Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+              ))}
+            </Box>
+          )}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleForkClose} disabled={forkSubmitting}>Cancel</Button>
+        <Button variant="contained" onClick={handleForkSubmit} disabled={forkSubmitting}>
+          {forkSubmitting ? <CircularProgress size={20} /> : 'Fork'}
+        </Button>
+      </DialogActions>
+    </Dialog>
 
       {/* Manage Collaborators Dialog */}
       <Dialog open={collaboratorsOpen} onClose={handleCollaboratorsClose} maxWidth="sm" fullWidth>

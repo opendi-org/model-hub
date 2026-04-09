@@ -171,6 +171,13 @@ export default class APIClient {
     return HTTPClient.get(`/v0/repo/${encodeURIComponent(id)}`);
   }
 
+  /** GET /v0/repositories/:owner/:slug - get repository by owner/slug. */
+  static async getRepositoryByOwnerSlug(owner, slug) {
+    return HTTPClient.get(
+      `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}`
+    );
+  }
+
   /** POST /v0/repositories - create a new repository. */
   static async createRepository(data) {
     return HTTPClient.post("/v0/repositories", data);
@@ -201,10 +208,18 @@ export default class APIClient {
     return HTTPClient.get(`/v0/repo/${encodeURIComponent(repoId)}/tags`);
   }
 
-  /** PUT /v0/repo/:id/tags/:tagName - create or overwrite a tag (upload CDM JSON). */
-  static async createOrUpdateTag(repoId, tagName, cdmJson) {
+  /** GET /v0/repo/:id/tags/:tagName/model - download full CDM JSON for a tag. */
+  static async getTagModel(repoId, tagName) {
+    return HTTPClient.get(
+      `/v0/repo/${encodeURIComponent(repoId)}/tags/${encodeURIComponent(tagName)}/model`
+    );
+  }
+
+  /** PUT /v0/repo/:id/tags/:tagName - create a tag; overwrite only when options.overwrite=true. */
+  static async createOrUpdateTag(repoId, tagName, cdmJson, options = {}) {
+    const qs = options.overwrite === true ? '?overwrite=true' : '';
     return HTTPClient.put(
-      `/v0/repo/${encodeURIComponent(repoId)}/tags/${encodeURIComponent(tagName)}`,
+      `/v0/repo/${encodeURIComponent(repoId)}/tags/${encodeURIComponent(tagName)}${qs}`,
       cdmJson
     );
   }

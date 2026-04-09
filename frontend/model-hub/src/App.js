@@ -59,7 +59,9 @@ function App() {
               <Routes>
                 <Route exact path="/" element={<Home />} />
                 <Route path="/repositories" element={<RepositoriesPage />} />
-                <Route path="/repositories/:repositoryId" element={<RepositoryDetailsPage />} />
+                <Route path="/repositories/:owner/:slug" element={<RepositoryDetailsPage />} />
+                <Route path="/repo/:repositoryId" element={<RepositoryDetailsPage />} />
+                <Route path="/repositories/:owner" element={<Home />} />
                 <Route path="/cli-tool" element={<CliDownloadPage />} />
                 <Route path="/model/:uuid" element={<ModelPage />} />
                 <Route path="/model" element={<ModelPage />} />
