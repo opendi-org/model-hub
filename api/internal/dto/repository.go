@@ -49,8 +49,9 @@ type CollaboratorInfo struct {
 
 // RepositoryLineageInfo represents parent/child references
 type RepositoryLineageInfo struct {
-	Parent   *RepositoryLineageRef  `json:"parent,omitempty"`
-	Children []RepositoryLineageRef `json:"children,omitempty"`
+	Parent    *RepositoryLineageRef  `json:"parent,omitempty"`
+	Ancestors []RepositoryLineageRef `json:"ancestors,omitempty"` // Full chain from parent to root
+	Children  []RepositoryLineageRef `json:"children,omitempty"`
 }
 
 // RepositoryLineageRef is a minimal repo reference for lineage
@@ -153,7 +154,9 @@ type ListCollaboratorsResponse struct {
 
 // TransferRepositoryRequest represents the request body for UC-11 (Transfer Repository Ownership)
 type TransferRepositoryRequest struct {
-	Username string `json:"username" binding:"required"`
+	Username        string `json:"username" binding:"required"`
+	KeepReadAccess  bool   `json:"keepReadAccess"`
+	KeepWriteAccess bool   `json:"keepWriteAccess"`
 }
 
 // TransferRepositoryResponse represents the response for UC-11

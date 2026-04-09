@@ -78,6 +78,9 @@ const Home = () => {
             if (sortBy === 'name') {
                 aVal = (a.slug || '').toLowerCase();
                 bVal = (b.slug || '').toLowerCase();
+                // Use string comparison for names
+                const comparison = aVal.localeCompare(bVal);
+                return sortOrder === 'asc' ? comparison : -comparison;
             } else if (sortBy === 'created') {
         const getRepoDate = (repo, camelKey, snakeKey) => {
           const v = repo?.[camelKey] ?? repo?.[snakeKey];
@@ -97,6 +100,7 @@ const Home = () => {
         aVal = getRepoDate(a, 'updatedAt', 'updated_at');
         bVal = getRepoDate(b, 'updatedAt', 'updated_at');
             }
+            // Use numeric comparison for dates
             return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
         });
 

@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"opendi.org/model-hub/api/internal/dto"
 	"opendi.org/model-hub/api/internal/database"
+	"opendi.org/model-hub/api/internal/dto"
 	"opendi.org/model-hub/api/internal/middleware"
 	"opendi.org/model-hub/api/internal/models/hub"
 	"opendi.org/model-hub/api/internal/services"
@@ -753,8 +753,21 @@ func TransferRepositoryOwnership(db *gorm.DB) gin.HandlerFunc {
 				return err
 			}
 
-			// Optionally: add previous owner as owner collaborator
-			// (The requirements document doesn't specify this behavior, so we skip it for now)
+			// Add previous owner as collaborator if access preservation is requested
+			if req.KeepReadAccess || req.KeepWriteAccess {
+				role := "read"
+				if req.KeepWriteAccess {
+					role = "write"
+				}
+				collaborator := hub.Collaborator{
+					RepoID: repo.ID,
+					UserID: user.ID,
+					Role:   role,
+				}
+				if err := tx.Create(&collaborator).Error; err != nil {
+					return err
+				}
+			}
 
 			return nil
 		})
@@ -834,7 +847,7 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 		}
 		var retagReq tagRetagRequest
 		if err := json.Unmarshal(raw, &retagReq); err == nil && (retagReq.SourceTag != nil || retagReq.SourceDigest != nil) {
-			
+
 			// --- sourceTag retag ---
 			if retagReq.SourceTag != nil && strings.TrimSpace(*retagReq.SourceTag) != "" {
 				srcTagName := strings.TrimSpace(*retagReq.SourceTag)
@@ -847,7 +860,7 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 					c.JSON(http.StatusBadRequest, gin.H{"error": "source tag not found"})
 					return
 				}
-		
+
 				// Create target tag by copying existing tag reference.
 				dstTag := hub.CDMTag{
 					RepoID:      repo.ID,
@@ -871,7 +884,6 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 						return
 					}
 				}
-				
 
 				c.JSON(http.StatusOK, gin.H{
 					"tag":    tagName,
@@ -932,7 +944,6 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		
 		result, err := services.UploadModel(db, repo.ID, tagName, raw, user.ID, overwrite)
 		if err != nil {
 			if errors.Is(err, services.ErrTagAlreadyExists) {
@@ -1015,6 +1026,67 @@ func DeleteTag(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// GetRepositoryLineage handles repository lineage queries
+// GET /v0/repositories/:owner/:slug/lineage
+// Returns the full fork lineage: ancestors (parent chain) and children (forks)
+// No authentication required; uses repository's visibility
+func GetRepositoryLineage(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		lineage := dto.RepositoryLineageInfo{
+			Ancestors: []dto.RepositoryLineageRef{},
+			Children:  []dto.RepositoryLineageRef{},
+		}
+
+		// Get parent (immediate forked-from repo)
+		if repo.ForkedFromID != nil {
+			var parent hub.Repository
+			if err := db.Preload("Owner").First(&parent, *repo.ForkedFromID).Error; err == nil {
+				lineage.Parent = &dto.RepositoryLineageRef{
+					ID:    parent.ID,
+					Owner: parent.Owner.Username,
+					Slug:  parent.Slug,
+				}
+			}
+		}
+
+		// Get full ancestry chain (walk up ForkedFromID until nil)
+		ancestorChain := []dto.RepositoryLineageRef{}
+		currentID := repo.ForkedFromID
+		for currentID != nil {
+			var ancestor hub.Repository
+			if err := db.Preload("Owner").First(&ancestor, *currentID).Error; err != nil {
+				break // Stop on error
+			}
+			ancestorChain = append(ancestorChain, dto.RepositoryLineageRef{
+				ID:    ancestor.ID,
+				Owner: ancestor.Owner.Username,
+				Slug:  ancestor.Slug,
+			})
+			currentID = ancestor.ForkedFromID // Move up the chain
+		}
+		lineage.Ancestors = ancestorChain
+
+		// Get all children (repos forked from this one)
+		var children []hub.Repository
+		if err := db.Where("forked_from_id = ?", repo.ID).Preload("Owner").Find(&children).Error; err == nil {
+			for _, child := range children {
+				lineage.Children = append(lineage.Children, dto.RepositoryLineageRef{
+					ID:    child.ID,
+					Owner: child.Owner.Username,
+					Slug:  child.Slug,
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, lineage)
+	}
+}
 
 // ── Helper functions ──────────────────────────────────────────────────────────
 

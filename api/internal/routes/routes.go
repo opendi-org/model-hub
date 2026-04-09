@@ -28,7 +28,7 @@ func repoScope(g *gin.RouterGroup, db *gorm.DB) {
 	g.PUT("/collaborators/:username", mock)
 	g.DELETE("/collaborators/:username", mock)
 	g.POST("/transfer", mock)
-	g.GET("/lineage", mock)
+	g.GET("/lineage", handlers.GetRepositoryLineage(db))
 	g.POST("/fork", mock)
 }
 
@@ -70,6 +70,11 @@ func repoManagementScope(g *gin.RouterGroup, db *gorm.DB) {
 		middleware.RequireAuthentication(),
 		middleware.RequireRepositoryPermission(middleware.PermissionRead),
 		handlers.ForkRepository(db))
+
+	// Lineage route (publicly viewable - shows fork history)
+	g.GET("/lineage",
+		middleware.RequireRepositoryPermission(middleware.PermissionRead),
+		handlers.GetRepositoryLineage(db))
 }
 
 // RegisterRoutes mounts all v0 endpoints from endpoints.md.
@@ -98,7 +103,6 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	reposAuth.GET("", handlers.ListRepositories(db))        // list (?scope, q, owner, visibility) - requires auth
 	reposAuth.GET("/:owner", handlers.ListRepositories(db)) // list by owner - requires auth
 	reposAuth.POST("", handlers.CreateRepository(db))       // create - requires auth
-
 
 	// Repository by owner/slug (publicly viewable for public repos).
 	// Access is still enforced by ResolveRepositoryByOwnerSlug + CheckRepositoryAccess +
