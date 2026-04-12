@@ -109,6 +109,8 @@ const RepositoryDetailsPage = () => {
   const [collabError, setCollabError] = useState('');
   const [collabSubmitting, setCollabSubmitting] = useState(false);
   const [collabLoading, setCollabLoading] = useState(false);
+  const [removeCollabConfirmOpen, setRemoveCollabConfirmOpen] = useState(false);
+  const [removeCollabUsername, setRemoveCollabUsername] = useState('');
 
   // Transfer ownership dialog state
   const [transferOpen, setTransferOpen] = useState(false);
@@ -165,6 +167,20 @@ const RepositoryDetailsPage = () => {
     return myCollab?.role === 'write' || myCollab?.role === 'owner';
   }, [user, repo]);
   const canEditRepo = !!user && !!repo && user.username === repo.owner;
+
+  // Get current user's collaborator role (for permission checks in collaborators dialog)
+  const currentUserCollabRole = useMemo(() => {
+    if (!user || !collaborators) return null;
+    const collab = collaborators.find((c) => c.username === user.username);
+    return collab?.role || null;
+  }, [user, collaborators]);
+
+  // Check if current user is a collaborator on this repo
+  const isCurrentUserCollaborator = useMemo(() => {
+    if (!user || !repo) return false;
+    if (user.username === repo.owner) return true;
+    return (repo.collaborators || []).some((c) => c.username === user.username);
+  }, [user, repo]);
 
   const getRepoSlugValidationError = (value) => {
     const slug = (value || '').trim();
@@ -559,14 +575,33 @@ const RepositoryDetailsPage = () => {
   };
 
   const handleRemoveCollaborator = async (username) => {
-    if (!window.confirm(`Remove ${username} from this repository?`)) return;
+    setRemoveCollabUsername(username);
+    setRemoveCollabConfirmOpen(true);
+  };
+
+  const handleRemoveCollaboratorConfirm = async () => {
+    setRemoveCollabConfirmOpen(false);
+    const isRemovingSelf = user && user.username === removeCollabUsername;
+    
     try {
-      await APIClient.removeCollaborator(repo.owner, repo.slug, username);
-      setCollaborators((prev) => prev.filter((c) => c.username !== username));
-      showNotification('Collaborator removed', 'success');
+      setCollabSubmitting(true);
+      await APIClient.removeCollaborator(repo.owner, repo.slug, removeCollabUsername);
+      setCollaborators((prev) => prev.filter((c) => c.username !== removeCollabUsername));
+      const successMsg = isRemovingSelf 
+        ? 'You have left the repository' 
+        : 'Collaborator removed';
+      showNotification(successMsg, 'success');
     } catch (err) {
       showNotification(err.message || 'Failed to remove collaborator.', 'error');
+    } finally {
+      setCollabSubmitting(false);
+      setRemoveCollabUsername('');
     }
+  };
+
+  const handleRemoveCollaboratorCancel = () => {
+    setRemoveCollabConfirmOpen(false);
+    setRemoveCollabUsername('');
   };
 
   // --- Transfer Ownership ---
@@ -757,9 +792,19 @@ const RepositoryDetailsPage = () => {
             </>
           )}
           {user && user.username !== repo?.owner && (
-            <Button size="small" onClick={handleForkOpen} variant="outlined">
-              Fork
-            </Button>
+            <>
+              <Button size="small" onClick={handleLineageOpen} variant="outlined">
+                View Lineage
+              </Button>
+              <Button size="small" onClick={handleForkOpen} variant="outlined">
+                Fork
+              </Button>
+              {isCurrentUserCollaborator && (
+                <Button size="small" onClick={handleCollaboratorsOpen} variant="outlined">
+                  Collaborators
+                </Button>
+              )}
+            </>
           )}
         </Box>
       </Card>
@@ -1175,26 +1220,29 @@ const RepositoryDetailsPage = () => {
 
       {/* Manage Collaborators Dialog */}
       <Dialog open={collaboratorsOpen} onClose={handleCollaboratorsClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Manage Collaborators</DialogTitle>
+        <DialogTitle>
+          {canEditRepo || currentUserCollabRole === 'write' ? 'Manage Collaborators' : 'Collaborators'}
+        </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important', maxHeight: '60vh', overflow: 'auto' }}>
           {collabError && <Alert severity="error">{collabError}</Alert>}
           
-          {/* Add Collaborator Section */}
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', pb: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Add Collaborator</Typography>
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-              <TextField
-                label="Username"
-                value={newCollabUsername}
-                onChange={(e) => setNewCollabUsername(e.target.value)}
-                size="small"
-                sx={{ flex: 1 }}
-                placeholder="Enter username"
-              />
-              <ToggleButtonGroup
-                value={newCollabRole}
-                exclusive
-                onChange={(_, val) => { if (val) setNewCollabRole(val); }}
+          {/* Add Collaborator Section - Only visible to owners and write-level collaborators */}
+          {(canEditRepo || currentUserCollabRole === 'write') && (
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', pb: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Add Collaborator</Typography>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+                <TextField
+                  label="Username"
+                  value={newCollabUsername}
+                  onChange={(e) => setNewCollabUsername(e.target.value)}
+                  size="small"
+                  sx={{ flex: 1 }}
+                  placeholder="Enter username"
+                />
+                <ToggleButtonGroup
+                  value={newCollabRole}
+                  exclusive
+                  onChange={(_, val) => { if (val) setNewCollabRole(val); }}
                 size="small"
               >
                 <ToggleButton value="read">Read</ToggleButton>
@@ -1211,6 +1259,7 @@ const RepositoryDetailsPage = () => {
               </Button>
             </Box>
           </Box>
+          )}
 
           {/* Collaborators List */}
           <Box>
@@ -1221,39 +1270,86 @@ const RepositoryDetailsPage = () => {
               <Typography variant="body2" color="text.secondary">No collaborators yet</Typography>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {collaborators.map((collab) => (
-                  <Box
-                    key={collab.username}
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      p: 1,
-                      backgroundColor: 'action.hover',
-                      borderRadius: 1,
-                    }}
-                  >
-                    <Box>
-                      <Typography variant="body2" fontWeight={500}>{collab.username}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {collab.role}
-                      </Typography>
-                    </Box>
-                    <Button
-                      size="small"
-                      color="error"
-                      onClick={() => handleRemoveCollaborator(collab.username)}
+                {collaborators.map((collab) => {
+                  const isCurrentUser = user && user.username === collab.username;
+                  // Owner can remove anyone, write-level can remove anyone, read-level can only remove themselves
+                  const canRemove = isCurrentUser || canEditRepo || currentUserCollabRole === 'write';
+                  const buttonLabel = isCurrentUser ? 'Leave' : 'Remove';
+                  const buttonTooltip = isCurrentUser 
+                    ? 'Remove yourself as a collaborator' 
+                    : 'Remove this collaborator';
+
+                  return (
+                    <Box
+                      key={collab.username}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        p: 1,
+                        backgroundColor: 'action.hover',
+                        borderRadius: 1,
+                      }}
                     >
-                      Remove
-                    </Button>
-                  </Box>
-                ))}
+                      <Box>
+                        <Typography variant="body2" fontWeight={500}>
+                          {collab.username}
+                          {isCurrentUser && <Typography variant="caption" sx={{ ml: 1 }}>(You)</Typography>}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {collab.role}
+                        </Typography>
+                      </Box>
+                      {canRemove && (
+                        <Tooltip title={buttonTooltip}>
+                          <span>
+                            <Button
+                              size="small"
+                              color="error"
+                              onClick={() => handleRemoveCollaborator(collab.username)}
+                              disabled={collabSubmitting}
+                            >
+                              {buttonLabel}
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  );
+                })}
               </Box>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCollaboratorsClose}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Remove Collaborator Confirmation Dialog */}
+      <Dialog open={removeCollabConfirmOpen} onClose={handleRemoveCollaboratorCancel}>
+        <DialogTitle>
+          {user && user.username === removeCollabUsername ? 'Leave Repository?' : 'Remove Collaborator?'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            {user && user.username === removeCollabUsername
+              ? 'Are you sure you want to leave this repository as a collaborator? You will lose access to it.'
+              : `Are you sure you want to remove ${removeCollabUsername} as a collaborator? They will lose access to this repository.`}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRemoveCollaboratorCancel} disabled={collabSubmitting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleRemoveCollaboratorConfirm}
+            variant="contained"
+            color="error"
+            disabled={collabSubmitting}
+          >
+            {user && user.username === removeCollabUsername ? 'Leave' : 'Remove'}
+          </Button>
         </DialogActions>
       </Dialog>
 
