@@ -9,6 +9,7 @@ import (
 const (
 	CollaboratorRoleRead  = "read"
 	CollaboratorRoleWrite = "write"
+	CollaboratorRoleAdmin = "admin"
 	CollaboratorRoleOwner = "owner"
 )
 
@@ -70,7 +71,8 @@ func (Repository) TableName() string { return "hub_repositories" }
 // Roles (ascending privilege):
 //   "read"  — fetch tags and model content                          (UC-12, UC-20, UC-26)
 //   "write" — push and delete tags                                  (UC-23, UC-24, UC-25)
-//   "owner" — manage collaborators, visibility, transfer, delete    (UC-10, UC-11)
+//   "admin" — manage collaborators                                  (UC-10)
+//   "owner" — full access including transferring ownership          (UC-11)
 //
 // Hard-delete: no DeletedAt column. Revoking access is a plain DELETE. A soft-
 // deleted row would silently block re-adding the same user because the unique
@@ -82,7 +84,7 @@ type Collaborator struct {
 	UpdatedAt time.Time `gorm:"type:timestamptz;autoUpdateTime;not null"`
 	RepoID    uint      `gorm:"uniqueIndex:idx_collab;not null"`
 	UserID    uint      `gorm:"uniqueIndex:idx_collab;not null"`
-	Role      string    `gorm:"type:text;default:'read';not null"` // hub.CollaboratorRoleRead|Write|Owner
+	Role      string    `gorm:"type:text;default:'read';not null"` // hub.CollaboratorRoleRead|Write|Admin|Owner
 
 	// Preload only
 	Repo Repository `gorm:"foreignKey:RepoID"`

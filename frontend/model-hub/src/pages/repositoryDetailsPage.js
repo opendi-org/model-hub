@@ -164,7 +164,7 @@ const RepositoryDetailsPage = () => {
     if (!user || !repo) return false;
     if (user.username === repo.owner) return true;
     const myCollab = (repo.collaborators || []).find((c) => c.username === user.username);
-    return myCollab?.role === 'write' || myCollab?.role === 'owner';
+    return myCollab?.role === 'write' || myCollab?.role === 'admin' || myCollab?.role === 'owner';
   }, [user, repo]);
   const canEditRepo = !!user && !!repo && user.username === repo.owner;
 
@@ -1221,13 +1221,13 @@ const RepositoryDetailsPage = () => {
       {/* Manage Collaborators Dialog */}
       <Dialog open={collaboratorsOpen} onClose={handleCollaboratorsClose} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {canEditRepo || currentUserCollabRole === 'write' ? 'Manage Collaborators' : 'Collaborators'}
+          {canEditRepo || currentUserCollabRole === 'admin' ? 'Manage Collaborators' : 'Collaborators'}
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important', maxHeight: '60vh', overflow: 'auto' }}>
           {collabError && <Alert severity="error">{collabError}</Alert>}
           
-          {/* Add Collaborator Section - Only visible to owners and write-level collaborators */}
-          {(canEditRepo || currentUserCollabRole === 'write') && (
+          {/* Add Collaborator Section - Only visible to owners and admin-level collaborators */}
+          {(canEditRepo || currentUserCollabRole === 'admin') && (
             <Box sx={{ borderBottom: 1, borderColor: 'divider', pb: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>Add Collaborator</Typography>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
@@ -1247,6 +1247,7 @@ const RepositoryDetailsPage = () => {
               >
                 <ToggleButton value="read">Read</ToggleButton>
                 <ToggleButton value="write">Write</ToggleButton>
+                <ToggleButton value="admin">Admin</ToggleButton>
               </ToggleButtonGroup>
               <Button
                 variant="contained"
@@ -1272,8 +1273,8 @@ const RepositoryDetailsPage = () => {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {collaborators.map((collab) => {
                   const isCurrentUser = user && user.username === collab.username;
-                  // Owner can remove anyone, write-level can remove anyone, read-level can only remove themselves
-                  const canRemove = isCurrentUser || canEditRepo || currentUserCollabRole === 'write';
+                  // Owner and admin can remove anyone, read/write-level can only remove themselves
+                  const canRemove = isCurrentUser || canEditRepo || currentUserCollabRole === 'admin';
                   const buttonLabel = isCurrentUser ? 'Leave' : 'Remove';
                   const buttonTooltip = isCurrentUser 
                     ? 'Remove yourself as a collaborator' 
