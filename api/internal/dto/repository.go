@@ -128,12 +128,12 @@ type SetPrivacyRequest struct {
 // AddCollaboratorRequest represents the request body for UC-10 (Share Repository)
 type AddCollaboratorRequest struct {
 	Username string `json:"username" binding:"required"`
-	Role     string `json:"role" binding:"required,oneof=read write"`
+	Role     string `json:"role" binding:"required,oneof=read write admin"`
 }
 
 // UpdateCollaboratorRequest represents the request body for updating collaborator role
 type UpdateCollaboratorRequest struct {
-	Role string `json:"role" binding:"required,oneof=read write"`
+	Role string `json:"role" binding:"required,oneof=read write admin"`
 }
 
 // CollaboratorResponse represents a collaborator in responses

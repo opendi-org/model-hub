@@ -508,10 +508,10 @@ func AddCollaborator(db *gorm.DB) gin.HandlerFunc {
 
 		permission := middleware.GetRepositoryPermission(c)
 		isOwner := permission == middleware.PermissionOwner
-		isWriteLevel := permission == middleware.PermissionWrite
+		isAdmin := permission == middleware.PermissionAdmin
 
-		if !isOwner && !isWriteLevel {
-			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner or write-level collaborators can manage collaborators"})
+		if !isOwner && !isAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner or admin-level collaborators can manage collaborators"})
 			return
 		}
 
@@ -528,8 +528,8 @@ func AddCollaborator(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Validate role
-		if req.Role != "read" && req.Role != "write" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "role must be 'read' or 'write'"})
+		if req.Role != "read" && req.Role != "write" && req.Role != "admin" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "role must be 'read', 'write', or 'admin'"})
 			return
 		}
 
@@ -626,14 +626,14 @@ func RemoveCollaborator(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Check permissions: user can remove themselves, owner can remove anyone, write-level can remove anyone
+		// Check permissions: user can remove themselves, owner/admin can remove anyone
 		isRemovingSelf := user.ID == targetUser.ID
 		permission := middleware.GetRepositoryPermission(c)
 		isOwner := permission == middleware.PermissionOwner
-		isWriteLevel := permission == middleware.PermissionWrite
+		isAdmin := permission == middleware.PermissionAdmin
 
-		// Allow removal if: removing self (any access level) OR owner/write-level removing others
-		if !isRemovingSelf && !isOwner && !isWriteLevel {
+		// Allow removal if: removing self (any access level) OR owner/admin removing others
+		if !isRemovingSelf && !isOwner && !isAdmin {
 			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions to remove collaborators"})
 			return
 		}
@@ -669,7 +669,7 @@ func ListCollaborators(db *gorm.DB) gin.HandlerFunc {
 		permission := middleware.GetRepositoryPermission(c)
 
 		// Only show collaborators to owner and explicit collaborators (any role)
-		if permission != middleware.PermissionOwner && permission != middleware.PermissionWrite && permission != middleware.PermissionRead {
+		if permission != middleware.PermissionOwner && permission != middleware.PermissionAdmin && permission != middleware.PermissionWrite && permission != middleware.PermissionRead {
 			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient access to view collaborators"})
 			return
 		}
