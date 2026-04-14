@@ -134,6 +134,14 @@ const RepositoryDetailsPage = () => {
   // Public visibility confirmation dialog state
   const [editPublicConfirmOpen, setEditPublicConfirmOpen] = useState(false);
 
+  // Compare tags dialog state
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareLeft, setCompareLeft] = useState('');
+  const [compareRight, setCompareRight] = useState('');
+  const [compareResult, setCompareResult] = useState(null); // null | { lines: string[], identical: bool }
+  const [compareError, setCompareError] = useState('');
+  const [compareLoading, setCompareLoading] = useState(false);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -723,6 +731,101 @@ const RepositoryDetailsPage = () => {
 
   const handleLineageClose = () => setLineageOpen(false);
 
+  // --- Compare tags ---
+  const handleCompareOpen = () => {
+    setCompareLeft(tags.length > 0 ? tags[0].name : '');
+    setCompareRight(tags.length > 1 ? tags[1].name : '');
+    setCompareResult(null);
+    setCompareError('');
+    setCompareOpen(true);
+  };
+
+  const handleCompareClose = () => {
+    setCompareOpen(false);
+    setCompareResult(null);
+    setCompareError('');
+  };
+
+  const handleCompareRun = async () => {
+    if (!compareLeft || !compareRight) {
+      setCompareError('Please select two tags.');
+      return;
+    }
+    setCompareLoading(true);
+    setCompareError('');
+    setCompareResult(null);
+    try {
+      const [leftModel, rightModel] = await Promise.all([
+        APIClient.getTagModel(activeRepoId, compareLeft),
+        APIClient.getTagModel(activeRepoId, compareRight),
+      ]);
+      const sortedReplacer = (_, val) =>
+        val && typeof val === 'object' && !Array.isArray(val)
+          ? Object.fromEntries(Object.entries(val).sort(([a], [b]) => a.localeCompare(b)))
+          : val;
+      const leftStr = JSON.stringify(leftModel, sortedReplacer, 2) + '\n';
+      const rightStr = JSON.stringify(rightModel, sortedReplacer, 2) + '\n';
+      if (leftStr === rightStr) {
+        setCompareResult({ identical: true, lines: [] });
+      } else {
+        const leftLines = leftStr.split('\n');
+        const rightLines = rightStr.split('\n');
+
+        // Build LCS-based diff
+        const CONTEXT = 3;
+        const m = leftLines.length, n = rightLines.length;
+        // dp[i][j] = LCS length of leftLines[0..i-1] vs rightLines[0..j-1]
+        const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
+        for (let i = 1; i <= m; i++)
+          for (let j = 1; j <= n; j++)
+            dp[i][j] = leftLines[i-1] === rightLines[j-1]
+              ? dp[i-1][j-1] + 1
+              : Math.max(dp[i-1][j], dp[i][j-1]);
+
+        // Backtrack to get edit script
+        const edits = [];
+        let i = m, j = n;
+        while (i > 0 || j > 0) {
+          if (i > 0 && j > 0 && leftLines[i-1] === rightLines[j-1]) {
+            edits.push({ type: 'context', text: leftLines[i-1] });
+            i--; j--;
+          } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+            edits.push({ type: 'add', text: rightLines[j-1] });
+            j--;
+          } else {
+            edits.push({ type: 'remove', text: leftLines[i-1] });
+            i--;
+          }
+        }
+        edits.reverse();
+
+        // Collapse context: only keep CONTEXT lines around changes
+        const changed = edits.map((e) => e.type !== 'context');
+        const visible = edits.map((_, idx) => {
+          if (changed[idx]) return true;
+          for (let d = 1; d <= CONTEXT; d++) {
+            if (changed[idx - d] || changed[idx + d]) return true;
+          }
+          return false;
+        });
+
+        const lines = [];
+        for (let idx = 0; idx < edits.length; idx++) {
+          if (!visible[idx]) {
+            if (idx === 0 || visible[idx - 1]) lines.push({ type: 'separator', text: '...' });
+          } else {
+            lines.push(edits[idx]);
+          }
+        }
+        setCompareResult({ identical: false, lines });
+      }
+    } catch (err) {
+      setCompareError(err.message || 'Failed to load models for comparison.');
+    } finally {
+      setCompareLoading(false);
+    }
+  };
+
   // --- Loading skeleton ---
   if (loading) {
     return (
@@ -867,13 +970,13 @@ const RepositoryDetailsPage = () => {
           Tags
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Tooltip title="Compare tags coming soon">
-            <span>
-              <Button variant="outlined" disabled>
-                Compare tags
-              </Button>
-            </span>
-          </Tooltip>
+          <Button
+            variant="outlined"
+            onClick={handleCompareOpen}
+            disabled={tags.length < 2}
+          >
+            Compare tags
+          </Button>
           {canEditTags && (
               <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddOpen}>
                 Add Tag
@@ -1636,6 +1739,91 @@ const RepositoryDetailsPage = () => {
           <Button onClick={handleLineageClose}>Close</Button>
         </DialogActions>
       </Dialog>
+      {/* Compare Tags Dialog */}
+      <Dialog open={compareOpen} onClose={handleCompareClose} maxWidth="md" fullWidth>
+        <DialogTitle>Compare Tags</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Select
+              value={compareLeft}
+              onChange={(e) => { setCompareLeft(e.target.value); setCompareResult(null); }}
+              fullWidth
+              size="small"
+              displayEmpty
+            >
+              {tags.map((t) => (
+                <MenuItem key={t.name} value={t.name}>{t.name}</MenuItem>
+              ))}
+            </Select>
+            <Typography sx={{ flexShrink: 0 }}>vs</Typography>
+            <Select
+              value={compareRight}
+              onChange={(e) => { setCompareRight(e.target.value); setCompareResult(null); }}
+              fullWidth
+              size="small"
+              displayEmpty
+            >
+              {tags.map((t) => (
+                <MenuItem key={t.name} value={t.name}>{t.name}</MenuItem>
+              ))}
+            </Select>
+          </Box>
+          {compareError && <Alert severity="error">{compareError}</Alert>}
+          {compareLoading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress /></Box>}
+          {compareResult && compareResult.identical && (
+            <Alert severity="success">No differences — both tags are identical.</Alert>
+          )}
+          {compareResult && !compareResult.identical && (
+            <Box
+              sx={{
+                fontFamily: 'monospace',
+                fontSize: '0.75rem',
+                overflowX: 'auto',
+                maxHeight: '50vh',
+                overflowY: 'auto',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 1,
+              }}
+            >
+              {compareResult.lines.map((line, idx) => (
+                <Box
+                  key={idx}
+                  sx={{
+                    whiteSpace: 'pre',
+                    backgroundColor:
+                      line.type === 'add' ? '#e6ffed' :
+                      line.type === 'remove' ? '#ffebe9' :
+                      line.type === 'separator' ? '#f6f8fa' : 'transparent',
+                    color:
+                      line.type === 'add' ? '#1a7f37' :
+                      line.type === 'remove' ? '#cf222e' :
+                      line.type === 'separator' ? '#57606a' : 'inherit',
+                    px: 1,
+                    borderLeft: line.type === 'add' ? '3px solid #2da44e' :
+                                line.type === 'remove' ? '3px solid #f85149' : '3px solid transparent',
+                    fontStyle: line.type === 'separator' ? 'italic' : 'normal',
+                  }}
+                >
+                  {line.type === 'add' ? '+ ' : line.type === 'remove' ? '- ' : line.type === 'separator' ? '  ' : '  '}{line.text}
+                </Box>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCompareClose}>Close</Button>
+          <Button
+            variant="contained"
+            onClick={handleCompareRun}
+            disabled={compareLoading || !compareLeft || !compareRight || compareLeft === compareRight}
+          >
+            {compareLoading ? <CircularProgress size={20} /> : 'Compare'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
     </Container>
   );
 };
