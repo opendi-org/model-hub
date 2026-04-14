@@ -1821,7 +1821,6 @@ const RepositoryDetailsPage = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
     </Container>
   );
 };
