@@ -38,6 +38,13 @@ func main() {
 		log.Fatalf("database migration failed: %v", err)
 	}
 
+	// Seed demo data in development mode
+	if cfg.DevMode {
+		if err := database.SeedDemoData(db); err != nil {
+			log.Fatalf("seeding demo data failed: %v", err)
+		}
+	}
+
 	// ── Router ────────────────────────────────────────────────────────────────
 	r := gin.New()
 	r.Use(gin.Logger())
