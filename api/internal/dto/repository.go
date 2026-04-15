@@ -98,6 +98,7 @@ type ListRepositoriesResponse struct {
 type ForkRepositoryRequest struct {
 	Slug        string   `json:"slug" binding:"required,min=1,max=255"`
 	Description string   `json:"description"`
+	Visibility  string   `json:"visibility"`
 	Tags        []string `json:"tags"` // tags to copy from parent repo
 }
 
@@ -154,9 +155,8 @@ type ListCollaboratorsResponse struct {
 
 // TransferRepositoryRequest represents the request body for UC-11 (Transfer Repository Ownership)
 type TransferRepositoryRequest struct {
-	Username        string `json:"username" binding:"required"`
-	KeepReadAccess  bool   `json:"keepReadAccess"`
-	KeepWriteAccess bool   `json:"keepWriteAccess"`
+	Username            string `json:"username" binding:"required"`
+	PreviousOwnerAccess string `json:"previousOwnerAccess" binding:"required,oneof=none read write admin"`
 }
 
 // TransferRepositoryResponse represents the response for UC-11

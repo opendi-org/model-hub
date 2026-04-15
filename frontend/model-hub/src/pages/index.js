@@ -43,6 +43,7 @@ const Home = () => {
     const location = useLocation();
 
     useEffect(() => {
+        setLoading(true);
         APIClient.globalSearch('', 'public', owner || '')
             .then(data => {
                 setRepositories(Array.isArray(data) ? data : data.repositories || []);
@@ -52,7 +53,7 @@ const Home = () => {
                 setRepositories([]);
             })
             .finally(() => setLoading(false));
-    }, [owner]);
+    }, [owner, location.pathname]);
 
     const filtered = useMemo(() => {
         let result = repositories;

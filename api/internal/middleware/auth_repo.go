@@ -41,7 +41,7 @@ func CheckRepositoryAccess(db *gorm.DB) gin.HandlerFunc {
 			userID = user.ID
 		}
 
-		permission, isCollaborator := getRepositoryPermissionWithCollaboratorStatus(db, repo, userID)
+		permission, isCollaborator := GetRepositoryPermissionWithCollaboratorStatus(db, repo, userID)
 		c.Set(repoPermissionContextKey, permission)
 		c.Set(repoCollaboratorContextKey, isCollaborator)
 		c.Next()
@@ -95,7 +95,7 @@ func IsRepositoryCollaborator(c *gin.Context) bool {
 	return false
 }
 
-func getRepositoryPermissionWithCollaboratorStatus(db *gorm.DB, repo *hub.Repository, userID uint) (permission string, isCollaborator bool) {
+func GetRepositoryPermissionWithCollaboratorStatus(db *gorm.DB, repo *hub.Repository, userID uint) (permission string, isCollaborator bool) {
 	if userID != 0 && repo.OwnerID == userID {
 		return PermissionOwner, false
 	}
