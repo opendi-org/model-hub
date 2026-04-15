@@ -1732,6 +1732,11 @@ const RepositoryDetailsPage = () => {
                   </Box>
                 )}
               </Box>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Compare Tags Dialog */}
       <Dialog open={compareOpen} onClose={handleCompareClose} maxWidth="md" fullWidth>
         <DialogTitle>Compare Tags</DialogTitle>
