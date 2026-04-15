@@ -272,10 +272,10 @@ export default class APIClient {
   }
 
   /** POST /v0/repositories/:owner/:slug/transfer - transfer repository ownership. */
-  static async transferRepositoryOwnership(owner, slug, newUsername, keepReadAccess = false, keepWriteAccess = false) {
+  static async transferRepositoryOwnership(owner, slug, newUsername, previousOwnerAccess = 'none') {
     return HTTPClient.post(
       `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}/transfer`,
-      { username: newUsername, keepReadAccess, keepWriteAccess }
+      { username: newUsername, previousOwnerAccess }
     );
   }
 

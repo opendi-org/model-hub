@@ -358,11 +358,15 @@ func ForkRepository(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Create forked repository
+		visibility := req.Visibility
+		if visibility != "public" {
+			visibility = "private" // Default to private
+		}
 		forkedRepo := &hub.Repository{
 			OwnerID:      user.ID,
 			Slug:         req.Slug,
 			Description:  req.Description,
-			Visibility:   "private", // Forks are always private initially
+			Visibility:   visibility,
 			ForkedFromID: &sourceRepo.ID,
 		}
 
@@ -764,16 +768,12 @@ func TransferRepositoryOwnership(db *gorm.DB) gin.HandlerFunc {
 				return err
 			}
 
-			// Add previous owner as collaborator if access preservation is requested
-			if req.KeepReadAccess || req.KeepWriteAccess {
-				role := "read"
-				if req.KeepWriteAccess {
-					role = "write"
-				}
+			// Add previous owner as collaborator if access is not "none"
+			if req.PreviousOwnerAccess != "none" {
 				collaborator := hub.Collaborator{
 					RepoID: repo.ID,
 					UserID: user.ID,
-					Role:   role,
+					Role:   req.PreviousOwnerAccess,
 				}
 				if err := tx.Create(&collaborator).Error; err != nil {
 					return err
@@ -1040,6 +1040,7 @@ func DeleteTag(db *gorm.DB) gin.HandlerFunc {
 // GetRepositoryLineage handles repository lineage queries
 // GET /v0/repositories/:owner/:slug/lineage
 // Returns the full fork lineage: ancestors (parent chain) and children (forks)
+// Only includes repositories the user has access to
 // No authentication required; uses repository's visibility
 func GetRepositoryLineage(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -1047,6 +1048,13 @@ func GetRepositoryLineage(db *gorm.DB) gin.HandlerFunc {
 		if repo == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
 			return
+		}
+
+		// Get current user (may be nil for anonymous requests)
+		user := middleware.OptionalGetCurrentUser(c)
+		userID := uint(0)
+		if user != nil {
+			userID = user.ID
 		}
 
 		lineage := dto.RepositoryLineageInfo{
@@ -1058,15 +1066,20 @@ func GetRepositoryLineage(db *gorm.DB) gin.HandlerFunc {
 		if repo.ForkedFromID != nil {
 			var parent hub.Repository
 			if err := db.Preload("Owner").First(&parent, *repo.ForkedFromID).Error; err == nil {
-				lineage.Parent = &dto.RepositoryLineageRef{
-					ID:    parent.ID,
-					Owner: parent.Owner.Username,
-					Slug:  parent.Slug,
+				// Check if user has access to parent
+				permission, _ := middleware.GetRepositoryPermissionWithCollaboratorStatus(db, &parent, userID)
+				if permission != middleware.PermissionNone {
+					lineage.Parent = &dto.RepositoryLineageRef{
+						ID:    parent.ID,
+						Owner: parent.Owner.Username,
+						Slug:  parent.Slug,
+					}
 				}
 			}
 		}
 
 		// Get full ancestry chain (walk up ForkedFromID until nil)
+		// Stop when encountering a repo without access
 		ancestorChain := []dto.RepositoryLineageRef{}
 		currentID := repo.ForkedFromID
 		for currentID != nil {
@@ -1074,6 +1087,13 @@ func GetRepositoryLineage(db *gorm.DB) gin.HandlerFunc {
 			if err := db.Preload("Owner").First(&ancestor, *currentID).Error; err != nil {
 				break // Stop on error
 			}
+
+			// Check if user has access to this ancestor
+			permission, _ := middleware.GetRepositoryPermissionWithCollaboratorStatus(db, &ancestor, userID)
+			if permission == middleware.PermissionNone {
+				break // Stop at first inaccessible repo
+			}
+
 			ancestorChain = append(ancestorChain, dto.RepositoryLineageRef{
 				ID:    ancestor.ID,
 				Owner: ancestor.Owner.Username,
@@ -1087,11 +1107,15 @@ func GetRepositoryLineage(db *gorm.DB) gin.HandlerFunc {
 		var children []hub.Repository
 		if err := db.Where("forked_from_id = ?", repo.ID).Preload("Owner").Find(&children).Error; err == nil {
 			for _, child := range children {
-				lineage.Children = append(lineage.Children, dto.RepositoryLineageRef{
-					ID:    child.ID,
-					Owner: child.Owner.Username,
-					Slug:  child.Slug,
-				})
+				// Only include children the user has access to
+				permission, _ := middleware.GetRepositoryPermissionWithCollaboratorStatus(db, &child, userID)
+				if permission != middleware.PermissionNone {
+					lineage.Children = append(lineage.Children, dto.RepositoryLineageRef{
+						ID:    child.ID,
+						Owner: child.Owner.Username,
+						Slug:  child.Slug,
+					})
+				}
 			}
 		}
 

@@ -56,7 +56,6 @@ func repoManagementScope(g *gin.RouterGroup, db *gorm.DB) {
 		handlers.AddCollaborator(db))
 	g.DELETE("/collaborators/:username",
 		middleware.RequireAuthentication(),
-		middleware.RequireRepositoryPermission(middleware.PermissionAdmin),
 		handlers.RemoveCollaborator(db))
 
 	// Transfer ownership route (requires owner)
