@@ -1739,6 +1739,11 @@ const RepositoryDetailsPage = () => {
           <Button onClick={handleLineageClose}>Close</Button>
         </DialogActions>
       </Dialog>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Compare Tags Dialog */}
       <Dialog open={compareOpen} onClose={handleCompareClose} maxWidth="md" fullWidth>
         <DialogTitle>Compare Tags</DialogTitle>
