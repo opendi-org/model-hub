@@ -130,4 +130,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 
 	// Search
 	v0.GET("/search", handlers.GlobalSearch(db))
+
+	// Validate — auth-optional CDM validation without persisting
+	v0.POST("/validate", handlers.ValidateModel())
 }

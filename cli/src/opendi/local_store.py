@@ -78,3 +78,13 @@ def list_models() -> list[dict]:
             "SELECT owner, repo, tag, pulled_at FROM pulled_models ORDER BY pulled_at DESC"
         ).fetchall()
     return [{"owner": r[0], "repo": r[1], "tag": r[2], "pulled_at": r[3]} for r in rows]
+
+
+def remove_model(owner: str, repo: str, tag: str) -> bool:
+    """Remove a cached model. Returns True if it existed and was deleted, False if not found."""
+    with _connect() as conn:
+        cursor = conn.execute(
+            "DELETE FROM pulled_models WHERE owner=? AND repo=? AND tag=?",
+            (owner, repo, tag),
+        )
+    return cursor.rowcount > 0

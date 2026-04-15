@@ -1157,3 +1157,25 @@ func isValidSlug(slug string) bool {
 	}
 	return true
 }
+
+// ValidateModel handles CDM validation without persisting.
+// POST /v0/validate
+// Auth optional — works for anyone. Returns 200 on valid, 400 with error on invalid.
+func ValidateModel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		raw, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+			return
+		}
+		if len(raw) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
+			return
+		}
+		if err := database.ValidateCDM(raw); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"valid": true})
+	}
+}

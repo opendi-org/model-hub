@@ -273,3 +273,19 @@ func refErr(pathFmt string, a, b int, uuid string) error {
 	path := fmt.Sprintf(pathFmt, a, b)
 	return fmt.Errorf("invalid CDM: reference %q not found for %s", uuid, path)
 }
+
+// ValidateCDM runs both validation phases (schema + refs) on raw CDM JSON bytes
+// without persisting anything. Returns nil if the document is valid.
+func ValidateCDM(raw []byte) error {
+	if err := validateSchema(raw); err != nil {
+		return fmt.Errorf("schema validation: %w", err)
+	}
+	var m cdm.CausalDecisionModel
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return fmt.Errorf("parsing CDM: %w", err)
+	}
+	if err := validateRefs(&m); err != nil {
+		return fmt.Errorf("reference validation: %w", err)
+	}
+	return nil
+}

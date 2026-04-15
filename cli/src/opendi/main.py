@@ -596,5 +596,156 @@ def delete_repo(
         raise typer.Exit(1)
 
 
+@app.command()
+def save(
+    name: str = typer.Argument(..., help="Model ref to save: owner/repo:tag"),
+    output: str = typer.Option(None, "--output", "-o", help="Output file path (defaults to <tag>.json)"),
+) -> None:
+    """Save a model to a local JSON file. Uses local cache if available, otherwise fetches from hub.
+
+    NAME format: owner/repo:tag  (e.g. alice/my-model:v1.0)
+    """
+    if "/" not in name or ":" not in name:
+        typer.echo("Invalid format. Use: owner/repo:tag", err=True)
+        raise typer.Exit(1)
+
+    repo_part, tag = name.rsplit(":", 1)
+    owner, repo_slug = repo_part.split("/", 1)
+
+    if not owner or not repo_slug or not tag:
+        typer.echo("Invalid format. Use: owner/repo:tag", err=True)
+        raise typer.Exit(1)
+
+    out_path = Path(output) if output else Path(f"{tag}.json")
+
+    # Check local cache first
+    content = local_store.get_model(owner, repo_slug, tag)
+
+    if content is None:
+        # Not cached — fetch from server
+        headers: dict[str, str] = {}
+        token = credential_storage.load_access_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        url = f"{_api_base_url()}/v0/repositories/{owner}/{repo_slug}/tags/{tag}/model"
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+        except requests.ConnectionError:
+            typer.echo(f"Could not connect to the hub at {_api_base_url()}.", err=True)
+            raise typer.Exit(1)
+        except requests.Timeout:
+            typer.echo("Request timed out. Please try again.", err=True)
+            raise typer.Exit(1)
+
+        if response.status_code == 404:
+            typer.echo(f"Tag not found: {name}", err=True)
+            raise typer.Exit(1)
+        if response.status_code in (401, 403):
+            typer.echo("Access denied. Run `opendi login` if this is a private repository.", err=True)
+            raise typer.Exit(1)
+        if not response.ok:
+            typer.echo(f"Server error {response.status_code}: {response.text}", err=True)
+            raise typer.Exit(1)
+
+        content = response.text
+        local_store.save_model(owner, repo_slug, tag, content)
+
+    out_path.write_text(content, encoding="utf-8")
+    typer.echo(f"Saved {typer.style(name, fg=typer.colors.GREEN, bold=True)} → {out_path}")
+
+
+@app.command()
+def remove_local(
+    name: str = typer.Argument(..., help="Model ref to remove: owner/repo:tag"),
+) -> None:
+    """Remove a model from the local cache."""
+    if "/" not in name or ":" not in name:
+        typer.echo("Invalid format. Use: owner/repo:tag", err=True)
+        raise typer.Exit(1)
+
+    repo_part, tag = name.rsplit(":", 1)
+    owner, repo_slug = repo_part.split("/", 1)
+
+    if not owner or not repo_slug or not tag:
+        typer.echo("Invalid format. Use: owner/repo:tag", err=True)
+        raise typer.Exit(1)
+
+    if not local_store.remove_model(owner, repo_slug, tag):
+        typer.echo(f"Tag not found in local cache: {name}", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Removed {typer.style(name, fg=typer.colors.GREEN, bold=True)} from local cache.")
+
+
+@app.command()
+def list_local() -> None:
+    """List all models cached locally (via `opendi pull`)."""
+    models = local_store.list_models()
+    if not models:
+        typer.echo("No models in local cache. Use `opendi pull owner/repo:tag` to cache one.")
+        return
+    for m in models:
+        ref = typer.style(f"{m['owner']}/{m['repo']}:{m['tag']}", fg=typer.colors.GREEN, bold=True)
+        typer.echo(f"{ref}  (pulled {m['pulled_at']})")
+
+
+@app.command()
+def validate(
+    path: str = typer.Argument(..., help="Path to a local CDM JSON file to validate"),
+) -> None:
+    """Validate a local CDM JSON file against the OpenDI schema."""
+    file_path = Path(path).expanduser()
+    if not file_path.is_file():
+        typer.echo(f"File not found: {path}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        raw = file_path.read_bytes()
+    except OSError as e:
+        typer.echo(f"Could not read file: {e}", err=True)
+        raise typer.Exit(1)
+
+    # Verify it's at least parseable JSON before sending
+    try:
+        json.loads(raw)
+    except json.JSONDecodeError as e:
+        typer.echo(f"Invalid JSON: {e}", err=True)
+        raise typer.Exit(1)
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if _current_token:
+        headers["Authorization"] = f"Bearer {_current_token}"
+
+    try:
+        response = requests.post(
+            f"{_api_base_url()}/v0/validate",
+            data=raw,
+            headers=headers,
+            timeout=30,
+        )
+    except requests.ConnectionError:
+        typer.echo(f"Could not connect to the hub at {_api_base_url()}.", err=True)
+        raise typer.Exit(1)
+    except requests.Timeout:
+        typer.echo("Request timed out. Please try again.", err=True)
+        raise typer.Exit(1)
+
+    if response.status_code == 200:
+        typer.echo(typer.style("Valid CDM.", fg=typer.colors.GREEN, bold=True))
+        return
+
+    error = ""
+    try:
+        body = response.json()
+        if isinstance(body, dict):
+            error = str(body.get("error") or "")
+    except (ValueError, TypeError):
+        error = response.text or ""
+
+    typer.echo(typer.style("Validation failed:", fg=typer.colors.RED, bold=True) + f" {error}", err=True)
+    raise typer.Exit(1)
+
+
 if __name__ == "__main__":
     app()
