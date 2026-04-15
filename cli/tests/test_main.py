@@ -1,5 +1,8 @@
 """Tests for the CLI entry point."""
 
+import io
+import json
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
@@ -9,7 +12,8 @@ from opendi.main import app
 runner = CliRunner()
 
 _TOKEN = "fake-access-token"
-
+# command to check with coverage 
+# pytest tests/ --cov=opendi --cov-report=term-missing -q
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -32,6 +36,7 @@ def test_app_help_exits_zero() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "opendi" in result.output.lower()
+    assert "diff" in result.output
 
 
 def test_app_without_command_shows_help() -> None:
@@ -100,6 +105,7 @@ def test_login_timeout() -> None:
         result = runner.invoke(app, ["login"])
     assert result.exit_code == 1
     assert "timed out" in result.output
+
 
 
 def test_login_cancelled() -> None:
@@ -187,6 +193,395 @@ def test_logout_not_logged_in() -> None:
         result = runner.invoke(app, ["logout"])
     assert result.exit_code == 0
     assert "Not logged in" in result.output
+
+
+# ── Diff ──────────────────────────────────────────────────────────────────────
+
+
+def _remote_ok(data: dict):
+    """Mock a successful 200 response returning JSON data."""
+    m = MagicMock()
+    m.status_code = 200
+    m.json.return_value = data
+    return m
+
+
+def _remote_err(status: int, error: str = ""):
+    """Mock an error response."""
+    m = MagicMock()
+    m.status_code = status
+    m.json.return_value = {"error": error} if error else {}
+    m.text = error
+    return m
+
+
+# ── Inspect ───────────────────────────────────────────────────────────────────
+
+_TAG_INFO = {
+    "name": "v1",
+    "digest": "abc123",
+    "size": 4096,
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "createdBy": "alice",
+}
+
+_REPO_RESPONSE = {
+    "owner": "alice",
+    "slug": "my-repo",
+    "tags": [_TAG_INFO],
+}
+
+
+def _inspect_ok(tags=None):
+    m = MagicMock()
+    m.status_code = 200
+    m.ok = True
+    repo = dict(_REPO_RESPONSE)
+    if tags is not None:
+        repo["tags"] = tags
+    m.json.return_value = repo
+    return m
+
+
+def test_inspect_success() -> None:
+    """opendi inspect prints all tag metadata fields."""
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=_inspect_ok()),
+    ):
+        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
+    assert result.exit_code == 0
+    assert "alice/my-repo" in result.output
+    assert "v1" in result.output
+    assert "abc123" in result.output
+    assert "4,096" in result.output
+    assert "alice" in result.output
+
+
+def test_inspect_success_logged_in() -> None:
+    """opendi inspect sends auth header when logged in."""
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", return_value=_inspect_ok()) as mock_get,
+    ):
+        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
+    assert result.exit_code == 0
+    _, kwargs = mock_get.call_args
+    assert "Authorization" in kwargs["headers"]
+
+
+def test_inspect_invalid_format() -> None:
+    """opendi inspect exits 1 when name is not owner/repo:tag format."""
+    result = runner.invoke(app, ["inspect", "my-repo"])
+    assert result.exit_code == 1
+    assert "owner/repo:tag" in result.output
+
+
+def test_inspect_tag_not_found() -> None:
+    """opendi inspect exits 1 when the tag does not exist in the repo."""
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=_inspect_ok(tags=[])),
+    ):
+        result = runner.invoke(app, ["inspect", "alice/my-repo:missing"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_inspect_repo_not_found() -> None:
+    """opendi inspect exits 1 when the repository does not exist (404)."""
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=_remote_err(404)),
+    ):
+        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_inspect_access_denied_401() -> None:
+    """opendi inspect exits 1 with access denied message on 401."""
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=_remote_err(401)),
+    ):
+        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
+    assert result.exit_code == 1
+    assert "Access denied" in result.output
+
+
+def test_inspect_access_denied_403() -> None:
+    """opendi inspect exits 1 with access denied message on 403."""
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=_remote_err(403)),
+    ):
+        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
+    assert result.exit_code == 1
+    assert "Access denied" in result.output
+
+
+def test_inspect_connection_error() -> None:
+    """opendi inspect exits 1 when the hub is unreachable."""
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", side_effect=__import__("requests").ConnectionError()),
+    ):
+        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
+    assert result.exit_code == 1
+    assert "Could not connect" in result.output
+
+
+def test_inspect_timeout() -> None:
+    """opendi inspect exits 1 when the request times out."""
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", side_effect=__import__("requests").Timeout()),
+    ):
+        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
+    assert result.exit_code == 1
+    assert "timed out" in result.output
+
+
+def test_diff_two_identical_remote_models() -> None:
+    """opendi diff prints 'No differences' when both sides are identical."""
+    model = {"name": "my-model", "version": "1"}
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", return_value=_remote_ok(model)),
+    ):
+        result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v1"])
+    assert result.exit_code == 0
+    assert "No differences" in result.output
+
+
+def test_diff_two_different_remote_models() -> None:
+    """opendi diff prints a unified diff when models differ."""
+    left = {"name": "model-a"}
+    right = {"name": "model-b"}
+    responses = [_remote_ok(left), _remote_ok(right)]
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", side_effect=responses),
+    ):
+        result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
+    assert result.exit_code == 0
+    assert "model-a" in result.output
+    assert "model-b" in result.output
+
+
+def test_diff_local_file_vs_remote(tmp_path) -> None:
+    """opendi diff works with a local JSON file on one side."""
+    local = tmp_path / "model.json"
+    local.write_text('{"name": "local"}', encoding="utf-8")
+    remote = {"name": "remote"}
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", return_value=_remote_ok(remote)),
+    ):
+        result = runner.invoke(app, ["diff", str(local), "alice/repo:v1"])
+    assert result.exit_code == 0
+
+
+def test_diff_two_local_files_identical(tmp_path) -> None:
+    """opendi diff works with two local files."""
+    f = tmp_path / "model.json"
+    f.write_text('{"x": 1}', encoding="utf-8")
+    result = runner.invoke(app, ["diff", str(f), str(f)])
+    assert result.exit_code == 0
+    assert "No differences" in result.output
+
+
+def test_diff_local_file_invalid_json(tmp_path) -> None:
+    """opendi diff exits 1 when a local file contains invalid JSON."""
+    f = tmp_path / "bad.json"
+    f.write_text("not json", encoding="utf-8")
+    result = runner.invoke(app, ["diff", str(f), str(f)])
+    assert result.exit_code == 1
+    assert "Invalid JSON" in result.output
+
+
+def test_diff_local_file_not_found() -> None:
+    """opendi diff exits 1 when a local file path does not exist."""
+    result = runner.invoke(app, ["diff", "/no/such/file.json", "/no/such/file.json"])
+    assert result.exit_code == 1
+    assert "Expected owner/slug:tag" in result.output
+
+
+def test_diff_remote_401() -> None:
+    """opendi diff exits 1 with auth message on 401."""
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", return_value=_remote_err(401)),
+    ):
+        result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
+    assert result.exit_code == 1
+    assert "opendi login" in result.output
+
+
+def test_diff_remote_403() -> None:
+    """opendi diff exits 1 with access denied message on 403."""
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", return_value=_remote_err(403)),
+    ):
+        result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
+    assert result.exit_code == 1
+    assert "Not authorised" in result.output
+
+
+def test_diff_remote_404_tag_not_found() -> None:
+    """opendi diff exits 1 with tag-not-found message on 404."""
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", return_value=_remote_err(404, "tag not found")),
+    ):
+        result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
+    assert result.exit_code == 1
+    assert "Tag not found" in result.output
+
+
+def test_diff_remote_404_repo_not_found() -> None:
+    """opendi diff exits 1 with repo-not-found message on 404."""
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", return_value=_remote_err(404, "repository not found")),
+    ):
+        result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
+    assert result.exit_code == 1
+    assert "Repository not found" in result.output
+
+
+def test_diff_remote_500() -> None:
+    """opendi diff exits 1 with HTTP status on unexpected error."""
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", return_value=_remote_err(500)),
+    ):
+        result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
+    assert result.exit_code == 1
+    assert "HTTP 500" in result.output
+
+
+def test_diff_connection_error() -> None:
+    """opendi diff exits 1 when the hub is unreachable."""
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", side_effect=__import__("requests").ConnectionError()),
+    ):
+        result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
+    assert result.exit_code == 1
+    assert "Could not connect" in result.output
+
+
+def test_diff_timeout() -> None:
+    """opendi diff exits 1 when the request times out."""
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", side_effect=__import__("requests").Timeout()),
+    ):
+        result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
+    assert result.exit_code == 1
+    assert "timed out" in result.output
+
+
+# ── Pull / Push ───────────────────────────────────────────────────────────────
+
+
+def test_pull_invalid_format() -> None:
+    """opendi pull exits 1 when name is not owner/repo:tag format."""
+    with _logged_out():
+        result = runner.invoke(app, ["pull", "some-model"])
+    assert result.exit_code == 1
+    assert "owner/repo:tag" in result.output
+
+
+def test_pull_with_token() -> None:
+    """opendi pull downloads when logged in and repo exists."""
+    response = MagicMock()
+    response.ok = True
+    response.status_code = 200
+    response.text = "{}"
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", return_value=response),
+        patch("opendi.main.local_store.save_model"),
+    ):
+        result = runner.invoke(app, ["pull", "alice/my-repo:v1"])
+    assert result.exit_code == 0
+
+
+def test_push_missing_name_option() -> None:
+    """opendi push exits 2 when --name is not provided."""
+    with _logged_in():
+        result = runner.invoke(app, ["push", "/path/to/model.json"])
+    assert result.exit_code == 2
+
+
+def test_push_file_not_found() -> None:
+    """opendi push exits 1 when the local file does not exist."""
+    with _logged_out():
+        result = runner.invoke(app, ["push", "/no/such/file.json", "--name", "alice/my-repo:v1"])
+    assert result.exit_code == 1
+    assert "not found" in result.output.lower()
+
+
+# ── Diff ──────────────────────────────────────────────────────────────────────
+
+
+def test_diff_no_differences(tmp_path) -> None:
+    """opendi diff prints a message when normalized JSON matches."""
+    doc = {"meta": {"name": "m"}, "$schema": "x"}
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    a.write_text(json.dumps(doc), encoding="utf-8")
+    b.write_text(json.dumps(doc), encoding="utf-8")
+    result = runner.invoke(app, ["diff", str(a), str(b)])
+    assert result.exit_code == 0
+    assert "No differences" in result.output
+
+
+def test_diff_prints_unified_diff(tmp_path) -> None:
+    """opendi diff prints unified diff when JSON differs."""
+    (tmp_path / "a.json").write_text(json.dumps({"a": 1}), encoding="utf-8")
+    (tmp_path / "b.json").write_text(json.dumps({"a": 2}), encoding="utf-8")
+    result = runner.invoke(app, ["diff", str(tmp_path / "a.json"), str(tmp_path / "b.json")])
+    assert result.exit_code == 0
+    assert "@@" in result.output or "--- " in result.output
+
+
+def test_diff_access_denied() -> None:
+    """HTTP 401 shows the same sign-in hint as other commands."""
+    response = MagicMock()
+    response.status_code = 401
+    response.json.return_value = {"error": "unauthorized"}
+    with patch("opendi.main.requests.get", return_value=response):
+        result = runner.invoke(app, ["diff", "a/b:c", "x/y:z"])
+    assert result.exit_code == 1
+    assert "opendi login" in result.output
+
+
+def test_diff_tag_not_found() -> None:
+    """404 with tag not found from the API is reported."""
+    ok = MagicMock()
+    ok.status_code = 200
+    ok.json.return_value = {"k": 1}
+    missing = MagicMock()
+    missing.status_code = 404
+    missing.json.return_value = {"error": "tag not found"}
+    with patch("opendi.main.requests.get", side_effect=[ok, missing]):
+        result = runner.invoke(app, ["diff", "a/b:c", "owner/repo:bad"])
+    assert result.exit_code == 1
+    assert "Tag not found" in result.output
+
+
+def test_diff_invalid_ref(tmp_path) -> None:
+    """Non-file path that is not owner/slug:tag exits with a clear error."""
+    f = tmp_path / "b.json"
+    f.write_text("{}", encoding="utf-8")
+    result = runner.invoke(app, ["diff", "not-a-file", str(f)])
+    assert result.exit_code == 1
+    assert "Expected owner/slug:tag" in result.output
 
 # ── Create repo ───────────────────────────────────────────────────────────────
 
