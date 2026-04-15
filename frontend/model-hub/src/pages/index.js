@@ -43,6 +43,7 @@ const Home = () => {
     const location = useLocation();
 
     useEffect(() => {
+        setLoading(true);
         APIClient.globalSearch('', 'public', owner || '')
             .then(data => {
                 setRepositories(Array.isArray(data) ? data : data.repositories || []);
@@ -52,7 +53,7 @@ const Home = () => {
                 setRepositories([]);
             })
             .finally(() => setLoading(false));
-    }, [owner]);
+    }, [owner, location.pathname]);
 
     const filtered = useMemo(() => {
         let result = repositories;
@@ -78,6 +79,9 @@ const Home = () => {
             if (sortBy === 'name') {
                 aVal = (a.slug || '').toLowerCase();
                 bVal = (b.slug || '').toLowerCase();
+                // Use string comparison for names
+                const comparison = aVal.localeCompare(bVal);
+                return sortOrder === 'asc' ? comparison : -comparison;
             } else if (sortBy === 'created') {
         const getRepoDate = (repo, camelKey, snakeKey) => {
           const v = repo?.[camelKey] ?? repo?.[snakeKey];
@@ -97,6 +101,7 @@ const Home = () => {
         aVal = getRepoDate(a, 'updatedAt', 'updated_at');
         bVal = getRepoDate(b, 'updatedAt', 'updated_at');
             }
+            // Use numeric comparison for dates
             return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
         });
 

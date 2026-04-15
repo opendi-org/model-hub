@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"opendi.org/model-hub/api/internal/dto"
 	"opendi.org/model-hub/api/internal/database"
+	"opendi.org/model-hub/api/internal/dto"
 	"opendi.org/model-hub/api/internal/middleware"
 	"opendi.org/model-hub/api/internal/models/hub"
 	"opendi.org/model-hub/api/internal/services"
@@ -358,11 +358,15 @@ func ForkRepository(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Create forked repository
+		visibility := req.Visibility
+		if visibility != "public" {
+			visibility = "private" // Default to private
+		}
 		forkedRepo := &hub.Repository{
 			OwnerID:      user.ID,
 			Slug:         req.Slug,
 			Description:  req.Description,
-			Visibility:   "private", // Forks are always private initially
+			Visibility:   visibility,
 			ForkedFromID: &sourceRepo.ID,
 		}
 
@@ -506,8 +510,12 @@ func AddCollaborator(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if middleware.GetRepositoryPermission(c) != middleware.PermissionOwner {
-			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can manage collaborators"})
+		permission := middleware.GetRepositoryPermission(c)
+		isOwner := permission == middleware.PermissionOwner
+		isAdmin := permission == middleware.PermissionAdmin
+
+		if !isOwner && !isAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner or admin-level collaborators can manage collaborators"})
 			return
 		}
 
@@ -524,8 +532,8 @@ func AddCollaborator(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Validate role
-		if req.Role != "read" && req.Role != "write" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "role must be 'read' or 'write'"})
+		if req.Role != "read" && req.Role != "write" && req.Role != "admin" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "role must be 'read', 'write', or 'admin'"})
 			return
 		}
 
@@ -605,11 +613,6 @@ func RemoveCollaborator(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if middleware.GetRepositoryPermission(c) != middleware.PermissionOwner {
-			c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can manage collaborators"})
-			return
-		}
-
 		username := c.Param("username")
 		if username == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "username is required"})
@@ -627,6 +630,18 @@ func RemoveCollaborator(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Check permissions: user can remove themselves, owner/admin can remove anyone
+		isRemovingSelf := user.ID == targetUser.ID
+		permission := middleware.GetRepositoryPermission(c)
+		isOwner := permission == middleware.PermissionOwner
+		isAdmin := permission == middleware.PermissionAdmin
+
+		// Allow removal if: removing self (any access level) OR owner/admin removing others
+		if !isRemovingSelf && !isOwner && !isAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions to remove collaborators"})
+			return
+		}
+
 		// Remove the collaborator
 		result := db.Where("repo_id = ? AND user_id = ?", repo.ID, targetUser.ID).Delete(&hub.Collaborator{})
 		if result.Error != nil {
@@ -639,7 +654,7 @@ func RemoveCollaborator(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusNoContent, nil)
+		c.Status(http.StatusNoContent)
 	}
 }
 
@@ -657,8 +672,8 @@ func ListCollaborators(db *gorm.DB) gin.HandlerFunc {
 
 		permission := middleware.GetRepositoryPermission(c)
 
-		// Only show collaborators to owner and explicit collaborators
-		if permission != middleware.PermissionOwner && !middleware.IsRepositoryCollaborator(c) {
+		// Only show collaborators to owner and explicit collaborators (any role)
+		if permission != middleware.PermissionOwner && permission != middleware.PermissionAdmin && permission != middleware.PermissionWrite && permission != middleware.PermissionRead {
 			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient access to view collaborators"})
 			return
 		}
@@ -753,8 +768,17 @@ func TransferRepositoryOwnership(db *gorm.DB) gin.HandlerFunc {
 				return err
 			}
 
-			// Optionally: add previous owner as owner collaborator
-			// (The requirements document doesn't specify this behavior, so we skip it for now)
+			// Add previous owner as collaborator if access is not "none"
+			if req.PreviousOwnerAccess != "none" {
+				collaborator := hub.Collaborator{
+					RepoID: repo.ID,
+					UserID: user.ID,
+					Role:   req.PreviousOwnerAccess,
+				}
+				if err := tx.Create(&collaborator).Error; err != nil {
+					return err
+				}
+			}
 
 			return nil
 		})
@@ -834,7 +858,7 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 		}
 		var retagReq tagRetagRequest
 		if err := json.Unmarshal(raw, &retagReq); err == nil && (retagReq.SourceTag != nil || retagReq.SourceDigest != nil) {
-			
+
 			// --- sourceTag retag ---
 			if retagReq.SourceTag != nil && strings.TrimSpace(*retagReq.SourceTag) != "" {
 				srcTagName := strings.TrimSpace(*retagReq.SourceTag)
@@ -847,7 +871,7 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 					c.JSON(http.StatusBadRequest, gin.H{"error": "source tag not found"})
 					return
 				}
-		
+
 				// Create target tag by copying existing tag reference.
 				dstTag := hub.CDMTag{
 					RepoID:      repo.ID,
@@ -871,7 +895,6 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 						return
 					}
 				}
-				
 
 				c.JSON(http.StatusOK, gin.H{
 					"tag":    tagName,
@@ -932,7 +955,6 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		
 		result, err := services.UploadModel(db, repo.ID, tagName, raw, user.ID, overwrite)
 		if err != nil {
 			if errors.Is(err, services.ErrTagAlreadyExists) {
@@ -1015,6 +1037,91 @@ func DeleteTag(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// GetRepositoryLineage handles repository lineage queries
+// GET /v0/repositories/:owner/:slug/lineage
+// Returns the full fork lineage: ancestors (parent chain) and children (forks)
+// Only includes repositories the user has access to
+// No authentication required; uses repository's visibility
+func GetRepositoryLineage(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		repo := middleware.GetRepository(c)
+		if repo == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "repository not set in context"})
+			return
+		}
+
+		// Get current user (may be nil for anonymous requests)
+		user := middleware.OptionalGetCurrentUser(c)
+		userID := uint(0)
+		if user != nil {
+			userID = user.ID
+		}
+
+		lineage := dto.RepositoryLineageInfo{
+			Ancestors: []dto.RepositoryLineageRef{},
+			Children:  []dto.RepositoryLineageRef{},
+		}
+
+		// Get parent (immediate forked-from repo)
+		if repo.ForkedFromID != nil {
+			var parent hub.Repository
+			if err := db.Preload("Owner").First(&parent, *repo.ForkedFromID).Error; err == nil {
+				// Check if user has access to parent
+				permission, _ := middleware.GetRepositoryPermissionWithCollaboratorStatus(db, &parent, userID)
+				if permission != middleware.PermissionNone {
+					lineage.Parent = &dto.RepositoryLineageRef{
+						ID:    parent.ID,
+						Owner: parent.Owner.Username,
+						Slug:  parent.Slug,
+					}
+				}
+			}
+		}
+
+		// Get full ancestry chain (walk up ForkedFromID until nil)
+		// Stop when encountering a repo without access
+		ancestorChain := []dto.RepositoryLineageRef{}
+		currentID := repo.ForkedFromID
+		for currentID != nil {
+			var ancestor hub.Repository
+			if err := db.Preload("Owner").First(&ancestor, *currentID).Error; err != nil {
+				break // Stop on error
+			}
+
+			// Check if user has access to this ancestor
+			permission, _ := middleware.GetRepositoryPermissionWithCollaboratorStatus(db, &ancestor, userID)
+			if permission == middleware.PermissionNone {
+				break // Stop at first inaccessible repo
+			}
+
+			ancestorChain = append(ancestorChain, dto.RepositoryLineageRef{
+				ID:    ancestor.ID,
+				Owner: ancestor.Owner.Username,
+				Slug:  ancestor.Slug,
+			})
+			currentID = ancestor.ForkedFromID // Move up the chain
+		}
+		lineage.Ancestors = ancestorChain
+
+		// Get all children (repos forked from this one)
+		var children []hub.Repository
+		if err := db.Where("forked_from_id = ?", repo.ID).Preload("Owner").Find(&children).Error; err == nil {
+			for _, child := range children {
+				// Only include children the user has access to
+				permission, _ := middleware.GetRepositoryPermissionWithCollaboratorStatus(db, &child, userID)
+				if permission != middleware.PermissionNone {
+					lineage.Children = append(lineage.Children, dto.RepositoryLineageRef{
+						ID:    child.ID,
+						Owner: child.Owner.Username,
+						Slug:  child.Slug,
+					})
+				}
+			}
+		}
+
+		c.JSON(http.StatusOK, lineage)
+	}
+}
 
 // ── Helper functions ──────────────────────────────────────────────────────────
 

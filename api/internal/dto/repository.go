@@ -49,8 +49,9 @@ type CollaboratorInfo struct {
 
 // RepositoryLineageInfo represents parent/child references
 type RepositoryLineageInfo struct {
-	Parent   *RepositoryLineageRef  `json:"parent,omitempty"`
-	Children []RepositoryLineageRef `json:"children,omitempty"`
+	Parent    *RepositoryLineageRef  `json:"parent,omitempty"`
+	Ancestors []RepositoryLineageRef `json:"ancestors,omitempty"` // Full chain from parent to root
+	Children  []RepositoryLineageRef `json:"children,omitempty"`
 }
 
 // RepositoryLineageRef is a minimal repo reference for lineage
@@ -97,6 +98,7 @@ type ListRepositoriesResponse struct {
 type ForkRepositoryRequest struct {
 	Slug        string   `json:"slug" binding:"required,min=1,max=255"`
 	Description string   `json:"description"`
+	Visibility  string   `json:"visibility"`
 	Tags        []string `json:"tags"` // tags to copy from parent repo
 }
 
@@ -127,12 +129,12 @@ type SetPrivacyRequest struct {
 // AddCollaboratorRequest represents the request body for UC-10 (Share Repository)
 type AddCollaboratorRequest struct {
 	Username string `json:"username" binding:"required"`
-	Role     string `json:"role" binding:"required,oneof=read write"`
+	Role     string `json:"role" binding:"required,oneof=read write admin"`
 }
 
 // UpdateCollaboratorRequest represents the request body for updating collaborator role
 type UpdateCollaboratorRequest struct {
-	Role string `json:"role" binding:"required,oneof=read write"`
+	Role string `json:"role" binding:"required,oneof=read write admin"`
 }
 
 // CollaboratorResponse represents a collaborator in responses
@@ -153,7 +155,8 @@ type ListCollaboratorsResponse struct {
 
 // TransferRepositoryRequest represents the request body for UC-11 (Transfer Repository Ownership)
 type TransferRepositoryRequest struct {
-	Username string `json:"username" binding:"required"`
+	Username            string `json:"username" binding:"required"`
+	PreviousOwnerAccess string `json:"previousOwnerAccess" binding:"required,oneof=none read write admin"`
 }
 
 // TransferRepositoryResponse represents the response for UC-11

@@ -97,9 +97,11 @@ const RepositoryDetailsPage = () => {
   const [forkOpen, setForkOpen] = useState(false);
   const [forkSlug, setForkSlug] = useState('');
   const [forkDescription, setForkDescription] = useState('');
+  const [forkVisibility, setForkVisibility] = useState('private');
   const [forkTags, setForkTags] = useState([]);
   const [forkError, setForkError] = useState('');
   const [forkSubmitting, setForkSubmitting] = useState(false);
+  const [forkPublicConfirmOpen, setForkPublicConfirmOpen] = useState(false);
 
   // Manage collaborators dialog state
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
@@ -109,12 +111,28 @@ const RepositoryDetailsPage = () => {
   const [collabError, setCollabError] = useState('');
   const [collabSubmitting, setCollabSubmitting] = useState(false);
   const [collabLoading, setCollabLoading] = useState(false);
+  const [removeCollabConfirmOpen, setRemoveCollabConfirmOpen] = useState(false);
+  const [removeCollabUsername, setRemoveCollabUsername] = useState('');
+
+  // Edit collaborator role state
+  const [editCollabSubmitting, setEditCollabSubmitting] = useState(false);
 
   // Transfer ownership dialog state
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferUsername, setTransferUsername] = useState('');
   const [transferError, setTransferError] = useState('');
   const [transferSubmitting, setTransferSubmitting] = useState(false);
+  const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
+  const [transferPreviousOwnerAccess, setTransferPreviousOwnerAccess] = useState('admin');
+
+  // View lineage dialog state
+  const [lineageOpen, setLineageOpen] = useState(false);
+  const [lineageData, setLineageData] = useState(null);
+  const [lineageLoading, setLineageLoading] = useState(false);
+  const [lineageError, setLineageError] = useState('');
+
+  // Public visibility confirmation dialog state
+  const [editPublicConfirmOpen, setEditPublicConfirmOpen] = useState(false);
 
   // Compare tags dialog state
   const [compareOpen, setCompareOpen] = useState(false);
@@ -148,7 +166,6 @@ const RepositoryDetailsPage = () => {
   }, [fetchData]);
 
   const activeRepoId = repo?.id ?? repositoryId;
-  const backTarget = location?.state?.from || (user ? '/repositories' : '/');
   const trimmedTagName = tagName.trim();
   const tagNameAlreadyExists = useMemo(
     () => trimmedTagName !== '' && tags.some((t) => t.name === trimmedTagName),
@@ -158,9 +175,23 @@ const RepositoryDetailsPage = () => {
     if (!user || !repo) return false;
     if (user.username === repo.owner) return true;
     const myCollab = (repo.collaborators || []).find((c) => c.username === user.username);
-    return myCollab?.role === 'write' || myCollab?.role === 'owner';
+    return myCollab?.role === 'write' || myCollab?.role === 'admin' || myCollab?.role === 'owner';
   }, [user, repo]);
   const canEditRepo = !!user && !!repo && user.username === repo.owner;
+
+  // Get current user's collaborator role (for permission checks in collaborators dialog)
+  const currentUserCollabRole = useMemo(() => {
+    if (!user || !collaborators) return null;
+    const collab = collaborators.find((c) => c.username === user.username);
+    return collab?.role || null;
+  }, [user, collaborators]);
+
+  // Check if current user is a collaborator on this repo
+  const isCurrentUserCollaborator = useMemo(() => {
+    if (!user || !repo) return false;
+    if (user.username === repo.owner) return true;
+    return (repo.collaborators || []).some((c) => c.username === user.username);
+  }, [user, repo]);
 
   const getRepoSlugValidationError = (value) => {
     const slug = (value || '').trim();
@@ -413,6 +444,17 @@ const RepositoryDetailsPage = () => {
       setEditError(validationError);
       return;
     }
+
+    // Show confirmation if changing to public
+    if (editVisibility === 'public' && repo.visibility !== 'public') {
+      setEditPublicConfirmOpen(true);
+      return;
+    }
+
+    await performEdit();
+  };
+
+  const performEdit = async () => {
     setEditSubmitting(true);
     setEditError('');
     try {
@@ -425,6 +467,7 @@ const RepositoryDetailsPage = () => {
       updateRepoInContext(Number(activeRepoId), updated);
       await refreshRepositories();
       setEditOpen(false);
+      setEditPublicConfirmOpen(false);
       showNotification('Repository updated', 'success');
 
       navigate(`/repositories/${updated.owner}/${updated.slug}`, {
@@ -437,6 +480,7 @@ const RepositoryDetailsPage = () => {
       } else {
         setEditError(msg || 'Failed to update repository.');
       }
+      setEditPublicConfirmOpen(false);
     } finally {
       setEditSubmitting(false);
     }
@@ -446,6 +490,7 @@ const RepositoryDetailsPage = () => {
   const handleForkOpen = () => {
     setForkSlug('');
     setForkDescription('');
+    setForkVisibility('private');
     setForkTags([]);
     setForkError('');
     setForkOpen(true);
@@ -467,19 +512,51 @@ const RepositoryDetailsPage = () => {
       setForkError(validationError);
       return;
     }
+    // Show confirmation if making repository public
+    if (forkVisibility === 'public') {
+      setForkPublicConfirmOpen(true);
+      return;
+    }
     setForkSubmitting(true);
     setForkError('');
     try {
       const createdRepo = await APIClient.forkRepository(repo.owner, repo.slug, {
         slug: forkSlug.trim(),
         description: forkDescription.trim(),
+        visibility: forkVisibility,
         tags: forkTags,
       });
       setForkOpen(false);
       showNotification('Repository forked successfully', 'success');
-      await refreshRepositories();
-      // After forking, return to My Repositories so the new repo is visible in the list.
-      navigate('/repositories');
+      // Navigate to the newly created fork
+      navigate(`/repositories/${createdRepo.owner}/${createdRepo.slug}`, { state: { from: location.pathname } });
+    } catch (err) {
+      const msg = err?.message || '';
+      if (msg.toLowerCase().includes('invalid repository name') || msg.toLowerCase().includes('invalid slug')) {
+        setForkError("Invalid repository name. Use 1-255 characters with letters/numbers and only '-' or '_' (no spaces).");
+      } else {
+        setForkError(msg || 'Failed to fork repository.');
+      }
+    } finally {
+      setForkSubmitting(false);
+    }
+  };
+
+  const handleForkPublicConfirm = async () => {
+    setForkPublicConfirmOpen(false);
+    setForkSubmitting(true);
+    setForkError('');
+    try {
+      const createdRepo = await APIClient.forkRepository(repo.owner, repo.slug, {
+        slug: forkSlug.trim(),
+        description: forkDescription.trim(),
+        visibility: forkVisibility,
+        tags: forkTags,
+      });
+      setForkOpen(false);
+      showNotification('Repository forked successfully', 'success');
+      // Navigate to the newly created fork
+      navigate(`/repositories/${createdRepo.owner}/${createdRepo.slug}`, { state: { from: location.pathname } });
     } catch (err) {
       const msg = err?.message || '';
       if (msg.toLowerCase().includes('invalid repository name') || msg.toLowerCase().includes('invalid slug')) {
@@ -543,13 +620,47 @@ const RepositoryDetailsPage = () => {
   };
 
   const handleRemoveCollaborator = async (username) => {
-    if (!window.confirm(`Remove ${username} from this repository?`)) return;
+    setRemoveCollabUsername(username);
+    setRemoveCollabConfirmOpen(true);
+  };
+
+  const handleRemoveCollaboratorConfirm = async () => {
+    setRemoveCollabConfirmOpen(false);
+    const isRemovingSelf = user && user.username === removeCollabUsername;
+    
     try {
-      await APIClient.removeCollaborator(repo.owner, repo.slug, username);
-      setCollaborators((prev) => prev.filter((c) => c.username !== username));
-      showNotification('Collaborator removed', 'success');
+      setCollabSubmitting(true);
+      await APIClient.removeCollaborator(repo.owner, repo.slug, removeCollabUsername);
+      setCollaborators((prev) => prev.filter((c) => c.username !== removeCollabUsername));
+      const successMsg = isRemovingSelf 
+        ? 'You have left the repository' 
+        : 'Collaborator removed';
+      showNotification(successMsg, 'success');
     } catch (err) {
       showNotification(err.message || 'Failed to remove collaborator.', 'error');
+    } finally {
+      setCollabSubmitting(false);
+      setRemoveCollabUsername('');
+    }
+  };
+
+  const handleRemoveCollaboratorCancel = () => {
+    setRemoveCollabConfirmOpen(false);
+    setRemoveCollabUsername('');
+  };
+
+  const handleUpdateCollaboratorRole = async (username, newRole) => {
+    setEditCollabSubmitting(true);
+    try {
+      await APIClient.addCollaborator(repo.owner, repo.slug, username, newRole);
+      setCollaborators((prev) =>
+        prev.map((c) => (c.username === username ? { ...c, role: newRole } : c))
+      );
+      showNotification(`${username}'s role updated to ${newRole}`, 'success');
+    } catch (err) {
+      showNotification(err.message || 'Failed to update collaborator role.', 'error');
+    } finally {
+      setEditCollabSubmitting(false);
     }
   };
 
@@ -557,12 +668,13 @@ const RepositoryDetailsPage = () => {
   const handleTransferOpen = () => {
     setTransferUsername('');
     setTransferError('');
+    setTransferPreviousOwnerAccess('admin');
     setTransferOpen(true);
   };
 
   const handleTransferClose = () => setTransferOpen(false);
 
-  const handleTransferSubmit = async () => {
+  const handleTransferSubmit = () => {
     if (!transferUsername.trim()) {
       setTransferError('Username is required.');
       return;
@@ -571,20 +683,53 @@ const RepositoryDetailsPage = () => {
       setTransferError('Cannot transfer to the current owner.');
       return;
     }
+    setTransferError('');
+    // Show confirmation dialog instead of immediately transferring
+    setTransferConfirmOpen(true);
+  };
+
+  const handleTransferConfirm = async () => {
+    setTransferConfirmOpen(false);
     setTransferSubmitting(true);
     setTransferError('');
     try {
-      await APIClient.transferRepositoryOwnership(repo.owner, repo.slug, transferUsername.trim());
+      // Transfer with previous owner access level - backend handles adding collaborator atomically
+      await APIClient.transferRepositoryOwnership(
+        repo.owner, 
+        repo.slug, 
+        transferUsername.trim(),
+        transferPreviousOwnerAccess
+      );
+      
       setTransferOpen(false);
       showNotification('Repository ownership transferred', 'success');
       await refreshRepositories();
-      navigate(backTarget, { state: { from: location?.state?.from } });
+      navigate(-1);
     } catch (err) {
       setTransferError(err.message || 'Failed to transfer repository.');
-    } finally {
       setTransferSubmitting(false);
     }
   };
+
+  const handleTransferConfirmClose = () => setTransferConfirmOpen(false);
+
+  // --- View Lineage ---
+  const handleLineageOpen = async () => {
+    setLineageOpen(true);
+    setLineageLoading(true);
+    setLineageError('');
+    setLineageData(null);
+    try {
+      const data = await APIClient.getRepositoryLineage(repo.owner, repo.slug);
+      setLineageData(data);
+    } catch (err) {
+      setLineageError(err.message || 'Failed to load lineage.');
+    } finally {
+      setLineageLoading(false);
+    }
+  };
+
+  const handleLineageClose = () => setLineageOpen(false);
 
   // --- Compare tags ---
   const handleCompareOpen = () => {
@@ -704,8 +849,8 @@ const RepositoryDetailsPage = () => {
     return (
       <Container maxWidth="md" sx={{ py: 8 }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(backTarget)}>
-          Back to Repositories
+        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)}>
+          Back
         </Button>
       </Container>
     );
@@ -722,8 +867,8 @@ const RepositoryDetailsPage = () => {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Header */}
-      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(backTarget)} sx={{ mb: 2 }}>
-        Back to Repositories
+      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} sx={{ mb: 2 }}>
+        Back
       </Button>
 
       <Card sx={{ p: 3, mb: 3 }}>
@@ -785,6 +930,9 @@ const RepositoryDetailsPage = () => {
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 2 }}>
           {user && user.username === repo?.owner && (
             <>
+              <Button size="small" onClick={handleLineageOpen} variant="outlined">
+                View Lineage
+              </Button>
               <Button size="small" onClick={handleForkOpen} variant="outlined">
                 Fork
               </Button>
@@ -797,9 +945,19 @@ const RepositoryDetailsPage = () => {
             </>
           )}
           {user && user.username !== repo?.owner && (
-            <Button size="small" onClick={handleForkOpen} variant="outlined">
-              Fork
-            </Button>
+            <>
+              <Button size="small" onClick={handleLineageOpen} variant="outlined">
+                View Lineage
+              </Button>
+              <Button size="small" onClick={handleForkOpen} variant="outlined">
+                Fork
+              </Button>
+              {isCurrentUserCollaborator && (
+                <Button size="small" onClick={handleCollaboratorsOpen} variant="outlined">
+                  Collaborators
+                </Button>
+              )}
+            </>
           )}
         </Box>
       </Card>
@@ -1131,6 +1289,27 @@ const RepositoryDetailsPage = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Public Visibility Confirmation Dialog */}
+      <Dialog open={editPublicConfirmOpen} onClose={() => setEditPublicConfirmOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Make Repository Public?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 2 }}>
+            This repository will be visible to everyone. Anyone can view and download the repository contents.
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 2, fontWeight: 500 }}>
+            Are you sure you want to continue?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditPublicConfirmOpen(false)} disabled={editSubmitting}>
+            Cancel
+          </Button>
+          <Button variant="contained" color="warning" onClick={performEdit} disabled={editSubmitting}>
+            {editSubmitting ? <CircularProgress size={20} /> : 'Make Public'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Fork Repository Dialog */}
       <Dialog open={forkOpen} onClose={handleForkClose} maxWidth="sm" fullWidth>
         <DialogTitle>Fork Repository</DialogTitle>
@@ -1183,6 +1362,22 @@ const RepositoryDetailsPage = () => {
             </Box>
           )}
         </Box>
+        <Box>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Visibility</Typography>
+          <ToggleButtonGroup
+            value={forkVisibility}
+            exclusive
+            onChange={(_, val) => { if (val) setForkVisibility(val); }}
+            size="small"
+          >
+            <ToggleButton value="public">
+              <PublicIcon fontSize="small" sx={{ mr: 0.5, color: 'success.main' }} /> Public
+            </ToggleButton>
+            <ToggleButton value="private">
+              <LockIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} /> Private
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleForkClose} disabled={forkSubmitting}>Cancel</Button>
@@ -1192,32 +1387,57 @@ const RepositoryDetailsPage = () => {
       </DialogActions>
     </Dialog>
 
+      {/* Fork Public Visibility Confirmation Dialog */}
+      <Dialog open={forkPublicConfirmOpen} onClose={() => setForkPublicConfirmOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Make Forked Repository Public?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 2 }}>
+            The forked repository will be visible to everyone. Anyone can view and download the repository contents.
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 2, fontWeight: 500 }}>
+            Are you sure you want to continue?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setForkPublicConfirmOpen(false)} disabled={forkSubmitting}>
+            Cancel
+          </Button>
+          <Button variant="contained" color="warning" onClick={handleForkPublicConfirm} disabled={forkSubmitting}>
+            {forkSubmitting ? <CircularProgress size={20} /> : 'Make Public'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Manage Collaborators Dialog */}
       <Dialog open={collaboratorsOpen} onClose={handleCollaboratorsClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Manage Collaborators</DialogTitle>
+        <DialogTitle>
+          {canEditRepo || currentUserCollabRole === 'admin' ? 'Manage Collaborators' : 'Collaborators'}
+        </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important', maxHeight: '60vh', overflow: 'auto' }}>
           {collabError && <Alert severity="error">{collabError}</Alert>}
           
-          {/* Add Collaborator Section */}
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', pb: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Add Collaborator</Typography>
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-              <TextField
-                label="Username"
-                value={newCollabUsername}
-                onChange={(e) => setNewCollabUsername(e.target.value)}
-                size="small"
-                sx={{ flex: 1 }}
-                placeholder="Enter username"
-              />
-              <ToggleButtonGroup
-                value={newCollabRole}
-                exclusive
-                onChange={(_, val) => { if (val) setNewCollabRole(val); }}
+          {/* Add Collaborator Section - Only visible to owners and admin-level collaborators */}
+          {(canEditRepo || currentUserCollabRole === 'admin') && (
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', pb: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Add Collaborator</Typography>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+                <TextField
+                  label="Username"
+                  value={newCollabUsername}
+                  onChange={(e) => setNewCollabUsername(e.target.value)}
+                  size="small"
+                  sx={{ flex: 1 }}
+                  placeholder="Enter username"
+                />
+                <ToggleButtonGroup
+                  value={newCollabRole}
+                  exclusive
+                  onChange={(_, val) => { if (val) setNewCollabRole(val); }}
                 size="small"
               >
                 <ToggleButton value="read">Read</ToggleButton>
                 <ToggleButton value="write">Write</ToggleButton>
+                <ToggleButton value="admin">Admin</ToggleButton>
               </ToggleButtonGroup>
               <Button
                 variant="contained"
@@ -1230,6 +1450,7 @@ const RepositoryDetailsPage = () => {
               </Button>
             </Box>
           </Box>
+          )}
 
           {/* Collaborators List */}
           <Box>
@@ -1240,39 +1461,102 @@ const RepositoryDetailsPage = () => {
               <Typography variant="body2" color="text.secondary">No collaborators yet</Typography>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {collaborators.map((collab) => (
-                  <Box
-                    key={collab.username}
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      p: 1,
-                      backgroundColor: 'action.hover',
-                      borderRadius: 1,
-                    }}
-                  >
-                    <Box>
-                      <Typography variant="body2" fontWeight={500}>{collab.username}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {collab.role}
-                      </Typography>
-                    </Box>
-                    <Button
-                      size="small"
-                      color="error"
-                      onClick={() => handleRemoveCollaborator(collab.username)}
+                {collaborators.map((collab) => {
+                  const isCurrentUser = user && user.username === collab.username;
+                  // Owner and admin can remove anyone, read/write-level can only remove themselves
+                  const canRemove = isCurrentUser || canEditRepo || currentUserCollabRole === 'admin';
+                  const buttonLabel = isCurrentUser ? 'Leave' : 'Remove';
+                  const buttonTooltip = isCurrentUser 
+                    ? 'Remove yourself as a collaborator' 
+                    : 'Remove this collaborator';
+
+                  return (
+                    <Box
+                      key={collab.username}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        p: 1,
+                        backgroundColor: 'action.hover',
+                        borderRadius: 1,
+                      }}
                     >
-                      Remove
-                    </Button>
-                  </Box>
-                ))}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body2" fontWeight={500}>
+                            {collab.username}
+                          </Typography>
+                          {isCurrentUser && <Typography variant="caption" sx={{ ml: 0.5 }}>(You)</Typography>}
+                        </Box>
+                        {(canEditRepo || currentUserCollabRole === 'admin') && !isCurrentUser ? (
+                          <Select
+                            value={collab.role}
+                            onChange={(e) => handleUpdateCollaboratorRole(collab.username, e.target.value)}
+                            size="small"
+                            disabled={editCollabSubmitting}
+                            sx={{ minWidth: '90px', fontSize: '0.875rem' }}
+                          >
+                            <MenuItem value="read">Read</MenuItem>
+                            <MenuItem value="write">Write</MenuItem>
+                            <MenuItem value="admin">Admin</MenuItem>
+                          </Select>
+                        ) : (
+                          <Typography variant="caption" color="text.secondary">
+                            {collab.role}
+                          </Typography>
+                        )}
+                      </Box>
+                      {canRemove && (
+                        <Tooltip title={buttonTooltip}>
+                          <span style={{ marginLeft: '8px' }}>
+                            <Button
+                              size="small"
+                              color="error"
+                              onClick={() => handleRemoveCollaborator(collab.username)}
+                              disabled={collabSubmitting}
+                            >
+                              {buttonLabel}
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  );
+                })}
               </Box>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCollaboratorsClose}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Remove Collaborator Confirmation Dialog */}
+      <Dialog open={removeCollabConfirmOpen} onClose={handleRemoveCollaboratorCancel}>
+        <DialogTitle>
+          {user && user.username === removeCollabUsername ? 'Leave Repository?' : 'Remove Collaborator?'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            {user && user.username === removeCollabUsername
+              ? 'Are you sure you want to leave this repository as a collaborator? You will lose access to it.'
+              : `Are you sure you want to remove ${removeCollabUsername} as a collaborator? They will lose access to this repository.`}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRemoveCollaboratorCancel} disabled={collabSubmitting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleRemoveCollaboratorConfirm}
+            variant="contained"
+            color="error"
+            disabled={collabSubmitting}
+          >
+            {user && user.username === removeCollabUsername ? 'Leave' : 'Remove'}
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1293,6 +1577,34 @@ const RepositoryDetailsPage = () => {
             required
             placeholder="Enter username of new owner"
           />
+          <Box>
+            <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+              Keep Access Rights (Optional)
+            </Typography>
+            <ToggleButtonGroup
+              value={transferPreviousOwnerAccess}
+              exclusive
+              onChange={(e, newValue) => {
+                if (newValue !== null) {
+                  setTransferPreviousOwnerAccess(newValue);
+                }
+              }}
+              fullWidth
+            >
+              <ToggleButton value="none" aria-label="no access">
+                No Access
+              </ToggleButton>
+              <ToggleButton value="read" aria-label="read access">
+                Read
+              </ToggleButton>
+              <ToggleButton value="write" aria-label="write access">
+                Write
+              </ToggleButton>
+              <ToggleButton value="admin" aria-label="admin access">
+                Admin
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleTransferClose} disabled={transferSubmitting}>Cancel</Button>
@@ -1301,6 +1613,130 @@ const RepositoryDetailsPage = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Transfer Confirmation Dialog */}
+      <Dialog open={transferConfirmOpen} onClose={handleTransferConfirmClose} maxWidth="xs" fullWidth>
+        <DialogTitle>Confirm Transfer</DialogTitle>
+        <DialogContent sx={{ pt: '16px !important' }}>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Are you sure you want to transfer ownership of this repository to <strong>{transferUsername}</strong>? This action cannot be undone.
+          </Alert>
+          <Typography variant="body2" color="text.secondary">
+            After confirmation, you will lose all ownership rights to this repository.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleTransferConfirmClose} disabled={transferSubmitting}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleTransferConfirm} disabled={transferSubmitting}>
+            {transferSubmitting ? <CircularProgress size={20} /> : 'Confirm Transfer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* View Lineage Dialog */}
+      <Dialog open={lineageOpen} onClose={handleLineageClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Repository Lineage</DialogTitle>
+        <DialogContent sx={{ pt: '16px !important' }}>
+          {lineageLoading && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          )}
+          {lineageError && <Alert severity="error">{lineageError}</Alert>}
+          {lineageData && !lineageLoading && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* Parent Lineage */}
+              <Box>
+                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+                  Parent Lineage
+                </Typography>
+                {!lineageData.parent ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No parent lineage visible.
+                  </Typography>
+                ) : (
+                  <Box sx={{ pl: 2, borderLeft: '2px solid', borderColor: 'divider' }}>
+                    {lineageData.ancestors && lineageData.ancestors.length > 0 ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                        {[...lineageData.ancestors].reverse().map((ancestor, idx) => (
+                          <Box key={idx}>
+                            <MuiLink
+                              component="button"
+                              type="button"
+                              variant="body2"
+                              onClick={() => {
+                                handleLineageClose();
+                                navigate(`/repositories/${ancestor.owner}/${ancestor.slug}`, { state: { from: location.pathname } });
+                              }}
+                              sx={{ cursor: 'pointer', textDecoration: 'none', display: 'block' }}
+                            >
+                              {ancestor.owner}/{ancestor.slug}
+                            </MuiLink>
+                            {idx < lineageData.ancestors.length - 1 && (
+                              <Typography variant="h6" color="text.secondary" sx={{ display: 'block', py: 0.25, lineHeight: 1 }}>
+                                ↓
+                              </Typography>
+                            )}
+                          </Box>
+                        ))}
+                      </Box>
+                    ) : (
+                      <MuiLink
+                        component="button"
+                        type="button"
+                        variant="body2"
+                        onClick={() => {
+                          handleLineageClose();
+                          navigate(`/repositories/${lineageData.parent.owner}/${lineageData.parent.slug}`, { state: { from: location.pathname } });
+                        }}
+                        sx={{ cursor: 'pointer', textDecoration: 'none' }}
+                      >
+                        {lineageData.parent.owner}/{lineageData.parent.slug}
+                      </MuiLink>
+                    )}
+                  </Box>
+                )}
+              </Box>
+
+              <Divider />
+
+              {/* Child Forks */}
+              <Box>
+                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+                  Child Forks
+                </Typography>
+                {!lineageData.children || lineageData.children.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No child repositories visible.
+                  </Typography>
+                ) : (
+                  <Box sx={{ pl: 2, borderLeft: '2px solid', borderColor: 'divider' }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {lineageData.children.map((child, idx) => (
+                        <Box key={idx}>
+                          <MuiLink
+                            component="button"
+                            type="button"
+                            variant="body2"
+                            onClick={() => {
+                              handleLineageClose();
+                              navigate(`/repositories/${child.owner}/${child.slug}`, { state: { from: location.pathname } });
+                            }}
+                            sx={{ cursor: 'pointer', textDecoration: 'none' }}
+                          >
+                            {child.owner}/{child.slug}
+                          </MuiLink>
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Compare Tags Dialog */}
       <Dialog open={compareOpen} onClose={handleCompareClose} maxWidth="md" fullWidth>
         <DialogTitle>Compare Tags</DialogTitle>

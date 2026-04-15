@@ -2,7 +2,7 @@ import { Container, Typography, Box, TextField, InputAdornment } from '@mui/mate
 import Grid from '@mui/material/Grid';
 import { useEffect, useState, useMemo } from 'react';
 import { useTheme } from '@mui/material/styles';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import APIClient from '../util/ApiClient';
 import Card from '@mui/material/Card';
 import CardActionArea from '@mui/material/CardActionArea';
@@ -16,8 +16,10 @@ const ExplorePage = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const theme = useTheme();
     const navigate = useNavigate();
+    const location = useLocation();
 
     useEffect(() => {
+        setLoading(true);
         APIClient.getRepositories('all')
             .then(data => {
                 setRepositories(Array.isArray(data) ? data : data.repositories || []);
@@ -27,7 +29,7 @@ const ExplorePage = () => {
                 setRepositories([]);
             })
             .finally(() => setLoading(false));
-    }, []);
+    }, [location.pathname]);
 
     const filtered = useMemo(() => {
         const q = searchQuery.toLowerCase();
