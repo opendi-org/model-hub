@@ -265,7 +265,7 @@ const RepositoryDetailsPage = () => {
 
   const handleCopyPermalink = () => {
     if (!repo?.id) return;
-    const permalink = `${window.location.origin}/repositories/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.slug)}`;
+    const permalink = `${window.location.origin}/repo/${encodeURIComponent(repo.id)}`;
     navigator.clipboard.writeText(permalink).then(() => {
       showNotification('Permalink copied to clipboard', 'info');
     });
@@ -470,8 +470,10 @@ const RepositoryDetailsPage = () => {
       setEditPublicConfirmOpen(false);
       showNotification('Repository updated', 'success');
 
+      // Always replace history entry on edit to avoid "back button shows same page" issue
       navigate(`/repositories/${updated.owner}/${updated.slug}`, {
         state: { from: location?.state?.from },
+        replace: true,
       });
     } catch (err) { 
       const msg = err?.message || '';
@@ -636,6 +638,9 @@ const RepositoryDetailsPage = () => {
         ? 'You have left the repository' 
         : 'Collaborator removed';
       showNotification(successMsg, 'success');
+      if (isRemovingSelf) {
+        navigate('/repositories');
+      }
     } catch (err) {
       showNotification(err.message || 'Failed to remove collaborator.', 'error');
     } finally {
@@ -704,7 +709,11 @@ const RepositoryDetailsPage = () => {
       setTransferOpen(false);
       showNotification('Repository ownership transferred', 'success');
       await refreshRepositories();
-      navigate(-1);
+      if (transferPreviousOwnerAccess === 'none') {
+        navigate('/repositories');
+      } else {
+        navigate(-1);
+      }
     } catch (err) {
       setTransferError(err.message || 'Failed to transfer repository.');
       setTransferSubmitting(false);
@@ -1482,13 +1491,13 @@ const RepositoryDetailsPage = () => {
                         borderRadius: 1,
                       }}
                     >
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="body2" fontWeight={500}>
-                            {collab.username}
-                          </Typography>
-                          {isCurrentUser && <Typography variant="caption" sx={{ ml: 0.5 }}>(You)</Typography>}
-                        </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" fontWeight={500}>
+                          {collab.username}
+                        </Typography>
+                        {isCurrentUser && <Typography variant="caption" sx={{ ml: 0.5 }}>(You)</Typography>}
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {(canEditRepo || currentUserCollabRole === 'admin') && !isCurrentUser ? (
                           <Select
                             value={collab.role}
@@ -1506,21 +1515,21 @@ const RepositoryDetailsPage = () => {
                             {collab.role}
                           </Typography>
                         )}
+                        {canRemove && (
+                          <Tooltip title={buttonTooltip}>
+                            <span>
+                              <Button
+                                size="small"
+                                color="error"
+                                onClick={() => handleRemoveCollaborator(collab.username)}
+                                disabled={collabSubmitting}
+                              >
+                                {buttonLabel}
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        )}
                       </Box>
-                      {canRemove && (
-                        <Tooltip title={buttonTooltip}>
-                          <span style={{ marginLeft: '8px' }}>
-                            <Button
-                              size="small"
-                              color="error"
-                              onClick={() => handleRemoveCollaborator(collab.username)}
-                              disabled={collabSubmitting}
-                            >
-                              {buttonLabel}
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      )}
                     </Box>
                   );
                 })}
