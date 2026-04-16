@@ -5,7 +5,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import opendiIcon from '../opendi-icon.png';
 import * as React from 'react';
-import { styled } from '@mui/material/styles';
+import { styled, useTheme } from '@mui/material/styles';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Toolbar from '@mui/material/Toolbar';
@@ -42,6 +42,7 @@ const NavButton = styled(Button)(() => ({
 export default function Navbar() {
     const { user, logout } = useUser();
     const { mode, toggleColorMode } = useColorMode();
+    const theme = useTheme();
     const [anchorEl, setAnchorEl] = React.useState(null);
     const [imageError, setImageError] = React.useState(false);
     const navigate = useNavigate();
@@ -136,6 +137,7 @@ export default function Navbar() {
                                                 border: '2px solid rgba(255,255,255,0.3)',
                                                 fontSize: '0.875rem',
                                                 fontWeight: 600,
+                                                color: theme.palette.mode === 'dark' ? '#ffffff' : undefined,
                                             }}
                                         >
                                             {(imageError || !user.picture) && getInitials()}

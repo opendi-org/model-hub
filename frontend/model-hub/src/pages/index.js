@@ -173,7 +173,7 @@ const Home = () => {
                         {owner ? `${owner}'s Repositories` : 'Model Repositories'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                        {repositories.length} {repositories.length === 1 ? 'repository' : 'repositories'}
+                        {filtered.length} {filtered.length === 1 ? 'repository' : 'repositories'}
                     </Typography>
                 </Box>
 

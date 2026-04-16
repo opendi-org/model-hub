@@ -320,6 +320,11 @@ const RepositoriesPage = () => {
             </Select>
           </FormControl>
         </Box>
+
+        {/* Count */}
+        <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+          {filtered.length} {filtered.length === 1 ? 'repository' : 'repositories'}
+        </Typography>
       </Box>
 
       {/* Loading skeleton */}
