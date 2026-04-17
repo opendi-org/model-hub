@@ -67,7 +67,7 @@ def test_list_models_fields(tmp_path: Path) -> None:
     with patch("opendi.local_store._db_path", return_value=_tmp_db(tmp_path)):
         local_store.save_model("alice", "my-repo", "v1", "{}")
         result = local_store.list_models()
-    assert set(result[0].keys()) == {"owner", "repo", "tag", "pulled_at"}
+    assert set(result[0].keys()) == {"owner", "repo", "tag", "digest", "pulled_at"}
     assert result[0]["owner"] == "alice"
     assert result[0]["repo"] == "my-repo"
     assert result[0]["tag"] == "v1"

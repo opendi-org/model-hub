@@ -502,10 +502,12 @@ def test_pull_with_token() -> None:
     response.ok = True
     response.status_code = 200
     response.text = "{}"
+    response.headers = {"ETag": "test-digest-123"}
     with (
         _logged_in(),
         patch("opendi.main.requests.get", return_value=response),
         patch("opendi.main.local_store.save_model"),
+        patch("opendi.main.local_store.find_by_digest", return_value=[]),
     ):
         result = runner.invoke(app, ["pull", "alice/my-repo:v1"])
     assert result.exit_code == 0
@@ -922,15 +924,17 @@ def test_pull_unauthenticated_public_repo() -> None:
     mock_response.ok = True
     mock_response.status_code = 200
     mock_response.text = '{"meta": {"uuid": "abc"}}'
+    mock_response.headers = {"ETag": "test-digest-abc"}
     with (
         patch("opendi.main.credential_storage.load_access_token", return_value=None),
         patch("opendi.main.requests.get", return_value=mock_response),
         patch("opendi.main.local_store.save_model") as mock_save,
+        patch("opendi.main.local_store.find_by_digest", return_value=[]),
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
     assert result.exit_code == 0
     assert "Pulled alice/my-model:v1.0 into local cache" in result.output
-    mock_save.assert_called_once_with("alice", "my-model", "v1.0", mock_response.text)
+    mock_save.assert_called_once_with("alice", "my-model", "v1.0", mock_response.text, "test-digest-abc")
 
 
 def test_pull_not_found() -> None:
