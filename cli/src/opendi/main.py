@@ -327,7 +327,20 @@ def pull(
         typer.echo(f"Server error {response.status_code}: {response.text}", err=True)
         raise typer.Exit(1)
 
-    local_store.save_model(owner, repo_slug, tag, response.text)
+    digest = response.headers.get("ETag") or None
+
+    # Replace old cache entries that have the same digest (repo was renamed)
+    if digest:
+        old_entries = [
+            e for e in local_store.find_by_digest(digest)
+            if not (e["owner"] == owner and e["repo"] == repo_slug and e["tag"] == tag)
+        ]
+        for e in old_entries:
+            local_store.remove_model(e["owner"], e["repo"], e["tag"])
+            old_ref = f"{e['owner']}/{e['repo']}:{e['tag']}"
+            typer.echo(f"Replaced cached entry {old_ref} → {name}")
+
+    local_store.save_model(owner, repo_slug, tag, response.text, digest)
     typer.echo(f"Pulled {name} into local cache.")
 
 
@@ -477,9 +490,47 @@ def search(
         raise typer.Exit(1)
 
 
+def _fmt_size(size_bytes: int) -> str:
+    """Format a byte count as a human-readable string."""
+    for unit in ("B", "KB", "MB", "GB"):
+        if size_bytes < 1024:
+            return f"{size_bytes:.0f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} TB"
+
+
+def _col_widths(rows: list[list[str]]) -> list[int]:
+    """Return max width for each column across all rows."""
+    if not rows:
+        return []
+    return [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
+
+
+def _print_table(headers: list[str], rows: list[list[str]], col_colors: dict[int, str] | None = None) -> None:
+    """Print a simple aligned table with a header separator."""
+    all_rows = [headers] + rows
+    widths = _col_widths(all_rows)
+    sep = "  "
+
+    # Header
+    header_line = sep.join(h.ljust(widths[i]) for i, h in enumerate(headers))
+    typer.echo(typer.style(header_line, bold=True))
+    typer.echo(typer.style("-" * len(header_line), dim=True))
+
+    for row in rows:
+        parts = []
+        for i, cell in enumerate(row):
+            padded = cell.ljust(widths[i])
+            if col_colors and i in col_colors:
+                padded = typer.style(padded, fg=col_colors[i])
+            parts.append(padded)
+        typer.echo(sep.join(parts))
+
+
 @app.command()
 def list_repos(
     owner: str = typer.Argument(None, help="Owner username (defaults to all repositories)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show tag details for each repository"),
 ) -> None:
     """List repositories on the hub."""
     jwt = _require_access_token()
@@ -496,14 +547,68 @@ def list_repos(
             if not repos:
                 typer.echo("No repositories found.")
                 return
-            for repo in repos:
-                visibility = typer.style(repo.get("visibility", ""), fg=typer.colors.YELLOW)
-                name = typer.style(repo.get("slug", ""), fg=typer.colors.GREEN, bold=True)
-                description = repo.get("description", "")
-                line = f"{name} [{visibility}]"
-                if description:
-                    line += f"  {description}"
-                typer.echo(line)
+
+            if not verbose:
+                headers = ["REPOSITORY", "VISIBILITY", "UPDATED", "DESCRIPTION"]
+                rows = []
+                for repo in repos:
+                    updated = repo.get("updatedAt", "")[:10]
+                    rows.append([
+                        f"{repo.get('owner', '')}/{repo.get('slug', '')}",
+                        repo.get("visibility", ""),
+                        updated,
+                        repo.get("description", ""),
+                    ])
+                _print_table(headers, rows, col_colors={0: typer.colors.GREEN, 1: typer.colors.YELLOW})
+            else:
+                # Fetch full details for each repo to get tag metadata
+                for i, repo in enumerate(repos):
+                    o = repo.get("owner", "")
+                    slug = repo.get("slug", "")
+                    vis = repo.get("visibility", "")
+                    desc = repo.get("description", "")
+                    updated = repo.get("updatedAt", "")[:10]
+
+                    repo_label = typer.style(f"{o}/{slug}", fg=typer.colors.GREEN, bold=True)
+                    vis_label = typer.style(f"[{vis}]", fg=typer.colors.YELLOW)
+                    header_parts = f"{repo_label} {vis_label}"
+                    if desc:
+                        header_parts += f"  {desc}"
+                    header_parts += f"  (updated {updated})"
+                    typer.echo(header_parts)
+
+                    detail_resp = requests.get(
+                        f"{_api_base_url()}/v0/repositories/{o}/{slug}",
+                        headers={"Authorization": f"Bearer {jwt}"},
+                        timeout=10,
+                    )
+                    if detail_resp.status_code == 200:
+                        tags = detail_resp.json().get("tags", [])
+                        if not tags:
+                            typer.echo("  (no tags)")
+                        else:
+                            tag_headers = ["  TAG", "DIGEST", "SIZE", "PUSHED BY", "UPDATED"]
+                            tag_rows = []
+                            for t in tags:
+                                digest = t.get("digest", "")
+                                short_digest = digest[:12] if digest else ""
+                                size = _fmt_size(t.get("size", 0))
+                                pushed_by = t.get("createdBy", "")
+                                tag_updated = t.get("updatedAt", "")[:10]
+                                tag_rows.append([
+                                    f"  {t.get('name', '')}",
+                                    short_digest,
+                                    size,
+                                    pushed_by,
+                                    tag_updated,
+                                ])
+                            _print_table(tag_headers, tag_rows)
+                    else:
+                        typer.echo("  (could not fetch tag details)")
+
+                    if i < len(repos) - 1:
+                        typer.echo("")
+
         elif response.status_code == 404:
             typer.echo(f"Owner '{owner}' not found.", err=True)
             raise typer.Exit(1)
@@ -598,12 +703,20 @@ def delete_repo(
 
 @app.command()
 def save(
-    name: str = typer.Argument(..., help="Model ref to save: owner/repo:tag"),
-    output: str = typer.Option(None, "--output", "-o", help="Output file path (defaults to <tag>.json)"),
+    name: str = typer.Argument(..., help="Model ref in owner/repo:tag format (e.g. alice/my-model:v1.0)"),
+    output_dir: str = typer.Argument(None, help="Directory to write the output file. Defaults to current directory. Created automatically if it does not exist."),
+    output: str = typer.Option(None, "--output", "-o", help="Full output file path (e.g. ./out/model.json). Overrides OUTPUT_DIR. Defaults to <tag>.json in the current directory."),
 ) -> None:
-    """Save a model to a local JSON file. Uses local cache if available, otherwise fetches from hub.
+    """Save a model from the hub to a local JSON file.
 
-    NAME format: owner/repo:tag  (e.g. alice/my-model:v1.0)
+    Checks the local cache first; if the model is not cached it is automatically
+    pulled from the hub before saving.
+
+    \b
+    Examples:
+      opendi save alice/my-model:v1.0                  # saves v1.0.json in current dir
+      opendi save alice/my-model:v1.0 ./models/        # saves v1.0.json inside ./models/
+      opendi save alice/my-model:v1.0 -o out/cdm.json  # saves to a specific file path
     """
     if "/" not in name or ":" not in name:
         typer.echo("Invalid format. Use: owner/repo:tag", err=True)
@@ -616,13 +729,20 @@ def save(
         typer.echo("Invalid format. Use: owner/repo:tag", err=True)
         raise typer.Exit(1)
 
-    out_path = Path(output) if output else Path(f"{tag}.json")
+    if output:
+        out_path = Path(output)
+    elif output_dir:
+        out_path = Path(output_dir) / f"{tag}.json"
+    else:
+        out_path = Path(f"{tag}.json")
 
     # Check local cache first
     content = local_store.get_model(owner, repo_slug, tag)
 
     if content is None:
-        # Not cached — fetch from server
+        # Not in cache — implicitly pull from hub
+        typer.echo(f"{name} not in local cache. Pulling from hub...", err=True)
+
         headers: dict[str, str] = {}
         token = credential_storage.load_access_token()
         if token:
@@ -639,7 +759,7 @@ def save(
             raise typer.Exit(1)
 
         if response.status_code == 404:
-            typer.echo(f"Tag not found: {name}", err=True)
+            typer.echo(f"Error: model not found: {name}", err=True)
             raise typer.Exit(1)
         if response.status_code in (401, 403):
             typer.echo("Access denied. Run `opendi login` if this is a private repository.", err=True)
@@ -649,7 +769,17 @@ def save(
             raise typer.Exit(1)
 
         content = response.text
-        local_store.save_model(owner, repo_slug, tag, content)
+        digest = response.headers.get("ETag") or None
+        local_store.save_model(owner, repo_slug, tag, content, digest)
+
+        # Verify it was actually cached
+        content = local_store.get_model(owner, repo_slug, tag)
+        if content is None:
+            typer.echo(f"Error: pulled {name} but could not retrieve it from local cache.", err=True)
+            raise typer.Exit(1)
+
+    if output_dir:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     out_path.write_text(content, encoding="utf-8")
     typer.echo(f"Saved {typer.style(name, fg=typer.colors.GREEN, bold=True)} → {out_path}")
@@ -680,31 +810,70 @@ def remove_local(
 
 @app.command()
 def list_local() -> None:
-    """List all models cached locally (via `opendi pull`)."""
     models = local_store.list_models()
     if not models:
         typer.echo("No models in local cache. Use `opendi pull owner/repo:tag` to cache one.")
         return
+
+    # Group by owner/repo
+    groups: dict[str, list[dict]] = {}
     for m in models:
-        ref = typer.style(f"{m['owner']}/{m['repo']}:{m['tag']}", fg=typer.colors.GREEN, bold=True)
-        typer.echo(f"{ref}  (pulled {m['pulled_at']})")
+        key = f"{m['owner']}/{m['repo']}"
+        groups.setdefault(key, []).append(m)
+
+    for idx, (repo_key, tags) in enumerate(groups.items()):
+        typer.echo(typer.style(repo_key, fg=typer.colors.GREEN, bold=True))
+        tag_rows = [
+            [f"  {t['tag']}", t["pulled_at"][:19].replace("T", " ") + " UTC"]
+            for t in tags
+        ]
+        _print_table(["  TAG", "PULLED AT"], tag_rows)
+        if idx < len(groups) - 1:
+            typer.echo("")
 
 
 @app.command()
 def validate(
-    path: str = typer.Argument(..., help="Path to a local CDM JSON file to validate"),
+    path: str = typer.Argument(..., help="Path to a local CDM JSON file (e.g. v1.0.json), or a model ref (owner/repo:tag) that is already in the local cache."),
 ) -> None:
-    """Validate a local CDM JSON file against the OpenDI schema."""
-    file_path = Path(path).expanduser()
-    if not file_path.is_file():
-        typer.echo(f"File not found: {path}", err=True)
-        raise typer.Exit(1)
+    """Validate a CDM model against the OpenDI schema.
 
-    try:
-        raw = file_path.read_bytes()
-    except OSError as e:
-        typer.echo(f"Could not read file: {e}", err=True)
-        raise typer.Exit(1)
+    Accepts either a local file path or a cached model ref. To validate a ref
+    that is not yet cached, run `opendi pull owner/repo:tag` first.
+
+    \b
+    Examples:
+      opendi validate ./model.json          # validate a local file
+      opendi validate alice/my-model:v1.0  # validate from local cache
+    """
+    raw: bytes
+
+    if "/" in path and ":" in path:
+        # Treat as model ref owner/repo:tag
+        repo_part, tag = path.rsplit(":", 1)
+        owner, repo_slug = repo_part.split("/", 1)
+
+        if not owner or not repo_slug or not tag:
+            typer.echo("Invalid format. Use: owner/repo:tag", err=True)
+            raise typer.Exit(1)
+
+        content = local_store.get_model(owner, repo_slug, tag)
+        if content is None:
+            typer.echo(f"Model not found in local cache: {path}. Run `opendi pull {path}` first.", err=True)
+            raise typer.Exit(1)
+
+        raw = content.encode("utf-8")
+    else:
+        file_path = Path(path).expanduser()
+        if not file_path.is_file():
+            typer.echo(f"File not found: {path}", err=True)
+            raise typer.Exit(1)
+
+        try:
+            raw = file_path.read_bytes()
+        except OSError as e:
+            typer.echo(f"Could not read file: {e}", err=True)
+            raise typer.Exit(1)
 
     # Verify it's at least parseable JSON before sending
     try:

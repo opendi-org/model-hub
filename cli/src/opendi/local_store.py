@@ -10,6 +10,7 @@ Schema:
     repo        TEXT NOT NULL
     tag         TEXT NOT NULL
     content     TEXT NOT NULL   -- raw JSON string
+    digest      TEXT            -- ETag/UUID from hub (nullable for legacy rows)
     pulled_at   TEXT NOT NULL   -- ISO-8601 UTC timestamp
     UNIQUE(owner, repo, tag)    -- upsert on re-pull
 """
@@ -37,27 +38,33 @@ def _connect() -> sqlite3.Connection:
             repo      TEXT NOT NULL,
             tag       TEXT NOT NULL,
             content   TEXT NOT NULL,
+            digest    TEXT,
             pulled_at TEXT NOT NULL,
             UNIQUE(owner, repo, tag)
         )
     """)
+    # Migrate existing databases that lack the digest column
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(pulled_models)").fetchall()}
+    if "digest" not in cols:
+        conn.execute("ALTER TABLE pulled_models ADD COLUMN digest TEXT")
     conn.commit()
     return conn
 
 
-def save_model(owner: str, repo: str, tag: str, content: str) -> None:
+def save_model(owner: str, repo: str, tag: str, content: str, digest: str | None = None) -> None:
     """Insert or replace a pulled model in the local cache."""
     pulled_at = datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO pulled_models (owner, repo, tag, content, pulled_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO pulled_models (owner, repo, tag, content, digest, pulled_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(owner, repo, tag) DO UPDATE SET
                 content   = excluded.content,
+                digest    = excluded.digest,
                 pulled_at = excluded.pulled_at
             """,
-            (owner, repo, tag, content, pulled_at),
+            (owner, repo, tag, content, digest, pulled_at),
         )
 
 
@@ -71,13 +78,23 @@ def get_model(owner: str, repo: str, tag: str) -> str | None:
     return row[0] if row else None
 
 
-def list_models() -> list[dict]:
-    """Return all cached models as a list of dicts (owner, repo, tag, pulled_at)."""
+def find_by_digest(digest: str) -> list[dict]:
+    """Return all cached entries that share the given digest."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT owner, repo, tag, pulled_at FROM pulled_models ORDER BY pulled_at DESC"
+            "SELECT owner, repo, tag, pulled_at FROM pulled_models WHERE digest=?",
+            (digest,),
         ).fetchall()
     return [{"owner": r[0], "repo": r[1], "tag": r[2], "pulled_at": r[3]} for r in rows]
+
+
+def list_models() -> list[dict]:
+    """Return all cached models as a list of dicts (owner, repo, tag, digest, pulled_at)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT owner, repo, tag, digest, pulled_at FROM pulled_models ORDER BY pulled_at DESC"
+        ).fetchall()
+    return [{"owner": r[0], "repo": r[1], "tag": r[2], "digest": r[3], "pulled_at": r[4]} for r in rows]
 
 
 def remove_model(owner: str, repo: str, tag: str) -> bool:
