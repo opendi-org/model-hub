@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -59,7 +59,7 @@ const RepositoriesPage = () => {
   const {
     repositories, loading: reposLoading,
     addRepository, removeRepository,
-    scope, changeScope,
+    scope, changeScope, refreshRepositories,
   } = useRepositories();
   const { showNotification } = useNotification();
   const navigate = useNavigate();
@@ -76,6 +76,13 @@ const RepositoriesPage = () => {
   const [formVisibility, setFormVisibility] = useState('private');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [publicConfirmOpen, setPublicConfirmOpen] = useState(false);
+
+  // Refresh repositories when navigating back to this page
+  useEffect(() => {
+    refreshRepositories();
+  }, [location.pathname, refreshRepositories]);
 
   const filtered = useMemo(() => {
     let result = repositories.filter((r) => {
@@ -98,6 +105,9 @@ const RepositoriesPage = () => {
       if (sortBy === 'name') {
         aVal = (a.slug || '').toLowerCase();
         bVal = (b.slug || '').toLowerCase();
+        // Use string comparison for names
+        const comparison = aVal.localeCompare(bVal);
+        return sortOrder === 'asc' ? comparison : -comparison;
       } else if (sortBy === 'created') {
         aVal = getRepoDate(a, 'createdAt', 'created_at');
         bVal = getRepoDate(b, 'createdAt', 'created_at');
@@ -105,6 +115,7 @@ const RepositoriesPage = () => {
         aVal = getRepoDate(a, 'updatedAt', 'updated_at');
         bVal = getRepoDate(b, 'updatedAt', 'updated_at');
       }
+      // Use numeric comparison for dates
       return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
     });
 
@@ -141,16 +152,27 @@ const RepositoriesPage = () => {
       return;
     }
 
+    // Show confirmation if making repository public
+    if (formVisibility === 'public') {
+      setPublicConfirmOpen(true);
+      return;
+    }
+
+    await performCreate();
+  };
+
+  const performCreate = async () => {
     setSubmitting(true);
     setFormError('');
     try {
       const repo = await APIClient.createRepository({
-        slug,
+        slug: formSlug.trim(),
         description: formDescription.trim(),
         visibility: formVisibility,
       });
       addRepository(repo);
       setCreateOpen(false);
+      setPublicConfirmOpen(false);
       showNotification('Repository created successfully', 'success');
     } catch (err) {
       const msg = err?.message || '';
@@ -159,6 +181,7 @@ const RepositoriesPage = () => {
       } else {
         setFormError(msg || 'Failed to create repository.');
       }
+      setPublicConfirmOpen(false);
     } finally {
       setSubmitting(false);
     }
@@ -167,12 +190,14 @@ const RepositoriesPage = () => {
   const handleDeleteOpen = (e, repo) => {
     e.stopPropagation();
     setSelectedRepo(repo);
+    setDeleteConfirmation('');
     setDeleteOpen(true);
   };
 
   const handleDeleteClose = () => {
     setDeleteOpen(false);
     setSelectedRepo(null);
+    setDeleteConfirmation('');
   };
 
   const handleDeleteConfirm = async () => {
@@ -362,13 +387,15 @@ const RepositoriesPage = () => {
                         {repo.slug || repo.name}
                       </Typography>
                     </Box>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => handleDeleteOpen(e, repo)}
-                      sx={{ ml: 1, color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-                    >
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
+                    {user && user.username === repo.owner && (
+                      <IconButton
+                        size="small"
+                        onClick={(e) => handleDeleteOpen(e, repo)}
+                        sx={{ ml: 1, color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </Box>
 
                   {repo.description && (
@@ -475,11 +502,47 @@ const RepositoriesPage = () => {
             Are you sure you want to delete <strong>{selectedRepo?.slug || selectedRepo?.name}</strong>?
             This action cannot be undone. All tags in this repository will also be deleted.
           </Typography>
+          <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+            To confirm, type the repository name below:
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            value={deleteConfirmation}
+            onChange={(e) => setDeleteConfirmation(e.target.value)}
+            sx={{ mt: 1 }}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleDeleteClose} disabled={submitting}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={handleDeleteConfirm} disabled={submitting}>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleDeleteConfirm}
+            disabled={submitting || deleteConfirmation !== (selectedRepo?.slug || selectedRepo?.name)}
+          >
             {submitting ? <CircularProgress size={20} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Public Visibility Confirmation Dialog */}
+      <Dialog open={publicConfirmOpen} onClose={() => setPublicConfirmOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Make Repository Public?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 2 }}>
+            This repository will be visible to everyone. Anyone can view and download the repository contents.
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 2, fontWeight: 500 }}>
+            Are you sure you want to continue?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPublicConfirmOpen(false)} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button variant="contained" color="warning" onClick={performCreate} disabled={submitting}>
+            {submitting ? <CircularProgress size={20} /> : 'Make Public'}
           </Button>
         </DialogActions>
       </Dialog>

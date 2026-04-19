@@ -272,10 +272,17 @@ export default class APIClient {
   }
 
   /** POST /v0/repositories/:owner/:slug/transfer - transfer repository ownership. */
-  static async transferRepositoryOwnership(owner, slug, newUsername) {
+  static async transferRepositoryOwnership(owner, slug, newUsername, previousOwnerAccess = 'none') {
     return HTTPClient.post(
       `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}/transfer`,
-      { username: newUsername }
+      { username: newUsername, previousOwnerAccess }
+    );
+  }
+
+  /** GET /v0/repositories/:owner/:slug/lineage - get repository lineage (parent + children). */
+  static async getRepositoryLineage(owner, slug) {
+    return HTTPClient.get(
+      `/v0/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}/lineage`
     );
   }
 }

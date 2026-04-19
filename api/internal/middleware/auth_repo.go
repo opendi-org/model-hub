@@ -9,11 +9,12 @@ import (
 	"opendi.org/model-hub/api/internal/models/hub"
 )
 
-// Permission levels for repository access (owner > write > read > none).
+// Permission levels for repository access (owner > admin > write > read > none).
 const (
 	PermissionNone  = "none"
 	PermissionRead  = "read"
 	PermissionWrite = "write"
+	PermissionAdmin = "admin"
 	PermissionOwner = "owner"
 )
 
@@ -40,7 +41,7 @@ func CheckRepositoryAccess(db *gorm.DB) gin.HandlerFunc {
 			userID = user.ID
 		}
 
-		permission, isCollaborator := getRepositoryPermissionWithCollaboratorStatus(db, repo, userID)
+		permission, isCollaborator := GetRepositoryPermissionWithCollaboratorStatus(db, repo, userID)
 		c.Set(repoPermissionContextKey, permission)
 		c.Set(repoCollaboratorContextKey, isCollaborator)
 		c.Next()
@@ -94,7 +95,7 @@ func IsRepositoryCollaborator(c *gin.Context) bool {
 	return false
 }
 
-func getRepositoryPermissionWithCollaboratorStatus(db *gorm.DB, repo *hub.Repository, userID uint) (permission string, isCollaborator bool) {
+func GetRepositoryPermissionWithCollaboratorStatus(db *gorm.DB, repo *hub.Repository, userID uint) (permission string, isCollaborator bool) {
 	if userID != 0 && repo.OwnerID == userID {
 		return PermissionOwner, false
 	}
@@ -111,6 +112,8 @@ func getRepositoryPermissionWithCollaboratorStatus(db *gorm.DB, repo *hub.Reposi
 		switch collab.Role {
 		case hub.CollaboratorRoleOwner:
 			return PermissionOwner, true
+		case hub.CollaboratorRoleAdmin:
+			return PermissionAdmin, true
 		case hub.CollaboratorRoleWrite:
 			return PermissionWrite, true
 		case hub.CollaboratorRoleRead:
@@ -126,6 +129,7 @@ func getRepositoryPermissionWithCollaboratorStatus(db *gorm.DB, repo *hub.Reposi
 func hasRequiredPermission(current, required string) bool {
 	permissionHierarchy := map[string]int{
 		PermissionOwner: 5,
+		PermissionAdmin: 4,
 		PermissionWrite: 3,
 		PermissionRead:  2,
 		PermissionNone:  0,

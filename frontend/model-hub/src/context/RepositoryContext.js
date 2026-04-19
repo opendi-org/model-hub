@@ -8,7 +8,11 @@ export const RepositoryProvider = ({ children }) => {
   const { user } = useUser();
   const [repositories, setRepositories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [scope, setScope] = useState('mine');
+  const [scope, setScope] = useState(() => {
+    // Initialize scope from localStorage, defaulting to 'mine'
+    const savedScope = localStorage.getItem('repositoryScope');
+    return savedScope || 'mine';
+  });
 
   const refreshRepositories = useCallback(async (newScope) => {
     const activeScope = newScope ?? scope;
@@ -31,6 +35,7 @@ export const RepositoryProvider = ({ children }) => {
 
   const changeScope = useCallback((newScope) => {
     setScope(newScope);
+    localStorage.setItem('repositoryScope', newScope);
     refreshRepositories(newScope);
   }, [refreshRepositories]);
 

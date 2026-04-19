@@ -67,6 +67,8 @@ func getRepositoryPermission(db *gorm.DB, repo *hub.Repository, userID uint) str
 		switch collab.Role {
 		case "owner":
 			return PermissionOwner
+		case "admin":
+			return PermissionAdmin
 		case "write":
 			return PermissionWrite
 		case "read":
@@ -84,10 +86,11 @@ func getRepositoryPermission(db *gorm.DB, repo *hub.Repository, userID uint) str
 }
 
 // HasRequiredPermission checks if the user's current permission meets the requirement.
-// Permissions are hierarchical: owner > write > read > none
+// Permissions are hierarchical: owner > admin > write > read > none
 func HasRequiredPermission(current, required string) bool {
 	permissionHierarchy := map[string]int{
 		PermissionOwner: 5,
+		PermissionAdmin: 4,
 		PermissionWrite: 3,
 		PermissionRead:  2,
 		PermissionNone:  0,
