@@ -9,7 +9,7 @@ from pathlib import Path
 import requests
 import typer
 
-from opendi import auth, credential_storage, local_store, log
+from opendi import auth, credential_storage, local_cache, log
 
 # Populated by main() before every command; None if not logged in.
 _current_token: str | None = None
@@ -332,15 +332,15 @@ def pull(
     # Replace old cache entries that have the same digest (repo was renamed)
     if digest:
         old_entries = [
-            e for e in local_store.find_by_digest(digest)
+            e for e in local_cache.find_by_digest(digest)
             if not (e["owner"] == owner and e["repo"] == repo_slug and e["tag"] == tag)
         ]
         for e in old_entries:
-            local_store.remove_model(e["owner"], e["repo"], e["tag"])
+            local_cache.remove_model(e["owner"], e["repo"], e["tag"])
             old_ref = f"{e['owner']}/{e['repo']}:{e['tag']}"
             typer.echo(f"Replaced cached entry {old_ref} → {name}")
 
-    local_store.save_model(owner, repo_slug, tag, response.text, digest)
+    local_cache.save_model(owner, repo_slug, tag, response.text, digest)
     typer.echo(f"Pulled {name} into local cache.")
 
 
@@ -737,7 +737,7 @@ def save(
         out_path = Path(f"{tag}.json")
 
     # Check local cache first
-    content = local_store.get_model(owner, repo_slug, tag)
+    content = local_cache.get_model(owner, repo_slug, tag)
 
     if content is None:
         # Not in cache — implicitly pull from hub
@@ -770,10 +770,10 @@ def save(
 
         content = response.text
         digest = response.headers.get("ETag") or None
-        local_store.save_model(owner, repo_slug, tag, content, digest)
+        local_cache.save_model(owner, repo_slug, tag, content, digest)
 
         # Verify it was actually cached
-        content = local_store.get_model(owner, repo_slug, tag)
+        content = local_cache.get_model(owner, repo_slug, tag)
         if content is None:
             typer.echo(f"Error: pulled {name} but could not retrieve it from local cache.", err=True)
             raise typer.Exit(1)
@@ -801,7 +801,7 @@ def remove_local(
         typer.echo("Invalid format. Use: owner/repo:tag", err=True)
         raise typer.Exit(1)
 
-    if not local_store.remove_model(owner, repo_slug, tag):
+    if not local_cache.remove_model(owner, repo_slug, tag):
         typer.echo(f"Tag not found in local cache: {name}", err=True)
         raise typer.Exit(1)
 
@@ -810,7 +810,7 @@ def remove_local(
 
 @app.command()
 def list_local() -> None:
-    models = local_store.list_models()
+    models = local_cache.list_models()
     if not models:
         typer.echo("No models in local cache. Use `opendi pull owner/repo:tag` to cache one.")
         return
@@ -857,7 +857,7 @@ def validate(
             typer.echo("Invalid format. Use: owner/repo:tag", err=True)
             raise typer.Exit(1)
 
-        content = local_store.get_model(owner, repo_slug, tag)
+        content = local_cache.get_model(owner, repo_slug, tag)
         if content is None:
             typer.echo(f"Model not found in local cache: {path}. Run `opendi pull {path}` first.", err=True)
             raise typer.Exit(1)

@@ -506,8 +506,8 @@ def test_pull_with_token() -> None:
     with (
         _logged_in(),
         patch("opendi.main.requests.get", return_value=response),
-        patch("opendi.main.local_store.save_model"),
-        patch("opendi.main.local_store.find_by_digest", return_value=[]),
+        patch("opendi.main.local_cache.save_model"),
+        patch("opendi.main.local_cache.find_by_digest", return_value=[]),
     ):
         result = runner.invoke(app, ["pull", "alice/my-repo:v1"])
     assert result.exit_code == 0
@@ -928,8 +928,8 @@ def test_pull_unauthenticated_public_repo() -> None:
     with (
         patch("opendi.main.credential_storage.load_access_token", return_value=None),
         patch("opendi.main.requests.get", return_value=mock_response),
-        patch("opendi.main.local_store.save_model") as mock_save,
-        patch("opendi.main.local_store.find_by_digest", return_value=[]),
+        patch("opendi.main.local_cache.save_model") as mock_save,
+        patch("opendi.main.local_cache.find_by_digest", return_value=[]),
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
     assert result.exit_code == 0
