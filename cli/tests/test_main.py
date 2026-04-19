@@ -168,7 +168,7 @@ def test_whoami_session_expired() -> None:
     with (
         _logged_in(),
         patch("opendi.main.auth.get_current_user", side_effect=Exception("unauthorized")),
-        patch("opendi.main.credential_storage.delete") as mock_delete,
+        patch("opendi.main.credential_storage.delete_access_token") as mock_delete,
     ):
         result = runner.invoke(app, ["whoami"])
     assert result.exit_code == 1
@@ -181,7 +181,7 @@ def test_whoami_session_expired() -> None:
 
 def test_logout_success() -> None:
     """opendi logout deletes stored token."""
-    with patch("opendi.main.credential_storage.delete", return_value=True):
+    with patch("opendi.main.credential_storage.delete_access_token", return_value=True):
         result = runner.invoke(app, ["logout"])
     assert result.exit_code == 0
     assert "Logged out" in result.output
@@ -189,7 +189,7 @@ def test_logout_success() -> None:
 
 def test_logout_not_logged_in() -> None:
     """opendi logout prints 'Not logged in' when no token stored."""
-    with patch("opendi.main.credential_storage.delete", return_value=False):
+    with patch("opendi.main.credential_storage.delete_access_token", return_value=False):
         result = runner.invoke(app, ["logout"])
     assert result.exit_code == 0
     assert "Not logged in" in result.output

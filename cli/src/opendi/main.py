@@ -58,7 +58,7 @@ def login() -> None:
                     typer.echo("Already logged in.")
                 return
             except Exception:
-                credential_storage.delete()
+                credential_storage.delete_access_token()
 
         code, login_url, expires_in = auth.start_cli_login(api_base)
         absolute_url = auth.open_login_url(api_base, login_url)
@@ -90,7 +90,7 @@ def whoami() -> None:
     try:
         me = auth.get_current_user(api_base, token)
     except Exception:
-        credential_storage.delete()
+        credential_storage.delete_access_token()
         typer.echo("Session expired. Run `opendi login` to sign in again.", err=True)
         raise typer.Exit(1)
     username = me.get("username")
@@ -106,7 +106,7 @@ def whoami() -> None:
 @app.command()
 def logout() -> None:
     """Log out from the OpenDI hub (clears stored credentials)."""
-    if credential_storage.delete():
+    if credential_storage.delete_access_token():
         typer.echo("Logged out.")
     else:
         typer.echo("Not logged in.")
