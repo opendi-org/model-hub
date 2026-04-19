@@ -948,7 +948,7 @@ def test_pull_not_found() -> None:
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
     assert result.exit_code == 1
-    assert "Not found" in result.output
+    assert "not found" in result.output.lower()
 
 
 def test_pull_access_denied() -> None:
