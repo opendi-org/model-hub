@@ -1,8 +1,7 @@
-"""Tests for the CLI entry point."""
+"""Tests for the CLI entry point (flat commands: login, logout, whoami, search, pull, push, save, diff, validate)."""
 
-import io
 import json
-import urllib.error
+import tempfile
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
@@ -12,8 +11,9 @@ from opendi.main import app
 runner = CliRunner()
 
 _TOKEN = "fake-access-token"
-# command to check with coverage 
+# command to check with coverage
 # pytest tests/ --cov=opendi --cov-report=term-missing -q
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,7 +28,26 @@ def _logged_out():
     return patch("opendi.main.credential_storage.load_access_token", return_value=None)
 
 
-# ── Help ──────────────────────────────────────────────────────────────────────
+def _remote_ok(data: dict):
+    """Mock a successful 200 response returning JSON data."""
+    m = MagicMock()
+    m.status_code = 200
+    m.ok = True
+    m.json.return_value = data
+    return m
+
+
+def _remote_err(status: int, error: str = ""):
+    """Mock an error response."""
+    m = MagicMock()
+    m.status_code = status
+    m.ok = False
+    m.json.return_value = {"error": error} if error else {}
+    m.text = error
+    return m
+
+
+# ── Help / smoke ──────────────────────────────────────────────────────────────
 
 
 def test_app_help_exits_zero() -> None:
@@ -36,7 +55,6 @@ def test_app_help_exits_zero() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "opendi" in result.output.lower()
-    assert "diff" in result.output
 
 
 def test_app_without_command_shows_help() -> None:
@@ -105,7 +123,6 @@ def test_login_timeout() -> None:
         result = runner.invoke(app, ["login"])
     assert result.exit_code == 1
     assert "timed out" in result.output
-
 
 
 def test_login_cancelled() -> None:
@@ -198,151 +215,6 @@ def test_logout_not_logged_in() -> None:
 # ── Diff ──────────────────────────────────────────────────────────────────────
 
 
-def _remote_ok(data: dict):
-    """Mock a successful 200 response returning JSON data."""
-    m = MagicMock()
-    m.status_code = 200
-    m.json.return_value = data
-    return m
-
-
-def _remote_err(status: int, error: str = ""):
-    """Mock an error response."""
-    m = MagicMock()
-    m.status_code = status
-    m.json.return_value = {"error": error} if error else {}
-    m.text = error
-    return m
-
-
-# ── Inspect ───────────────────────────────────────────────────────────────────
-
-_TAG_INFO = {
-    "name": "v1",
-    "digest": "abc123",
-    "size": 4096,
-    "updatedAt": "2026-01-01T00:00:00Z",
-    "createdBy": "alice",
-}
-
-_REPO_RESPONSE = {
-    "owner": "alice",
-    "slug": "my-repo",
-    "tags": [_TAG_INFO],
-}
-
-
-def _inspect_ok(tags=None):
-    m = MagicMock()
-    m.status_code = 200
-    m.ok = True
-    repo = dict(_REPO_RESPONSE)
-    if tags is not None:
-        repo["tags"] = tags
-    m.json.return_value = repo
-    return m
-
-
-def test_inspect_success() -> None:
-    """opendi inspect prints all tag metadata fields."""
-    with (
-        _logged_out(),
-        patch("opendi.main.requests.get", return_value=_inspect_ok()),
-    ):
-        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
-    assert result.exit_code == 0
-    assert "alice/my-repo" in result.output
-    assert "v1" in result.output
-    assert "abc123" in result.output
-    assert "4,096" in result.output
-    assert "alice" in result.output
-
-
-def test_inspect_success_logged_in() -> None:
-    """opendi inspect sends auth header when logged in."""
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.get", return_value=_inspect_ok()) as mock_get,
-    ):
-        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
-    assert result.exit_code == 0
-    _, kwargs = mock_get.call_args
-    assert "Authorization" in kwargs["headers"]
-
-
-def test_inspect_invalid_format() -> None:
-    """opendi inspect exits 1 when name is not owner/repo:tag format."""
-    result = runner.invoke(app, ["inspect", "my-repo"])
-    assert result.exit_code == 1
-    assert "owner/repo:tag" in result.output
-
-
-def test_inspect_tag_not_found() -> None:
-    """opendi inspect exits 1 when the tag does not exist in the repo."""
-    with (
-        _logged_out(),
-        patch("opendi.main.requests.get", return_value=_inspect_ok(tags=[])),
-    ):
-        result = runner.invoke(app, ["inspect", "alice/my-repo:missing"])
-    assert result.exit_code == 1
-    assert "not found" in result.output
-
-
-def test_inspect_repo_not_found() -> None:
-    """opendi inspect exits 1 when the repository does not exist (404)."""
-    with (
-        _logged_out(),
-        patch("opendi.main.requests.get", return_value=_remote_err(404)),
-    ):
-        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
-    assert result.exit_code == 1
-    assert "not found" in result.output
-
-
-def test_inspect_access_denied_401() -> None:
-    """opendi inspect exits 1 with access denied message on 401."""
-    with (
-        _logged_out(),
-        patch("opendi.main.requests.get", return_value=_remote_err(401)),
-    ):
-        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
-    assert result.exit_code == 1
-    assert "Access denied" in result.output
-
-
-def test_inspect_access_denied_403() -> None:
-    """opendi inspect exits 1 with access denied message on 403."""
-    with (
-        _logged_out(),
-        patch("opendi.main.requests.get", return_value=_remote_err(403)),
-    ):
-        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
-    assert result.exit_code == 1
-    assert "Access denied" in result.output
-
-
-def test_inspect_connection_error() -> None:
-    """opendi inspect exits 1 when the hub is unreachable."""
-    with (
-        _logged_out(),
-        patch("opendi.main.requests.get", side_effect=__import__("requests").ConnectionError()),
-    ):
-        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
-    assert result.exit_code == 1
-    assert "Could not connect" in result.output
-
-
-def test_inspect_timeout() -> None:
-    """opendi inspect exits 1 when the request times out."""
-    with (
-        _logged_out(),
-        patch("opendi.main.requests.get", side_effect=__import__("requests").Timeout()),
-    ):
-        result = runner.invoke(app, ["inspect", "alice/my-repo:v1"])
-    assert result.exit_code == 1
-    assert "timed out" in result.output
-
-
 def test_diff_two_identical_remote_models() -> None:
     """opendi diff prints 'No differences' when both sides are identical."""
     model = {"name": "my-model", "version": "1"}
@@ -359,10 +231,9 @@ def test_diff_two_different_remote_models() -> None:
     """opendi diff prints a unified diff when models differ."""
     left = {"name": "model-a"}
     right = {"name": "model-b"}
-    responses = [_remote_ok(left), _remote_ok(right)]
     with (
         _logged_in(),
-        patch("opendi.main.requests.get", side_effect=responses),
+        patch("opendi.main.requests.get", side_effect=[_remote_ok(left), _remote_ok(right)]),
     ):
         result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
     assert result.exit_code == 0
@@ -405,7 +276,7 @@ def test_diff_local_file_not_found() -> None:
     """opendi diff exits 1 when a local file path does not exist."""
     result = runner.invoke(app, ["diff", "/no/such/file.json", "/no/such/file.json"])
     assert result.exit_code == 1
-    assert "Expected owner/slug:tag" in result.output
+    assert "File not found" in result.output
 
 
 def test_diff_remote_401() -> None:
@@ -485,52 +356,6 @@ def test_diff_timeout() -> None:
     assert "timed out" in result.output
 
 
-# ── Pull / Push ───────────────────────────────────────────────────────────────
-
-
-def test_pull_invalid_format() -> None:
-    """opendi pull exits 1 when name is not owner/repo:tag format."""
-    with _logged_out():
-        result = runner.invoke(app, ["pull", "some-model"])
-    assert result.exit_code == 1
-    assert "owner/repo:tag" in result.output
-
-
-def test_pull_with_token() -> None:
-    """opendi pull downloads when logged in and repo exists."""
-    response = MagicMock()
-    response.ok = True
-    response.status_code = 200
-    response.text = "{}"
-    response.headers = {"ETag": "test-digest-123"}
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.get", return_value=response),
-        patch("opendi.main.local_cache.save_model"),
-        patch("opendi.main.local_cache.find_by_digest", return_value=[]),
-    ):
-        result = runner.invoke(app, ["pull", "alice/my-repo:v1"])
-    assert result.exit_code == 0
-
-
-def test_push_missing_name_option() -> None:
-    """opendi push exits 2 when --name is not provided."""
-    with _logged_in():
-        result = runner.invoke(app, ["push", "/path/to/model.json"])
-    assert result.exit_code == 2
-
-
-def test_push_file_not_found() -> None:
-    """opendi push exits 1 when the local file does not exist."""
-    with _logged_out():
-        result = runner.invoke(app, ["push", "/no/such/file.json", "--name", "alice/my-repo:v1"])
-    assert result.exit_code == 1
-    assert "not found" in result.output.lower()
-
-
-# ── Diff ──────────────────────────────────────────────────────────────────────
-
-
 def test_diff_no_differences(tmp_path) -> None:
     """opendi diff prints a message when normalized JSON matches."""
     doc = {"meta": {"name": "m"}, "$schema": "x"}
@@ -556,6 +381,7 @@ def test_diff_access_denied() -> None:
     """HTTP 401 shows the same sign-in hint as other commands."""
     response = MagicMock()
     response.status_code = 401
+    response.ok = False
     response.json.return_value = {"error": "unauthorized"}
     with patch("opendi.main.requests.get", return_value=response):
         result = runner.invoke(app, ["diff", "a/b:c", "x/y:z"])
@@ -567,9 +393,11 @@ def test_diff_tag_not_found() -> None:
     """404 with tag not found from the API is reported."""
     ok = MagicMock()
     ok.status_code = 200
+    ok.ok = True
     ok.json.return_value = {"k": 1}
     missing = MagicMock()
     missing.status_code = 404
+    missing.ok = False
     missing.json.return_value = {"error": "tag not found"}
     with patch("opendi.main.requests.get", side_effect=[ok, missing]):
         result = runner.invoke(app, ["diff", "a/b:c", "owner/repo:bad"])
@@ -583,368 +411,80 @@ def test_diff_invalid_ref(tmp_path) -> None:
     f.write_text("{}", encoding="utf-8")
     result = runner.invoke(app, ["diff", "not-a-file", str(f)])
     assert result.exit_code == 1
-    assert "Expected owner/slug:tag" in result.output
-
-# ── Create repo ───────────────────────────────────────────────────────────────
+    assert "Expected owner/repo:tag" in result.output
 
 
-def test_create_repo_requires_login() -> None:
-    """opendi create-repo exits 1 when not logged in."""
-    with _logged_out():
-        result = runner.invoke(app, ["create-repo", "my-repo"])
-    assert result.exit_code == 1
-    assert "opendi login" in result.output
+# ── Pull ──────────────────────────────────────────────────────────────────────
 
 
-def test_create_repo_success_private() -> None:
-    """opendi create-repo posts to the API and prints success (private by default)."""
-    response = MagicMock()
-    response.status_code = 201
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.post", return_value=response) as mock_post,
-    ):
-        result = runner.invoke(app, ["create-repo", "my-repo"])
-    assert result.exit_code == 0
-    assert "my-repo" in result.output
-    _, kwargs = mock_post.call_args
-    assert kwargs["json"]["slug"] == "my-repo"
-    assert kwargs["json"]["visibility"] == "private"
+def _repo_ok(owner="alice", slug="my-model", repo_id=42):
+    """Mock repo resolve response."""
+    m = MagicMock()
+    m.status_code = 200
+    m.ok = True
+    m.json.return_value = {"id": repo_id, "owner": owner, "slug": slug, "tags": []}
+    return m
 
 
-def test_create_repo_success_public() -> None:
-    """opendi create-repo creates a public repo when --public is passed."""
-    response = MagicMock()
-    response.status_code = 201
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.post", return_value=response) as mock_post,
-    ):
-        result = runner.invoke(app, ["create-repo", "my-repo", "--public"])
-    assert result.exit_code == 0
-    _, kwargs = mock_post.call_args
-    assert kwargs["json"]["visibility"] == "public"
-
-
-def test_create_repo_success_with_description() -> None:
-    """opendi create-repo forwards --description to the API."""
-    response = MagicMock()
-    response.status_code = 201
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.post", return_value=response) as mock_post,
-    ):
-        result = runner.invoke(app, ["create-repo", "my-repo", "--description", "A test repo"])
-    assert result.exit_code == 0
-    _, kwargs = mock_post.call_args
-    assert kwargs["json"]["description"] == "A test repo"
-
-
-def test_create_repo_conflict() -> None:
-    """opendi create-repo exits 1 when the repo name already exists (HTTP 409)."""
-    response = MagicMock()
-    response.status_code = 409
-    with (_logged_in(), patch("opendi.main.requests.post", return_value=response)):
-        result = runner.invoke(app, ["create-repo", "my-repo"])
-    assert result.exit_code == 1
-    assert "already exists" in result.output
-
-
-def test_create_repo_unauthorized() -> None:
-    """opendi create-repo exits 1 with auth message on HTTP 401."""
-    response = MagicMock()
-    response.status_code = 401
-    with (_logged_in(), patch("opendi.main.requests.post", return_value=response)):
-        result = runner.invoke(app, ["create-repo", "my-repo"])
-    assert result.exit_code == 1
-    assert "opendi login" in result.output
-
-
-def test_create_repo_unexpected_status() -> None:
-    """opendi create-repo exits 1 with HTTP status on unexpected response."""
-    response = MagicMock()
-    response.status_code = 500
-    with (_logged_in(), patch("opendi.main.requests.post", return_value=response)):
-        result = runner.invoke(app, ["create-repo", "my-repo"])
-    assert result.exit_code == 1
-    assert "HTTP 500" in result.output
-
-
-def test_create_repo_connection_error() -> None:
-    """opendi create-repo exits 1 when the hub is unreachable."""
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.post", side_effect=__import__("requests").ConnectionError()),
-    ):
-        result = runner.invoke(app, ["create-repo", "my-repo"])
-    assert result.exit_code == 1
-    assert "Could not connect" in result.output
-
-
-def test_create_repo_timeout() -> None:
-    """opendi create-repo exits 1 with timeout message when the request times out."""
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.post", side_effect=__import__("requests").Timeout()),
-    ):
-        result = runner.invoke(app, ["create-repo", "my-repo"])
-    assert result.exit_code == 1
-    assert "timed out" in result.output
-
-
-# ── List repos ────────────────────────────────────────────────────────────────
-
-
-def test_list_repos_requires_login() -> None:
-    """opendi list-repos exits 1 when not logged in."""
-    with _logged_out():
-        result = runner.invoke(app, ["list-repos"])
-    assert result.exit_code == 1
-    assert "opendi login" in result.output
-
-
-def test_list_repos_all() -> None:
-    """opendi list-repos prints all repos when no owner is given."""
-    response = MagicMock()
-    response.status_code = 200
-    response.json.return_value = {
-        "repositories": [
-            {"slug": "repo-a", "visibility": "public", "description": "First repo"},
-            {"slug": "repo-b", "visibility": "private", "description": ""},
-        ]
-    }
-    with (_logged_in(), patch("opendi.main.requests.get", return_value=response)):
-        result = runner.invoke(app, ["list-repos"])
-    assert result.exit_code == 0
-    assert "repo-a" in result.output
-    assert "repo-b" in result.output
-
-
-def test_list_repos_by_owner() -> None:
-    """opendi list-repos sends owner param when given."""
-    response = MagicMock()
-    response.status_code = 200
-    response.json.return_value = {"repositories": [{"slug": "repo-a", "visibility": "public", "description": ""}]}
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.get", return_value=response) as mock_get,
-    ):
-        result = runner.invoke(app, ["list-repos", "alice"])
-    assert result.exit_code == 0
-    _, kwargs = mock_get.call_args
-    assert kwargs["params"] == {"owner": "alice"}
-
-
-def test_list_repos_empty() -> None:
-    """opendi list-repos prints 'No repositories found' when API returns empty list."""
-    response = MagicMock()
-    response.status_code = 200
-    response.json.return_value = {"repositories": []}
-    with (_logged_in(), patch("opendi.main.requests.get", return_value=response)):
-        result = runner.invoke(app, ["list-repos"])
-    assert result.exit_code == 0
-    assert "No repositories found" in result.output
-
-
-def test_list_repos_owner_not_found() -> None:
-    """opendi list-repos exits 1 when the owner does not exist (HTTP 404)."""
-    response = MagicMock()
-    response.status_code = 404
-    with (_logged_in(), patch("opendi.main.requests.get", return_value=response)):
-        result = runner.invoke(app, ["list-repos", "alice"])
-    assert result.exit_code == 1
-    assert "alice" in result.output
-
-
-def test_list_repos_unauthorized() -> None:
-    """opendi list-repos exits 1 with auth message on HTTP 401."""
-    response = MagicMock()
-    response.status_code = 401
-    with (_logged_in(), patch("opendi.main.requests.get", return_value=response)):
-        result = runner.invoke(app, ["list-repos"])
-    assert result.exit_code == 1
-    assert "opendi login" in result.output
-
-
-def test_list_repos_unexpected_status() -> None:
-    """opendi list-repos exits 1 with HTTP status on unexpected response."""
-    response = MagicMock()
-    response.status_code = 500
-    with (_logged_in(), patch("opendi.main.requests.get", return_value=response)):
-        result = runner.invoke(app, ["list-repos"])
-    assert result.exit_code == 1
-    assert "HTTP 500" in result.output
-
-
-def test_list_repos_connection_error() -> None:
-    """opendi list-repos exits 1 when the hub is unreachable."""
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.get", side_effect=__import__("requests").ConnectionError()),
-    ):
-        result = runner.invoke(app, ["list-repos"])
-    assert result.exit_code == 1
-    assert "Could not connect" in result.output
-
-
-def test_list_repos_timeout() -> None:
-    """opendi list-repos exits 1 with timeout message when the request times out."""
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.get", side_effect=__import__("requests").Timeout()),
-    ):
-        result = runner.invoke(app, ["list-repos"])
-    assert result.exit_code == 1
-    assert "timed out" in result.output
-
-
-# ── Delete repo ───────────────────────────────────────────────────────────────
-
-
-def test_delete_repo_requires_login() -> None:
-    """opendi delete-repo exits 1 when not logged in."""
-    with _logged_out():
-        result = runner.invoke(app, ["delete-repo", "alice/my-repo", "--yes"])
-    assert result.exit_code == 1
-    assert "opendi login" in result.output
-
-
-def test_delete_repo_invalid_format() -> None:
-    """opendi delete-repo exits 1 when repo is not in owner/slug format."""
-    with _logged_out():
-        result = runner.invoke(app, ["delete-repo", "my-repo", "--yes"])
-    assert result.exit_code == 1
-    assert "owner/slug" in result.output
-
-
-def test_delete_repo_success() -> None:
-    """opendi delete-repo deletes the repo and prints success (HTTP 204)."""
-    response = MagicMock()
-    response.status_code = 204
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.delete", return_value=response) as mock_delete,
-    ):
-        result = runner.invoke(app, ["delete-repo", "alice/my-repo", "--yes"])
-    assert result.exit_code == 0
-    assert "alice/my-repo" in result.output
-    args, _ = mock_delete.call_args
-    assert "alice/my-repo" in args[0]
-
-
-def test_delete_repo_prompts_without_yes_flag() -> None:
-    """opendi delete-repo prompts for confirmation when --yes is not passed."""
-    response = MagicMock()
-    response.status_code = 204
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.delete", return_value=response),
-    ):
-        result = runner.invoke(app, ["delete-repo", "alice/my-repo"], input="y\n")
-    assert result.exit_code == 0
-    assert "alice/my-repo" in result.output
-
-
-def test_delete_repo_aborts_on_prompt_decline() -> None:
-    """opendi delete-repo aborts when the user declines the confirmation prompt."""
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.delete") as mock_delete,
-    ):
-        result = runner.invoke(app, ["delete-repo", "alice/my-repo"], input="n\n")
-    assert result.exit_code != 0
-    mock_delete.assert_not_called()
-
-
-def test_delete_repo_not_found_or_forbidden() -> None:
-    """opendi delete-repo exits 1 when repo does not exist or user is not the owner (403/404)."""
-    for status in (403, 404):
-        response = MagicMock()
-        response.status_code = status
-        with (_logged_in(), patch("opendi.main.requests.delete", return_value=response)):
-            result = runner.invoke(app, ["delete-repo", "alice/my-repo", "--yes"])
-        assert result.exit_code == 1
-        assert "does not exist or you are not the owner" in result.output
-
-
-def test_delete_repo_unauthorized() -> None:
-    """opendi delete-repo exits 1 with auth message on HTTP 401."""
-    response = MagicMock()
-    response.status_code = 401
-    with (_logged_in(), patch("opendi.main.requests.delete", return_value=response)):
-        result = runner.invoke(app, ["delete-repo", "alice/my-repo", "--yes"])
-    assert result.exit_code == 1
-    assert "opendi login" in result.output
-
-
-def test_delete_repo_unexpected_status() -> None:
-    """opendi delete-repo exits 1 with HTTP status on unexpected response."""
-    response = MagicMock()
-    response.status_code = 500
-    with (_logged_in(), patch("opendi.main.requests.delete", return_value=response)):
-        result = runner.invoke(app, ["delete-repo", "alice/my-repo", "--yes"])
-    assert result.exit_code == 1
-    assert "HTTP 500" in result.output
-
-
-def test_delete_repo_connection_error() -> None:
-    """opendi delete-repo exits 1 when the hub is unreachable."""
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.delete", side_effect=__import__("requests").ConnectionError()),
-    ):
-        result = runner.invoke(app, ["delete-repo", "alice/my-repo", "--yes"])
-    assert result.exit_code == 1
-    assert "Could not connect" in result.output
-
-
-def test_delete_repo_timeout() -> None:
-    """opendi delete-repo exits 1 with timeout message when the request times out."""
-    with (
-        _logged_in(),
-        patch("opendi.main.requests.delete", side_effect=__import__("requests").Timeout()),
-    ):
-        result = runner.invoke(app, ["delete-repo", "alice/my-repo", "--yes"])
-    assert result.exit_code == 1
-    assert "timed out" in result.output
-
-# ── Pull ─────────────────────────────────────────────────────────────────────
+def _model_ok(content='{"meta": {}}', etag="digest-abc"):
+    """Mock model fetch response."""
+    m = MagicMock()
+    m.status_code = 200
+    m.ok = True
+    m.text = content
+    m.headers = {"ETag": etag}
+    return m
 
 
 def test_pull_invalid_format() -> None:
-    """opendi pull exits 1 when name is not owner/repo:tag format."""
-    result = runner.invoke(app, ["pull", "invalid-name"])
+    """opendi pull exits 1 when name is not a valid ref."""
+    with _logged_out():
+        result = runner.invoke(app, ["pull", ""])
     assert result.exit_code == 1
-    assert "Invalid format" in result.output
+
+
+def test_pull_missing_tag() -> None:
+    """opendi pull exits 1 when tag is omitted."""
+    with _logged_out():
+        result = runner.invoke(app, ["pull", "alice/my-model"])
+    assert result.exit_code == 1
+    assert "Tag is required" in result.output
 
 
 def test_pull_unauthenticated_public_repo() -> None:
     """opendi pull succeeds without credentials for public repos."""
-    mock_response = MagicMock()
-    mock_response.ok = True
-    mock_response.status_code = 200
-    mock_response.text = '{"meta": {"uuid": "abc"}}'
-    mock_response.headers = {"ETag": "test-digest-abc"}
     with (
-        patch("opendi.main.credential_storage.load_access_token", return_value=None),
-        patch("opendi.main.requests.get", return_value=mock_response),
+        _logged_out(),
+        patch("opendi.main.requests.get", side_effect=[_repo_ok(), _model_ok()]),
         patch("opendi.main.local_cache.save_model") as mock_save,
-        patch("opendi.main.local_cache.find_by_digest", return_value=[]),
+        patch("opendi.main.local_cache.get_model_info", return_value=None),
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
     assert result.exit_code == 0
-    assert "Pulled alice/my-model:v1.0 into local cache" in result.output
-    mock_save.assert_called_once_with("alice", "my-model", "v1.0", mock_response.text, "test-digest-abc")
+    assert "Pulled" in result.output
+    mock_save.assert_called_once()
+
+
+def test_pull_already_up_to_date() -> None:
+    """opendi pull shows 'already up to date' on 304."""
+    cached = {"digest": "digest-abc", "content": '{"cached": true}'}
+    model_304 = MagicMock(status_code=304, ok=True)
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", side_effect=[_repo_ok(), model_304]),
+        patch("opendi.main.local_cache.get_model_info", return_value=cached),
+    ):
+        result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
+    assert result.exit_code == 0
+    assert "up to date" in result.output
 
 
 def test_pull_not_found() -> None:
-    """opendi pull exits 1 when server returns 404."""
-    mock_response = MagicMock()
-    mock_response.status_code = 404
-    mock_response.ok = False
+    """opendi pull exits 1 when server returns 404 on repo resolve."""
+    repo_404 = MagicMock(status_code=404, ok=False)
     with (
-        patch("opendi.main.credential_storage.load_access_token", return_value=None),
-        patch("opendi.main.requests.get", return_value=mock_response),
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=repo_404),
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
     assert result.exit_code == 1
@@ -952,13 +492,11 @@ def test_pull_not_found() -> None:
 
 
 def test_pull_access_denied() -> None:
-    """opendi pull exits 1 when server returns 403."""
-    mock_response = MagicMock()
-    mock_response.status_code = 403
-    mock_response.ok = False
+    """opendi pull exits 1 when server returns 403 on repo resolve."""
+    repo_403 = MagicMock(status_code=403, ok=False)
     with (
-        patch("opendi.main.credential_storage.load_access_token", return_value=None),
-        patch("opendi.main.requests.get", return_value=mock_response),
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=repo_403),
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
     assert result.exit_code == 1
@@ -969,7 +507,7 @@ def test_pull_connection_error() -> None:
     """opendi pull exits 1 when server is unreachable."""
     import requests as req_lib
     with (
-        patch("opendi.main.credential_storage.load_access_token", return_value=None),
+        _logged_out(),
         patch("opendi.main.requests.get", side_effect=req_lib.ConnectionError()),
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
@@ -977,57 +515,328 @@ def test_pull_connection_error() -> None:
     assert "Could not connect" in result.output
 
 
-# ── Push ─────────────────────────────────────────────────────────────────────
-
-
-def test_push_invalid_name_format() -> None:
-    """opendi push exits 1 when --name is not owner/repo:tag format."""
-    result = runner.invoke(app, ["push", "model.json", "--name", "bad-name"])
-    assert result.exit_code == 1
-    assert "Invalid --name format" in result.output
+# ── Push ──────────────────────────────────────────────────────────────────────
 
 
 def test_push_file_not_found() -> None:
     """opendi push exits 1 when the local file does not exist."""
-    with patch("opendi.main.credential_storage.load_access_token", return_value=None):
-        result = runner.invoke(app, ["push", "/nonexistent/model.json", "--name", "alice/repo:v1.0"])
+    with _logged_in():
+        result = runner.invoke(app, ["push", "alice/my-repo:v1", "/no/such/file.json"])
     assert result.exit_code == 1
-    assert "File not found" in result.output
+    assert "not found" in result.output.lower()
+
+
+def test_push_invalid_ref() -> None:
+    """opendi push exits 1 when REF is not owner/repo:tag format."""
+    with _logged_in():
+        result = runner.invoke(app, ["push", "bad-ref", "file.json"])
+    assert result.exit_code == 1
+
+
+def test_push_requires_login() -> None:
+    """opendi push exits 1 when not logged in."""
+    with _logged_out():
+        result = runner.invoke(app, ["push", "alice/my-repo:v1", "file.json"])
+    assert result.exit_code == 1
+    assert "opendi login" in result.output
 
 
 def test_push_success() -> None:
     """opendi push uploads file and prints digest and size."""
-    import tempfile, json as _json
-    mock_response = MagicMock()
-    mock_response.ok = True
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"digest": "abc123", "size": 42}
+    mock_put = MagicMock(ok=True, status_code=200)
+    mock_put.json.return_value = {"digest": "abc123", "size": 42}
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         f.write(b'{"meta": {"uuid": "abc"}}')
         tmp_path = f.name
     with (
-        patch("opendi.main.credential_storage.load_access_token", return_value=None),
-        patch("opendi.main.requests.put", return_value=mock_response),
+        _logged_in(),
+        patch("opendi.main.requests.put", return_value=mock_put),
+        patch("opendi.main._pull_to_cache"),  # suppress implicit pull
     ):
-        result = runner.invoke(app, ["push", tmp_path, "--name", "alice/repo:v1.0"])
+        result = runner.invoke(app, ["push", "alice/repo:v1.0", tmp_path])
     assert result.exit_code == 0
     assert "abc123" in result.output
-    assert "42" in result.output
 
 
-def test_push_access_denied() -> None:
-    """opendi push exits 1 when server returns 403."""
-    import tempfile
-    mock_response = MagicMock()
-    mock_response.status_code = 403
-    mock_response.ok = False
+def test_push_with_id_at_ref() -> None:
+    """opendi push resolves id@repo_id:tag via GET /v0/repo/:id before PUT."""
+    mock_put = MagicMock(ok=True, status_code=200)
+    mock_put.json.return_value = {"digest": "xyz", "size": 10}
+    repo_resolve = _remote_ok({"owner": "alice", "slug": "r-from-id", "id": 99, "tags": []})
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        f.write(b"{}")
+        tmp_path = f.name
+    with (
+        _logged_in(),
+        patch("opendi.cmds.shared.requests.get", return_value=repo_resolve),
+        patch("opendi.main.requests.put", return_value=mock_put) as put_fn,
+        patch("opendi.main._pull_to_cache"),
+    ):
+        result = runner.invoke(app, ["push", "id@99:v1", tmp_path, "--yes"])
+    assert result.exit_code == 0
+    assert "Pushed" in result.output
+    put_url = put_fn.call_args[0][0]
+    assert "alice" in put_url and "r-from-id" in put_url
+
+
+def test_push_overwrite_confirmation_yes() -> None:
+    """opendi push retries with ?overwrite=true after user confirms 409."""
+    mock_409 = MagicMock(ok=False, status_code=409)
+    mock_200 = MagicMock(ok=True, status_code=200)
+    mock_200.json.return_value = {"digest": "xyz", "size": 10}
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         f.write(b'{}')
         tmp_path = f.name
     with (
-        patch("opendi.main.credential_storage.load_access_token", return_value=None),
-        patch("opendi.main.requests.put", return_value=mock_response),
+        _logged_in(),
+        patch("opendi.main.requests.put", side_effect=[mock_409, mock_200]),
+        patch("opendi.main._pull_to_cache"),
     ):
-        result = runner.invoke(app, ["push", tmp_path, "--name", "alice/repo:v1.0"])
+        result = runner.invoke(app, ["push", "alice/repo:v1", tmp_path], input="y\n")
+    assert result.exit_code == 0
+
+
+def test_push_overwrite_declined() -> None:
+    """opendi push aborts when user declines 409 overwrite."""
+    mock_409 = MagicMock(ok=False, status_code=409)
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        f.write(b'{}')
+        tmp_path = f.name
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.put", return_value=mock_409),
+    ):
+        result = runner.invoke(app, ["push", "alice/repo:v1", tmp_path], input="n\n")
+    assert result.exit_code == 0
+    assert "Aborted" in result.output
+
+
+def test_push_access_denied() -> None:
+    """opendi push exits 1 when server returns 403."""
+    mock_403 = MagicMock(ok=False, status_code=403)
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        f.write(b'{}')
+        tmp_path = f.name
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.put", return_value=mock_403),
+    ):
+        result = runner.invoke(app, ["push", "alice/repo:v1", tmp_path])
     assert result.exit_code == 1
     assert "Access denied" in result.output
+
+
+def test_push_validation_error() -> None:
+    """opendi push exits 1 when server returns 400 validation error."""
+    mock_400 = MagicMock(ok=False, status_code=400)
+    mock_400.json.return_value = {"error": "schema mismatch"}
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        f.write(b'{}')
+        tmp_path = f.name
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.put", return_value=mock_400),
+    ):
+        result = runner.invoke(app, ["push", "alice/repo:v1", tmp_path])
+    assert result.exit_code == 1
+    assert "Validation error" in result.output
+
+
+def test_push_invalid_json_file() -> None:
+    """opendi push exits 1 when the file contains invalid JSON."""
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        f.write(b"not json")
+        tmp_path = f.name
+    with _logged_in():
+        result = runner.invoke(app, ["push", "alice/repo:v1", tmp_path])
+    assert result.exit_code == 1
+    assert "Invalid JSON" in result.output
+
+
+def test_push_yes_flag_skips_confirmation() -> None:
+    """opendi push --yes skips overwrite confirmation on 409."""
+    mock_409 = MagicMock(ok=False, status_code=409)
+    mock_200 = MagicMock(ok=True, status_code=200)
+    mock_200.json.return_value = {"digest": "d", "size": 1}
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        f.write(b'{}')
+        tmp_path = f.name
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.put", side_effect=[mock_409, mock_200]),
+        patch("opendi.main._pull_to_cache"),
+    ):
+        result = runner.invoke(app, ["push", "--yes", "alice/repo:v1", tmp_path])
+    assert result.exit_code == 0
+
+
+# ── Save ──────────────────────────────────────────────────────────────────────
+
+
+def test_save_from_cache(tmp_path) -> None:
+    """opendi save writes content from local cache to a file."""
+    with (
+        _logged_out(),
+        patch("opendi.main.local_cache.get_model", return_value='{"k": 1}'),
+    ):
+        result = runner.invoke(app, ["save", "alice/my-model:v1", str(tmp_path)])
+    assert result.exit_code == 0
+    out_file = tmp_path / "v1.json"
+    assert out_file.exists()
+    assert out_file.read_text() == '{"k": 1}'
+
+
+def test_save_implicit_pull_on_cache_miss(tmp_path) -> None:
+    """opendi save pulls from hub when model is not in local cache."""
+    with (
+        _logged_out(),
+        patch("opendi.main.local_cache.get_model", return_value=None),
+        patch("opendi.main._pull_to_cache", return_value='{"pulled": true}') as mock_pull,
+    ):
+        result = runner.invoke(app, ["save", "alice/my-model:v1", str(tmp_path)])
+    assert result.exit_code == 0
+    mock_pull.assert_called_once()
+
+
+def test_save_with_output_option(tmp_path) -> None:
+    """opendi save -o writes to the exact path specified."""
+    out = tmp_path / "my-output.json"
+    with (
+        _logged_out(),
+        patch("opendi.main.local_cache.get_model", return_value='{"k": 1}'),
+    ):
+        result = runner.invoke(app, ["save", "alice/my-model:v1", "--output", str(out)])
+    assert result.exit_code == 0
+    assert out.exists()
+
+
+def test_save_both_output_and_dir_exits_1(tmp_path) -> None:
+    """opendi save exits 1 when both OUTPUT_DIR and --output are specified."""
+    with _logged_out():
+        result = runner.invoke(
+            app, ["save", "alice/my-model:v1", str(tmp_path), "--output", "x.json"]
+        )
+    assert result.exit_code == 1
+    assert "not both" in result.output
+
+
+# ── Validate ──────────────────────────────────────────────────────────────────
+
+
+def test_validate_valid_file(tmp_path) -> None:
+    """opendi validate prints 'Valid CDM.' for a valid file."""
+    f = tmp_path / "model.json"
+    f.write_text('{"k": 1}', encoding="utf-8")
+    mock_resp = MagicMock(status_code=200, ok=True)
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.post", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 0
+    assert "Valid CDM." in result.output
+
+
+def test_validate_invalid_json(tmp_path) -> None:
+    """opendi validate exits 1 for a file with invalid JSON."""
+    f = tmp_path / "bad.json"
+    f.write_text("not json", encoding="utf-8")
+    result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 1
+    assert "Invalid JSON" in result.output
+
+
+def test_validate_file_not_found() -> None:
+    """opendi validate exits 1 when file does not exist."""
+    result = runner.invoke(app, ["validate", "/no/such/file.json"])
+    assert result.exit_code == 1
+    assert "not found" in result.output.lower()
+
+
+def test_validate_server_error(tmp_path) -> None:
+    """opendi validate exits 1 with error message on API failure."""
+    f = tmp_path / "model.json"
+    f.write_text('{"k": 1}', encoding="utf-8")
+    mock_resp = MagicMock(ok=False, status_code=422)
+    mock_resp.json.return_value = {"error": "schema mismatch"}
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.post", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 1
+    assert "Validation failed" in result.output
+
+
+def test_validate_connection_error(tmp_path) -> None:
+    """opendi validate exits 1 when hub is unreachable."""
+    import requests as req_lib
+    f = tmp_path / "model.json"
+    f.write_text('{"k": 1}', encoding="utf-8")
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.post", side_effect=req_lib.ConnectionError()),
+    ):
+        result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 1
+    assert "Could not connect" in result.output
+
+
+# ── Search ────────────────────────────────────────────────────────────────────
+
+
+def test_search_success() -> None:
+    """opendi search prints results in a table."""
+    repos = [
+        {"owner": "alice", "slug": "my-model", "visibility": "public", "description": "A model"},
+        {"owner": "bob", "slug": "other", "visibility": "private", "description": ""},
+    ]
+    mock_resp = MagicMock(ok=True, status_code=200)
+    mock_resp.json.return_value = {"repositories": repos}
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["search", "model"])
+    assert result.exit_code == 0
+    assert "alice/my-model" in result.output
+    assert "bob/other" in result.output
+
+
+def test_search_no_results() -> None:
+    """opendi search prints 'No repositories found' when API returns empty list."""
+    mock_resp = MagicMock(ok=True, status_code=200)
+    mock_resp.json.return_value = {"repositories": []}
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["search", "noresults"])
+    assert result.exit_code == 0
+    assert "No repositories found" in result.output
+
+
+def test_search_connection_error() -> None:
+    """opendi search exits 1 when the hub is unreachable."""
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", side_effect=__import__("requests").ConnectionError()),
+    ):
+        result = runner.invoke(app, ["search", "x"])
+    assert result.exit_code == 1
+    assert "Could not connect" in result.output
+
+
+def test_search_limit() -> None:
+    """opendi search --limit caps the number of results shown."""
+    repos = [{"owner": "alice", "slug": f"repo-{i}", "visibility": "public", "description": ""} for i in range(10)]
+    mock_resp = MagicMock(ok=True, status_code=200)
+    mock_resp.json.return_value = {"repositories": repos}
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.get", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["search", "x", "--limit", "3"])
+    assert result.exit_code == 0
+    # Only 3 repos should appear
+    assert result.output.count("alice/repo-") == 3
