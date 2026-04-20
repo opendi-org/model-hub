@@ -80,6 +80,8 @@ def test_login_success() -> None:
     ):
         result = runner.invoke(app, ["login"])
     assert result.exit_code == 0
+    assert "Please sign in using your browser" in result.output
+    assert "this link" in result.output
     assert "Login successful" in result.output
     assert "alice" in result.output
     mock_store.assert_called_once_with(_TOKEN)
@@ -97,6 +99,7 @@ def test_login_success_no_username_fallback() -> None:
     ):
         result = runner.invoke(app, ["login"])
     assert result.exit_code == 0
+    assert "this link" in result.output
     assert "Login successful." in result.output
 
 
@@ -156,6 +159,7 @@ def test_whoami_not_logged_in() -> None:
         result = runner.invoke(app, ["whoami"])
     assert result.exit_code == 1
     assert "Not logged in" in result.output
+    assert "opendi login" in result.output
 
 
 def test_whoami_shows_username() -> None:
@@ -190,6 +194,7 @@ def test_whoami_session_expired() -> None:
         result = runner.invoke(app, ["whoami"])
     assert result.exit_code == 1
     assert "Session expired" in result.output
+    assert "opendi login" in result.output
     mock_delete.assert_called_once()
 
 
@@ -298,7 +303,7 @@ def test_diff_remote_403() -> None:
     ):
         result = runner.invoke(app, ["diff", "alice/repo:v1", "alice/repo:v2"])
     assert result.exit_code == 1
-    assert "Not authorised" in result.output
+    assert "Not authorized" in result.output
 
 
 def test_diff_remote_404_tag_not_found() -> None:
@@ -608,7 +613,7 @@ def test_push_overwrite_declined() -> None:
     ):
         result = runner.invoke(app, ["push", "alice/repo:v1", tmp_path], input="n\n")
     assert result.exit_code == 0
-    assert "Aborted" in result.output
+    assert "Operation canceled" in result.output
 
 
 def test_push_access_denied() -> None:
@@ -623,7 +628,7 @@ def test_push_access_denied() -> None:
     ):
         result = runner.invoke(app, ["push", "alice/repo:v1", tmp_path])
     assert result.exit_code == 1
-    assert "Access denied" in result.output
+    assert "Not authorized" in result.output
 
 
 def test_push_validation_error() -> None:
@@ -766,6 +771,34 @@ def test_validate_server_error(tmp_path) -> None:
         result = runner.invoke(app, ["validate", str(f)])
     assert result.exit_code == 1
     assert "Validation failed" in result.output
+
+
+def test_validate_server_error_with_details(tmp_path) -> None:
+    """opendi validate prints structured issue details (path + line/column) when provided."""
+    f = tmp_path / "model.json"
+    f.write_text('{"k": 1}', encoding="utf-8")
+    mock_resp = MagicMock(ok=False, status_code=400)
+    mock_resp.json.return_value = {
+        "error": "CDM validation failed (1 issue).",
+        "details": [
+            {
+                "phase": "schema",
+                "instancePath": "/meta/uuid",
+                "message": "not valid uuid",
+                "line": 3,
+                "column": 12,
+            }
+        ],
+    }
+    with (
+        _logged_out(),
+        patch("opendi.main.requests.post", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 1
+    assert "Validation failed" in result.output
+    assert "/meta/uuid" in result.output
+    assert "line 3, col 12" in result.output
 
 
 def test_validate_connection_error(tmp_path) -> None:

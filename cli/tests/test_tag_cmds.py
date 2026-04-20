@@ -74,7 +74,7 @@ def test_add_tag_overwrite_declined() -> None:
     ):
         result = runner.invoke(app, ["add", "tag", "alice/my-model:v1", "stable"], input="n\n")
     assert result.exit_code == 0
-    assert "Aborted" in result.output
+    assert "Operation canceled" in result.output
 
 
 def test_add_tag_yes_flag_skips_overwrite_prompt() -> None:
@@ -116,7 +116,7 @@ def test_add_tag_access_denied() -> None:
     ):
         result = runner.invoke(app, ["add", "tag", "alice/my-model:v1", "stable"])
     assert result.exit_code == 1
-    assert "Access denied" in result.output
+    assert "Not authorized" in result.output
 
 
 def test_add_tag_invalid_ref() -> None:

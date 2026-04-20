@@ -10,10 +10,17 @@ import base64
 import json
 import logging
 import os
+import re
+import shutil
+import textwrap
 from typing import NamedTuple
 
 import requests
 import typer
+from rich import box
+from rich.console import Console, RenderableType
+from rich.table import Table
+from rich.text import Text
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +58,16 @@ def response_error(response: requests.Response) -> str:
     return response.text or ""
 
 
+def echo_opendi_login_hint(prefix: str, suffix: str) -> None:
+    """Print *prefix* + styled ``opendi login`` + *suffix* to stderr (no backticks)."""
+    console = Console(stderr=True, highlight=False)
+    console.print(Text.assemble(prefix, ("opendi login", "bold cyan"), suffix))
+
+
 def require_access_token() -> str:
     """Return the current access token or exit with a helpful error."""
     if not current_token:
-        typer.echo("Not logged in. Please run `opendi login` first.", err=True)
+        echo_opendi_login_hint("Not logged in. Run ", " to sign in to the hub.")
         raise typer.Exit(1)
     return current_token
 
@@ -279,11 +292,30 @@ def fmt_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
+# ANSI SGR sequences (e.g. from typer.style) must not count toward column width.
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _visible_text_width(s: str) -> int:
+    """Visible character count for alignment (strips ANSI SGR codes)."""
+    if not s:
+        return 0
+    return len(_ANSI_ESCAPE_RE.sub("", s))
+
+
+def _pad_visible_left(s: str, width: int) -> str:
+    """Left-align *s* in a field of *width* visible characters (ANSI-aware)."""
+    n = _visible_text_width(s)
+    if n >= width:
+        return s
+    return s + " " * (width - n)
+
+
 def col_widths(rows: list[list[str]]) -> list[int]:
-    """Return max column width for each column across all rows."""
+    """Return max visible column width for each column across all rows."""
     if not rows:
         return []
-    return [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
+    return [max(_visible_text_width(r[i]) for r in rows) for i in range(len(rows[0]))]
 
 
 def print_table(
@@ -296,6 +328,8 @@ def print_table(
 
     col_colors  — maps column index to a typer color string
     dim_rows    — parallel list to rows; True means print row in dim style
+
+    Cells may contain ANSI styles (e.g. ``typer.style``); padding uses visible width.
     """
     all_rows = [headers] + rows
     widths = col_widths(all_rows)
@@ -308,7 +342,7 @@ def print_table(
     for row_idx, row in enumerate(rows):
         parts = []
         for i, cell in enumerate(row):
-            padded = cell.ljust(widths[i])
+            padded = _pad_visible_left(cell, widths[i])
             if col_colors and i in col_colors:
                 padded = typer.style(padded, fg=col_colors[i])
             parts.append(padded)
@@ -316,3 +350,91 @@ def print_table(
         if dim_rows and dim_rows[row_idx]:
             line = typer.style(line, dim=True)
         typer.echo(line)
+
+
+def repo_table_name_style(me: str | None, repo_owner: str, vis: str) -> str:
+    """Rich style string for repository column (matches list/search table conventions)."""
+    if me and repo_owner == me:
+        return "bold green"
+    if vis == "public":
+        return "white"
+    return ""
+
+
+def terminal_columns(*, default: int = 80, minimum: int = 52) -> int:
+    """Best-effort terminal width for wrapping tables and prose."""
+    try:
+        cols = shutil.get_terminal_size(fallback=(default, 24)).columns
+    except OSError:
+        cols = default
+    return max(int(cols), minimum)
+
+
+def wrap_text_block(text: str, width: int) -> list[str]:
+    """Split *text* into lines that fit *width*, keeping blank-line paragraph gaps."""
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    width = max(int(width), 20)
+    lines_out: list[str] = []
+    paragraphs = raw.split("\n\n")
+    last_i = len(paragraphs) - 1
+    for i, para in enumerate(paragraphs):
+        chunk = " ".join(s.strip() for s in para.splitlines() if s.strip())
+        if not chunk:
+            continue
+        lines_out.extend(
+            textwrap.wrap(
+                chunk,
+                width=width,
+                break_long_words=True,
+                break_on_hyphens=True,
+            )
+        )
+        if i < last_i and lines_out and lines_out[-1] != "":
+            lines_out.append("")
+    return lines_out
+
+
+def print_repo_table(headers: list[str], rows: list[list[RenderableType]]) -> None:
+    """Print a hub repo table; the last column wraps (description)."""
+    ncols = len(headers)
+    if ncols not in (3, 4):
+        raise ValueError("print_repo_table supports 3- or 4-column layouts only.")
+    if not rows:
+        return
+
+    width = terminal_columns()
+    console = Console(width=width, highlight=False, soft_wrap=False)
+    table = Table(
+        show_header=True,
+        header_style="bold",
+        box=box.SIMPLE,
+        pad_edge=False,
+        expand=False,
+        width=width,
+    )
+
+    if ncols == 4:
+        table.add_column(
+            headers[0],
+            overflow="ellipsis",
+            no_wrap=True,
+            max_width=max(width // 3, 18),
+        )
+        table.add_column(headers[1], overflow="ellipsis", no_wrap=True, max_width=11)
+        table.add_column(headers[2], overflow="ellipsis", no_wrap=True, max_width=11)
+        table.add_column(headers[3], overflow="fold", ratio=1)
+    else:
+        table.add_column(
+            headers[0],
+            overflow="ellipsis",
+            no_wrap=True,
+            max_width=max(width // 3, 18),
+        )
+        table.add_column(headers[1], overflow="ellipsis", no_wrap=True, max_width=11)
+        table.add_column(headers[2], overflow="fold", ratio=1)
+
+    for row in rows:
+        table.add_row(*row)
+    console.print(table)

@@ -11,11 +11,27 @@ from typing import Optional
 
 import requests
 import typer
+from rich.console import Console
+from rich.text import Text
 
 from opendi import auth, credential_storage, local_cache, log
 from opendi.cmds import repo_cmds, shared, tag_cmds
 
 logger = logging.getLogger(__name__)
+
+
+def _print_login_browser_prompt(absolute_url: str) -> None:
+    """Prompt for browser sign-in using a terminal hyperlink (no raw URL on screen)."""
+    console = Console(highlight=False)
+    console.print(
+        Text.assemble(
+            "Please sign in using your browser. ",
+            "If the login page did not open automatically, open ",
+            ("this link", f"link {absolute_url}"),
+            " to continue.",
+        )
+    )
+
 
 # ── Typer apps ────────────────────────────────────────────────────────────────
 
@@ -25,6 +41,124 @@ app = typer.Typer(
     help="OpenDI Model Hub CLI for discovering and managing CDM models.",
     rich_markup_mode="markdown",
 )
+
+
+# ── Shared helpers (also used by domain modules via shared.py) ─────────────────
+
+
+def _api_base_url() -> str:
+    return shared.api_base_url()
+
+
+def _auth_headers(content_type: str | None = None) -> dict[str, str]:
+    return shared.auth_headers(content_type)
+
+
+def _response_error(response: requests.Response) -> str:
+    return shared.response_error(response)
+
+
+def _require_access_token() -> str:
+    return shared.require_access_token()
+
+
+# ── App callback ───────────────────────────────────────────────────────────────
+
+
+@app.callback(invoke_without_command=True)
+def main(
+    _ctx: typer.Context,
+    debug: bool = typer.Option(
+        False,
+        "--debug/--no-debug",
+        help="Enable debug logging",
+        is_eager=True,
+        hidden=True,
+    ),
+) -> None:
+    """[bold]OpenDI Model Hub CLI[/bold] — cross-platform client for the OpenDI hub."""
+    log.configure_logging(logging.DEBUG if debug else logging.WARNING)
+    shared.current_token = credential_storage.load_access_token()
+
+
+# ── Auth commands (registered first so help lists Authentication before other panels) ─
+
+
+@app.command(rich_help_panel="Authentication")
+def login() -> None:
+    """Log in to the OpenDI hub (browser-assisted device flow)."""
+    api_base = _api_base_url()
+    try:
+        if shared.current_token:
+            try:
+                me = auth.get_current_user(api_base, shared.current_token)
+                username = me.get("username")
+                typer.echo(
+                    f"Already logged in as "
+                    f"{typer.style(username or 'you', fg=typer.colors.GREEN, bold=True)}."
+                )
+                return
+            except Exception:
+                credential_storage.delete_access_token()
+                shared.current_token = None
+
+        code, login_url, expires_in = auth.start_cli_login(api_base)
+        absolute_url = auth.open_login_url(api_base, login_url)
+        _print_login_browser_prompt(absolute_url)
+        token = auth.poll_cli_token(api_base, code, expires_in)
+        credential_storage.store_access_token(token)
+        shared.current_token = token
+        me = auth.get_current_user(api_base, token)
+        username = me.get("username")
+        if username:
+            typer.echo(
+                f"Login successful. Logged in as "
+                f"{typer.style(username, fg=typer.colors.GREEN, bold=True)}."
+            )
+        else:
+            typer.echo("Login successful.")
+    except KeyboardInterrupt:
+        typer.echo("Login cancelled.", err=True)
+        raise typer.Exit(1)
+    except TimeoutError:
+        typer.echo("Login timed out. Please try again.", err=True)
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"Login failed: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command(rich_help_panel="Authentication")
+def whoami() -> None:
+    """Show the currently logged-in account (verifies token with the hub)."""
+    api_base = _api_base_url()
+    token = _require_access_token()
+    try:
+        me = auth.get_current_user(api_base, token)
+    except Exception:
+        credential_storage.delete_access_token()
+        shared.current_token = None
+        shared.echo_opendi_login_hint("Session expired. Run ", " to sign in again.")
+        raise typer.Exit(1)
+    username = me.get("username")
+    email = me.get("email")
+    if username:
+        typer.echo(typer.style(username, fg=typer.colors.GREEN, bold=True))
+    if email:
+        typer.echo(email)
+    if not username and not email:
+        typer.echo("Logged in.")
+
+
+@app.command(rich_help_panel="Authentication")
+def logout() -> None:
+    """Log out from the OpenDI hub (clears stored credentials)."""
+    if credential_storage.delete_access_token():
+        shared.current_token = None
+        typer.echo("Logged out.")
+    else:
+        typer.echo("Not logged in.")
+
 
 # Verb subgroups — assembled from domain module functions
 _create_app = typer.Typer(
@@ -60,25 +194,6 @@ app.add_typer(_list_app, name="list", rich_help_panel="Resource Commands")
 app.add_typer(_add_app, name="add", rich_help_panel="Resource Commands")
 
 app.command(rich_help_panel="Resource Commands")(repo_cmds.inspect)
-
-
-# ── Shared helpers (also used by domain modules via shared.py) ─────────────────
-
-
-def _api_base_url() -> str:
-    return shared.api_base_url()
-
-
-def _auth_headers(content_type: str | None = None) -> dict[str, str]:
-    return shared.auth_headers(content_type)
-
-
-def _response_error(response: requests.Response) -> str:
-    return shared.response_error(response)
-
-
-def _require_access_token() -> str:
-    return shared.require_access_token()
 
 
 # ── Table helpers (kept for diff/validate output) ──────────────────────────────
@@ -122,10 +237,13 @@ def _pull_to_cache(
         typer.echo(f"Repository {owner}/{repo_slug} not found.", err=True)
         raise typer.Exit(1)
     if repo_resp.status_code in (401, 403):
-        typer.echo("Access denied. Run `opendi login` if this is a private repository.", err=True)
+        shared.echo_opendi_login_hint(
+            "Access denied. Run ",
+            " if this is a private repository.",
+        )
         raise typer.Exit(1)
     if not repo_resp.ok:
-        typer.echo(f"Server error (HTTP {repo_resp.status_code}).", err=True)
+        typer.echo(f"Request failed (HTTP {repo_resp.status_code}).", err=True)
         raise typer.Exit(1)
 
     repo_data = repo_resp.json()
@@ -169,10 +287,13 @@ def _pull_to_cache(
         typer.echo(f"Model not found: {ref}", err=True)
         raise typer.Exit(1)
     if model_resp.status_code in (401, 403):
-        typer.echo("Access denied. Run `opendi login` if this is a private repository.", err=True)
+        shared.echo_opendi_login_hint(
+            "Access denied. Run ",
+            " if this is a private repository.",
+        )
         raise typer.Exit(1)
     if not model_resp.ok:
-        typer.echo(f"Server error (HTTP {model_resp.status_code}).", err=True)
+        typer.echo(f"Request failed (HTTP {model_resp.status_code}).", err=True)
         raise typer.Exit(1)
 
     content = model_resp.text
@@ -217,7 +338,7 @@ def _fetch_remote_model_json(api_base: str, owner: str, slug: str, tag: str) -> 
     err = _response_error(response)
     el = err.lower()
     if response.status_code == 401:
-        typer.echo("Not authorised. Run `opendi login` to sign in again.", err=True)
+        shared.echo_opendi_login_hint("Not authorized. Run ", " to sign in again.")
         raise typer.Exit(1)
     if response.status_code == 404:
         if "tag not found" in el:
@@ -225,10 +346,10 @@ def _fetch_remote_model_json(api_base: str, owner: str, slug: str, tag: str) -> 
         elif "repository not found" in el:
             typer.echo(f"Repository not found: {owner}/{slug}", err=True)
         else:
-            typer.echo("Repository not found or access denied.", err=True)
+            typer.echo("Repository not found or you do not have access.", err=True)
         raise typer.Exit(1)
     if response.status_code == 403:
-        typer.echo("Not authorised to read this model.", err=True)
+        typer.echo("Not authorized to read this model.", err=True)
         raise typer.Exit(1)
     typer.echo(f"Failed to load model (HTTP {response.status_code}).", err=True)
     raise typer.Exit(1)
@@ -278,98 +399,6 @@ def _load_model_side(spec: str, api_base: str) -> dict:
     return _fetch_remote_model_json(api_base, owner, slug, parsed.tag)
 
 
-# ── App callback ───────────────────────────────────────────────────────────────
-
-
-@app.callback(invoke_without_command=True)
-def main(
-    _ctx: typer.Context,
-    debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable debug logging", is_eager=True),
-) -> None:
-    """[bold]OpenDI Model Hub CLI[/bold] — cross-platform client for the OpenDI hub."""
-    log.configure_logging(logging.DEBUG if debug else logging.WARNING)
-    shared.current_token = credential_storage.load_access_token()
-
-
-# ── Auth commands ──────────────────────────────────────────────────────────────
-
-
-@app.command(rich_help_panel="Authentication")
-def login() -> None:
-    """Log in to the OpenDI hub (browser-assisted device flow)."""
-    api_base = _api_base_url()
-    try:
-        if shared.current_token:
-            try:
-                me = auth.get_current_user(api_base, shared.current_token)
-                username = me.get("username")
-                typer.echo(
-                    f"Already logged in as "
-                    f"{typer.style(username or 'you', fg=typer.colors.GREEN, bold=True)}."
-                )
-                return
-            except Exception:
-                credential_storage.delete_access_token()
-                shared.current_token = None
-
-        code, login_url, expires_in = auth.start_cli_login(api_base)
-        absolute_url = auth.open_login_url(api_base, login_url)
-        typer.echo(f"Approve login in your browser:\n{absolute_url}")
-        token = auth.poll_cli_token(api_base, code, expires_in)
-        credential_storage.store_access_token(token)
-        shared.current_token = token
-        me = auth.get_current_user(api_base, token)
-        username = me.get("username")
-        if username:
-            typer.echo(
-                f"Login successful. Logged in as "
-                f"{typer.style(username, fg=typer.colors.GREEN, bold=True)}."
-            )
-        else:
-            typer.echo("Login successful.")
-    except KeyboardInterrupt:
-        typer.echo("Login cancelled.", err=True)
-        raise typer.Exit(1)
-    except TimeoutError:
-        typer.echo("Login timed out. Please try again.", err=True)
-        raise typer.Exit(1)
-    except Exception as e:
-        typer.echo(f"Login failed: {e}", err=True)
-        raise typer.Exit(1)
-
-
-@app.command(rich_help_panel="Authentication")
-def whoami() -> None:
-    """Show the currently logged-in account (verifies token with the hub)."""
-    api_base = _api_base_url()
-    token = _require_access_token()
-    try:
-        me = auth.get_current_user(api_base, token)
-    except Exception:
-        credential_storage.delete_access_token()
-        shared.current_token = None
-        typer.echo("Session expired. Run `opendi login` to sign in again.", err=True)
-        raise typer.Exit(1)
-    username = me.get("username")
-    email = me.get("email")
-    if username:
-        typer.echo(typer.style(username, fg=typer.colors.GREEN, bold=True))
-    if email:
-        typer.echo(email)
-    if not username and not email:
-        typer.echo("Logged in.")
-
-
-@app.command(rich_help_panel="Authentication")
-def logout() -> None:
-    """Log out from the OpenDI hub (clears stored credentials)."""
-    if credential_storage.delete_access_token():
-        shared.current_token = None
-        typer.echo("Logged out.")
-    else:
-        typer.echo("Not logged in.")
-
-
 # ── Hub discovery ──────────────────────────────────────────────────────────────
 
 
@@ -414,26 +443,20 @@ def search(
 
     me = shared.extract_username_from_token(shared.current_token or "")
     headers_row = ["REPOSITORY", "VISIBILITY", "DESCRIPTION"]
-    rows = []
+    rich_rows: list[list[Text]] = []
 
     for repo in repos:
         repo_owner = repo.get("owner", "")
         slug = repo.get("slug", "")
         vis = repo.get("visibility", "")
-        desc = repo.get("description", "")
+        desc = repo.get("description", "") or ""
+        full_name = f"{repo_owner}/{slug}"
+        name_style = shared.repo_table_name_style(me, repo_owner, vis)
+        name_cell = Text(full_name, style=name_style) if name_style else Text(full_name)
+        vis_cell = Text(vis, style="yellow" if vis == "public" else "magenta")
+        rich_rows.append([name_cell, vis_cell, Text(desc)])
 
-        if me and repo_owner == me:
-            name = typer.style(f"{repo_owner}/{slug}", fg=typer.colors.GREEN, bold=True)
-        else:
-            name = f"{repo_owner}/{slug}"
-
-        vis_colored = typer.style(
-            vis,
-            fg=typer.colors.YELLOW if vis == "public" else typer.colors.MAGENTA,
-        )
-        rows.append([name, vis_colored, desc])
-
-    shared.print_table(headers_row, rows)
+    shared.print_repo_table(headers_row, rich_rows)
 
 
 # ── Core model operations ──────────────────────────────────────────────────────
@@ -529,11 +552,11 @@ def push(
     if response.status_code == 409:
         if not yes:
             confirmed = typer.confirm(
-                f"Tag :{tag} already exists in {owner}/{repo_slug}. Overwrite?",
+                f"Tag {tag} already exists in {owner}/{repo_slug}. Overwrite?",
                 default=False,
             )
             if not confirmed:
-                typer.echo("Aborted.")
+                typer.echo("Operation canceled.")
                 raise typer.Exit(0)
         response = _do_put(overwrite=True)
 
@@ -554,7 +577,7 @@ def push(
             ).strip().lower()
 
         if choice not in ("public", "private"):
-            typer.echo("Aborted.")
+            typer.echo("Operation canceled.")
             raise typer.Exit(1)
 
         try:
@@ -576,7 +599,7 @@ def push(
             raise typer.Exit(1)
 
         typer.echo(
-            typer.style("Created", fg=typer.colors.GREEN)
+            typer.style("Created", fg=typer.colors.GREEN, bold=True)
             + f" {owner}/{repo_slug} [{choice}]."
         )
         response = _do_put()
@@ -589,10 +612,10 @@ def push(
         )
         raise typer.Exit(1)
     if response.status_code in (401, 403):
-        typer.echo("Access denied. You need write access to this repository.", err=True)
+        typer.echo("Not authorized. You need write access to this repository.", err=True)
         raise typer.Exit(1)
     if not response.ok:
-        typer.echo(f"Server error (HTTP {response.status_code}): {response.text}", err=True)
+        typer.echo(f"Request failed (HTTP {response.status_code}): {response.text}", err=True)
         raise typer.Exit(1)
 
     # Success
@@ -698,16 +721,33 @@ def diff(
 
     a = json.dumps(left_obj, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     b = json.dumps(right_obj, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
+    # Default lineterm="\n" is required: lineterm="" glues ---/+++ header lines with no
+    # newline between them, which breaks layout (especially noticeable in PowerShell).
     out = "".join(
         difflib.unified_diff(
             a.splitlines(keepends=True),
             b.splitlines(keepends=True),
             fromfile=left,
             tofile=right,
-            lineterm="",
         )
     )
-    typer.echo(out)
+    typer.echo(out, nl=not out.endswith("\n"))
+
+
+def _format_validation_issue(issue: dict) -> str:
+    path = str(issue.get("instancePath") or "/")
+    msg = str(issue.get("message") or "Validation error")
+    phase = str(issue.get("phase") or "")
+    line = issue.get("line")
+    col = issue.get("column")
+    loc = ""
+    if isinstance(line, int) and line > 0:
+        if isinstance(col, int) and col > 0:
+            loc = f"line {line}, col {col} — "
+        else:
+            loc = f"line {line} — "
+    phase_prefix = f"[{phase}] " if phase else ""
+    return f"- {phase_prefix}{loc}{path}: {msg}"
 
 
 @app.command(rich_help_panel="Model Operations")
@@ -758,11 +798,26 @@ def validate(
         typer.echo(typer.style("Valid CDM.", fg=typer.colors.GREEN, bold=True))
         return
 
-    error = _response_error(response)
+    payload: dict = {}
+    try:
+        maybe = response.json()
+        if isinstance(maybe, dict):
+            payload = maybe
+    except ValueError:
+        payload = {}
+
+    error = str(payload.get("error") or response.text or f"HTTP {response.status_code}")
+    details = payload.get("details")
     typer.echo(
         typer.style("Validation failed:", fg=typer.colors.RED, bold=True) + f" {error}",
         err=True,
     )
+    if isinstance(details, list) and details:
+        for issue in details[:50]:
+            if isinstance(issue, dict):
+                typer.echo(_format_validation_issue(issue), err=True)
+        if len(details) > 50:
+            typer.echo(f"... and {len(details) - 50} more issue(s).", err=True)
     raise typer.Exit(1)
 
 

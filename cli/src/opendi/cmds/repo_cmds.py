@@ -7,6 +7,7 @@ from typing import Optional
 
 import requests
 import typer
+from rich.text import Text
 
 from opendi import local_cache
 from opendi.cmds import shared
@@ -46,7 +47,10 @@ def _fetch_repo(api_base: str, parsed: shared.ParsedRef) -> dict:
         raise typer.Exit(1)
 
     if response.status_code in (401, 403):
-        typer.echo("Access denied. Run `opendi login` if this is a private repository.", err=True)
+        shared.echo_opendi_login_hint(
+            "Access denied. Run ",
+            " if this is a private repository.",
+        )
         raise typer.Exit(1)
     if response.status_code == 404:
         ref_hint = (
@@ -57,36 +61,124 @@ def _fetch_repo(api_base: str, parsed: shared.ParsedRef) -> dict:
         typer.echo(f"Repository {ref_hint} not found.", err=True)
         raise typer.Exit(1)
     if not response.ok:
-        typer.echo(f"Server error (HTTP {response.status_code}).", err=True)
+        typer.echo(f"Request failed (HTTP {response.status_code}).", err=True)
         raise typer.Exit(1)
 
     return response.json()
 
 
+def _fmt_repo_timestamp(value: object) -> str:
+    """Format an API ISO-8601 timestamp for display."""
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if not s:
+        return ""
+    if len(s) >= 19 and s[10] == "T":
+        return s[:19].replace("T", " ") + " UTC"
+    return s[:10] if len(s) >= 10 else s
+
+
+def _lineage_ref_str(ref: dict) -> str:
+    """Single-line owner/slug plus hub id for a lineage ref."""
+    owner = ref.get("owner") or ""
+    slug = ref.get("slug") or ""
+    rid = ref.get("id")
+    label = f"{owner}/{slug}".strip("/")
+    if rid is not None:
+        return f"{label}  id@{rid}" if label else f"id@{rid}"
+    return label or "—"
+
+
 def _print_repo_overview(repo: dict, *, verbose: bool) -> None:
-    """Print repository summary and tag list."""
-    tags = repo.get("tags", [])
+    """Print repository summary, optional collaborators/lineage (verbose), and tags."""
+    tags = repo.get("tags") or []
     visibility = repo.get("visibility", "")
     description = repo.get("description", "")
-    updated = (repo.get("updatedAt") or "")[:10]
+    updated_short = (repo.get("updatedAt") or "")[:10]
 
     owner_display = repo.get("owner", "")
     slug_display = repo.get("slug", "")
-    repo_label = typer.style(f"{owner_display}/{slug_display}", fg=typer.colors.GREEN, bold=True)
-    vis_label = typer.style(f"[{visibility}]", fg=typer.colors.YELLOW)
-    header = f"{repo_label}  {vis_label}"
-    if updated:
-        header += f"  Updated {updated}"
-    typer.echo(header)
+    if verbose:
+        rid = repo.get("id")
+        repo_ref = typer.style(f"{owner_display}/{slug_display}", fg=typer.colors.GREEN, bold=True)
+        if rid is not None:
+            repo_ref = f"{repo_ref}  id@{rid}"
+        vis_label = typer.style(f"[{visibility or 'unknown'}]", fg=typer.colors.YELLOW)
+        created = _fmt_repo_timestamp(repo.get("createdAt"))
+        updated_full = _fmt_repo_timestamp(repo.get("updatedAt"))
+        typer.echo(f"{'Repository':<12}: {repo_ref}")
+        typer.echo(f"{'Visibility':<12}: {vis_label}")
+        if created:
+            typer.echo(f"{'Created':<12}: {created}")
+        if updated_full:
+            typer.echo(f"{'Updated':<12}: {updated_full}")
+        typer.echo("")
+    else:
+        repo_label = typer.style(f"{owner_display}/{slug_display}", fg=typer.colors.GREEN, bold=True)
+        vis_label = typer.style(f"[{visibility}]", fg=typer.colors.YELLOW)
+        header = f"{repo_label}  {vis_label}"
+        if updated_short:
+            header += f"  Updated {updated_short}"
+        typer.echo(header)
+
     if description:
-        typer.echo(f"Description: {description}")
+        typer.echo(typer.style("Description", bold=True) + ":")
+        desc_w = shared.terminal_columns() - 2
+        for line in shared.wrap_text_block(description, desc_w):
+            typer.echo(f"  {line}")
+        if verbose:
+            typer.echo("")
+
+    has_private = "collaborators" in repo or "lineage" in repo
+    if verbose:
+        if not has_private:
+            typer.echo(
+                typer.style(
+                    "Collaborators and fork lineage are not included for your current access "
+                    "(owner or collaborator access is required).",
+                    dim=True,
+                )
+            )
+            typer.echo("")
+        else:
+            collabs = repo.get("collaborators")
+            if collabs is not None:
+                typer.echo(typer.style("Collaborators", bold=True) + ":")
+                if not collabs:
+                    typer.echo(typer.style("  (none)", dim=True))
+                else:
+                    rows = [[str(c.get("username", "")), str(c.get("role", ""))] for c in collabs]
+                    shared.print_table(["USERNAME", "ROLE"], rows)
+                typer.echo("")
+
+            lineage = repo.get("lineage") or {}
+            typer.echo(typer.style("Fork lineage", bold=True) + ":")
+            parent = lineage.get("parent")
+            ancestors = lineage.get("ancestors") or []
+            children = lineage.get("children") or []
+            if not parent and not ancestors and not children:
+                typer.echo(typer.style("  (no fork relationships)", dim=True))
+            else:
+                if parent:
+                    typer.echo(f"  Parent:     {_lineage_ref_str(parent)}")
+                if ancestors:
+                    typer.echo("  Ancestors:")
+                    for a in ancestors:
+                        typer.echo(f"    {_lineage_ref_str(a)}")
+                if children:
+                    typer.echo("  Forks:")
+                    for ch in children:
+                        typer.echo(f"    {_lineage_ref_str(ch)}")
+            typer.echo("")
 
     if not tags:
-        typer.echo("Tags: (none)")
+        typer.echo(typer.style("Tags", bold=True) + ": " + typer.style("(none)", dim=True))
     elif not verbose:
         tag_names = "  ".join(t.get("name", "") for t in tags)
-        typer.echo(f"Tags: {tag_names}")
+        typer.echo(typer.style("Tags", bold=True) + f": {tag_names}")
     else:
+        typer.echo(typer.style("Tags", bold=True) + ":")
         tag_headers = ["TAG", "DIGEST", "SIZE", "PUSHED BY", "UPDATED"]
         tag_rows = []
         for t in tags:
@@ -135,7 +227,10 @@ def inspect(
         False,
         "--verbose",
         "-v",
-        help="When inspecting a repository: show per-tag digest table.",
+        help=(
+            "Repository ref: full timestamps, collaborators and fork lineage (when the API "
+            "includes them), and a per-tag digest table."
+        ),
     ),
 ) -> None:
     """Show repository metadata, or tag metadata if the ref includes a tag."""
@@ -196,7 +291,7 @@ def create_repo(
         typer.echo(f"Repository '{name}' already exists.", err=True)
         raise typer.Exit(1)
     elif response.status_code == 401:
-        typer.echo("Not authorised. Run `opendi login` to sign in again.", err=True)
+        shared.echo_opendi_login_hint("Not authorized. Run ", " to sign in again.")
         raise typer.Exit(1)
     else:
         typer.echo(f"Failed to create repository (HTTP {response.status_code}).", err=True)
@@ -253,7 +348,7 @@ def delete_repo(
         typer.echo(f"Repository '{display}' does not exist or you are not the owner.", err=True)
         raise typer.Exit(1)
     elif response.status_code == 401:
-        typer.echo("Not authorised. Run `opendi login` to sign in again.", err=True)
+        shared.echo_opendi_login_hint("Not authorized. Run ", " to sign in again.")
         raise typer.Exit(1)
     else:
         typer.echo(f"Failed to delete repository (HTTP {response.status_code}).", err=True)
@@ -265,7 +360,11 @@ def delete_repo(
 
 def list_repos(
     owner: Optional[str] = typer.Argument(None, help="Filter by owner username"),
-    scope: str = typer.Option("mine", "--scope", help="Scope: mine | shared | all"),
+    scope: str = typer.Option(
+        "mine",
+        "--scope",
+        help="Scope: mine | shared | all",
+    ),
     all_repos: bool = typer.Option(False, "--all", help="Show all accessible repos (shorthand for --scope all)"),
     visibility: Optional[str] = typer.Option(None, "--visibility", help="Filter: public | private"),
     sort: str = typer.Option("updated", "--sort", help="Sort field: name | updated | created"),
@@ -277,13 +376,19 @@ def list_repos(
     shared.require_access_token()
     api_base = shared.api_base_url()
 
-    effective_scope = "all" if all_repos else scope
+    effective_scope = "all" if all_repos else scope.strip().lower()
+    if effective_scope == "shared":
+        # API canonical value
+        effective_scope = "shared-with-me"
+    allowed_scopes = {"mine", "shared-with-me", "all"}
+    if effective_scope not in allowed_scopes:
+        typer.echo("Invalid --scope. Use one of: mine, shared, all.", err=True)
+        raise typer.Exit(1)
 
     params: dict[str, str] = {}
     if owner:
         params["owner"] = owner
-    if effective_scope and effective_scope != "mine":
-        params["scope"] = effective_scope
+    params["scope"] = effective_scope
     if visibility:
         params["visibility"] = visibility
     if sort:
@@ -306,10 +411,7 @@ def list_repos(
         raise typer.Exit(1)
 
     if response.status_code == 401:
-        typer.echo("Not authorised. Run `opendi login` to sign in again.", err=True)
-        raise typer.Exit(1)
-    if response.status_code == 404:
-        typer.echo(f"Owner '{owner}' not found.", err=True)
+        shared.echo_opendi_login_hint("Not authorized. Run ", " to sign in again.")
         raise typer.Exit(1)
     if not response.ok:
         typer.echo(f"Failed to list repositories (HTTP {response.status_code}).", err=True)
@@ -329,52 +431,26 @@ def list_repos(
 
     if not verbose:
         headers_row = ["REPOSITORY", "VISIBILITY", "UPDATED", "DESCRIPTION"]
-        rows = []
-        col_colors: dict[int, str] = {}
+        rich_rows: list[list[Text]] = []
         for repo in repos:
             repo_owner = repo.get("owner", "")
             slug = repo.get("slug", "")
             full_name = f"{repo_owner}/{slug}"
             updated = (repo.get("updatedAt") or "")[:10]
             vis = repo.get("visibility", "")
-            rows.append([full_name, vis, updated, repo.get("description", "")])
-
-        # Build per-row colors
-        row_colors: list[dict[int, str]] = []
-        for repo in repos:
-            repo_owner = repo.get("owner", "")
-            if me and repo_owner == me:
-                row_colors.append({0: typer.colors.GREEN})
-            else:
-                row_colors.append({})
-
-        # Print with manual coloring since print_table doesn't support per-row colors
-        all_rows = [headers_row] + rows
-        widths = shared.col_widths(all_rows)
-        sep = "  "
-        header_line = sep.join(h.ljust(widths[i]) for i, h in enumerate(headers_row))
-        typer.echo(typer.style(header_line, bold=True))
-        typer.echo(typer.style("-" * len(header_line), dim=True))
-        for idx, row in enumerate(rows):
-            parts = []
-            for i, cell in enumerate(row):
-                padded = cell.ljust(widths[i])
-                if i == 0:
-                    repo_owner = repos[idx].get("owner", "")
-                    if me and repo_owner == me:
-                        padded = typer.style(padded, fg=typer.colors.GREEN, bold=True)
-                    else:
-                        vis_scope = repos[idx].get("visibility", "")
-                        if vis_scope == "public":
-                            padded = typer.style(padded, fg=typer.colors.WHITE)
-                elif i == 1:
-                    vis = repos[idx].get("visibility", "")
-                    padded = typer.style(
-                        padded,
-                        fg=typer.colors.YELLOW if vis == "public" else typer.colors.MAGENTA,
-                    )
-                parts.append(padded)
-            typer.echo(sep.join(parts))
+            description = repo.get("description", "") or ""
+            name_style = shared.repo_table_name_style(me, repo_owner, vis)
+            name_cell = Text(full_name, style=name_style) if name_style else Text(full_name)
+            vis_cell = Text(vis, style="yellow" if vis == "public" else "magenta")
+            rich_rows.append(
+                [
+                    name_cell,
+                    vis_cell,
+                    Text(updated),
+                    Text(description),
+                ]
+            )
+        shared.print_repo_table(headers_row, rich_rows)
     else:
         for i, repo in enumerate(repos):
             repo_owner = repo.get("owner", "")
@@ -389,12 +465,14 @@ def list_repos(
                 f"[{vis}]",
                 fg=typer.colors.YELLOW if vis == "public" else typer.colors.MAGENTA,
             )
-            line = f"{repo_label}  {vis_label}"
-            if desc:
-                line += f"  {desc}"
+            typer.echo(f"{repo_label}  {vis_label}")
             if updated:
-                line += f"  (updated {updated})"
-            typer.echo(line)
+                typer.echo(f"  Updated {updated}")
+            if desc:
+                typer.echo("  Description:")
+                desc_w = shared.terminal_columns() - 4
+                for line in shared.wrap_text_block(desc, desc_w):
+                    typer.echo(f"    {line}")
 
             try:
                 detail_resp = requests.get(

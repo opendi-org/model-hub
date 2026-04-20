@@ -69,7 +69,7 @@ def open_login_url(api_base_url: str, login_url: str) -> str:
     logger.debug("Opening login URL: %s", absolute)
     opened = webbrowser.open(absolute)
     if not opened:
-        print(f"Open this URL in your browser to continue login:\n{absolute}")
+        logger.warning("Could not open a web browser automatically.")
     return absolute
 
 

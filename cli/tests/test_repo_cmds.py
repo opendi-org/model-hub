@@ -54,6 +54,20 @@ _REPO_DATA = {
     ],
 }
 
+_REPO_VERBOSE_EXTRA = {
+    "id": 42,
+    "createdAt": "2025-06-15T10:00:00Z",
+    "collaborators": [
+        {"username": "bob", "role": "read"},
+        {"username": "carol", "role": "write"},
+    ],
+    "lineage": {
+        "parent": {"id": 1, "owner": "upstream", "slug": "base"},
+        "ancestors": [{"id": 1, "owner": "upstream", "slug": "base"}],
+        "children": [{"id": 99, "owner": "forker", "slug": "fork-copy"}],
+    },
+}
+
 
 # ── inspect (unified repo / tag) ──────────────────────────────────────────────
 
@@ -72,13 +86,31 @@ def test_inspect_repo_success() -> None:
 
 
 def test_inspect_repo_verbose() -> None:
-    """opendi inspect REF --verbose shows tag digest table for a repository ref."""
+    """opendi inspect -v shows timestamps, collaborators, lineage, and tag digest table."""
+    payload = {**_REPO_DATA, **_REPO_VERBOSE_EXTRA}
+    with (
+        _logged_out(),
+        patch("opendi.cmds.repo_cmds.requests.get", return_value=_ok(payload)),
+    ):
+        result = runner.invoke(app, ["inspect", "alice/my-repo", "--verbose"])
+    assert result.exit_code == 0
+    assert "Repository" in result.output
+    assert "id@42" in result.output
+    assert "bob" in result.output and "read" in result.output
+    assert "upstream/base" in result.output or "upstream" in result.output
+    assert "fork-copy" in result.output or "forker" in result.output
+    assert "abc123" in result.output
+
+
+def test_inspect_repo_verbose_no_private_details_message() -> None:
+    """Verbose inspect notes when API omits collaborators/lineage (read-only access)."""
     with (
         _logged_out(),
         patch("opendi.cmds.repo_cmds.requests.get", return_value=_ok(_REPO_DATA)),
     ):
         result = runner.invoke(app, ["inspect", "alice/my-repo", "--verbose"])
     assert result.exit_code == 0
+    assert "Collaborators and fork lineage" in result.output
     assert "abc123" in result.output
 
 
@@ -510,6 +542,18 @@ def test_list_repos_success() -> None:
     assert "repo-b" in result.output
 
 
+def test_list_repos_default_scope_is_mine() -> None:
+    """opendi list repos sends scope=mine by default."""
+    with (
+        _logged_in(),
+        patch("opendi.cmds.repo_cmds.requests.get", return_value=_ok(_LIST_RESPONSE)) as mock_get,
+    ):
+        result = runner.invoke(app, ["list", "repos"])
+    assert result.exit_code == 0
+    _, kwargs = mock_get.call_args
+    assert kwargs["params"].get("scope") == "mine"
+
+
 def test_list_repos_by_owner() -> None:
     """opendi list repos sends owner param when given."""
     resp = _ok({"repositories": [{"owner": "alice", "slug": "repo-a", "visibility": "public", "description": ""}]})
@@ -534,6 +578,27 @@ def test_list_repos_all_flag() -> None:
     assert result.exit_code == 0
     _, kwargs = mock_get.call_args
     assert kwargs["params"].get("scope") == "all"
+
+
+def test_list_repos_shared_scope_maps_to_api_value() -> None:
+    """opendi list repos --scope shared sends scope=shared-with-me to API."""
+    resp = _ok(_LIST_RESPONSE)
+    with (
+        _logged_in(),
+        patch("opendi.cmds.repo_cmds.requests.get", return_value=resp) as mock_get,
+    ):
+        result = runner.invoke(app, ["list", "repos", "--scope", "shared"])
+    assert result.exit_code == 0
+    _, kwargs = mock_get.call_args
+    assert kwargs["params"].get("scope") == "shared-with-me"
+
+
+def test_list_repos_invalid_scope() -> None:
+    """opendi list repos rejects unknown scope values."""
+    with _logged_in():
+        result = runner.invoke(app, ["list", "repos", "--scope", "weird"])
+    assert result.exit_code == 1
+    assert "Invalid --scope" in result.output
 
 
 def test_list_repos_limit() -> None:
@@ -570,7 +635,7 @@ def test_list_repos_owner_not_found() -> None:
     ):
         result = runner.invoke(app, ["list", "repos", "alice"])
     assert result.exit_code == 1
-    assert "alice" in result.output
+    assert "HTTP 404" in result.output
 
 
 def test_list_repos_unauthorized() -> None:

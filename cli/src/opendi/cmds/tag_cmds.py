@@ -64,11 +64,11 @@ def add_tag(
     if response.status_code == 409:
         if not yes:
             confirmed = typer.confirm(
-                f"Tag :{target_tag} already exists in {owner}/{slug}. Overwrite?",
+                f"Tag {target_tag} already exists in {owner}/{slug}. Overwrite?",
                 default=False,
             )
             if not confirmed:
-                typer.echo("Aborted.")
+                typer.echo("Operation canceled.")
                 raise typer.Exit(0)
         response = _do_put(overwrite=True)
 
@@ -78,14 +78,14 @@ def add_tag(
             + f" {owner}/{slug}:{target_tag} → same model as :{source}"
         )
     elif response.status_code in (401, 403):
-        typer.echo("Access denied. You need write access to this repository.", err=True)
+        typer.echo("Not authorized. You need write access to this repository.", err=True)
         raise typer.Exit(1)
     elif response.status_code == 404:
-        typer.echo(f"Source tag :{source} not found in {owner}/{slug}.", err=True)
+        typer.echo(f"Source tag {source} not found in {owner}/{slug}.", err=True)
         raise typer.Exit(1)
     else:
         err = shared.response_error(response)
-        typer.echo(f"Failed (HTTP {response.status_code}): {err}", err=True)
+        typer.echo(f"Request failed (HTTP {response.status_code}): {err}", err=True)
         raise typer.Exit(1)
 
 
@@ -105,7 +105,7 @@ def delete_tag(
 
     if not yes:
         typer.confirm(
-            f"Delete tag :{tag} from {owner}/{slug}?",
+            f"Delete tag {tag} from {owner}/{slug}?",
             abort=True,
         )
 
@@ -130,13 +130,13 @@ def delete_tag(
         )
         typer.echo(typer.style("  Local cache entry marked stale.", dim=True))
     elif response.status_code in (401, 403):
-        typer.echo("Access denied. Run `opendi login` to sign in again.", err=True)
+        shared.echo_opendi_login_hint("Not authorized. Run ", " to sign in again.")
         raise typer.Exit(1)
     elif response.status_code == 404:
-        typer.echo(f"Tag :{tag} not found in {owner}/{slug}.", err=True)
+        typer.echo(f"Tag {tag} not found in {owner}/{slug}.", err=True)
         raise typer.Exit(1)
     else:
-        typer.echo(f"Failed to delete tag (HTTP {response.status_code}).", err=True)
+        typer.echo(f"Request failed (HTTP {response.status_code}).", err=True)
         raise typer.Exit(1)
 
 
@@ -217,7 +217,9 @@ def list_local(
             typer.echo(f"No cached models for {filter_repo}.")
         else:
             typer.echo(
-                f"No models in local cache. Use `opendi pull` with a ref ({shared.REF_HELP_TAG}) to cache one."
+                "No models in local cache. Use "
+                + typer.style("opendi pull", fg=typer.colors.CYAN, bold=True)
+                + f" with a ref ({shared.REF_HELP_TAG}) to cache one."
             )
         return
 
