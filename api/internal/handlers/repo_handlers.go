@@ -554,22 +554,47 @@ func AddCollaborator(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Prevent adding/modifying the owner as a collaborator
+		if targetUser.ID == repo.OwnerID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot add or modify permissions for the repository owner"})
+			return
+		}
+
 		// Check for existing collaborator
 		var existingCollab hub.Collaborator
 		err := db.Where("repo_id = ? AND user_id = ?", repo.ID, targetUser.ID).First(&existingCollab).Error
 
 		if err == nil {
 			// Update existing collaborator
+			// Admins cannot modify other admins (only owner can)
+			if !isOwner && existingCollab.Role == "admin" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can modify admin-level permissions"})
+				return
+			}
+
 			if existingCollab.Role == req.Role {
 				c.JSON(http.StatusConflict, gin.H{"error": "user already has this role"})
 				return
 			}
+
+			// Admins cannot grant admin role (only owner can)
+			if !isOwner && req.Role == "admin" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can grant admin role"})
+				return
+			}
+
 			if err := db.Model(&existingCollab).Update("role", req.Role).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update collaborator role"})
 				return
 			}
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Create new collaborator
+			// Admins cannot grant admin role (only owner can)
+			if !isOwner && req.Role == "admin" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can grant admin role"})
+				return
+			}
+
 			newCollab := &hub.Collaborator{
 				RepoID: repo.ID,
 				UserID: targetUser.ID,
@@ -640,6 +665,23 @@ func RemoveCollaborator(db *gorm.DB) gin.HandlerFunc {
 		if !isRemovingSelf && !isOwner && !isAdmin {
 			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions to remove collaborators"})
 			return
+		}
+
+		// Prevent admins from removing the owner
+		if !isOwner && targetUser.ID == repo.OwnerID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "cannot remove the repository owner"})
+			return
+		}
+
+		// Prevent admins from removing other admins
+		if !isOwner && !isRemovingSelf {
+			// Check if target is an admin
+			var targetCollab hub.Collaborator
+			err := db.Where("repo_id = ? AND user_id = ?", repo.ID, targetUser.ID).First(&targetCollab).Error
+			if err == nil && targetCollab.Role == "admin" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can remove admin-level collaborators"})
+				return
+			}
 		}
 
 		// Remove the collaborator

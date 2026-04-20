@@ -84,14 +84,7 @@ const CliDownloadPage = () => {
                 </Typography>
 
                 <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
-                    Option 1: Using pip (standard)
-                </Typography>
-                <Box sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5', color: 'text.primary', p: 2, borderRadius: 1, mb: 3, fontFamily: 'monospace' }}>
-                    pip install opendi
-                </Box>
-
-                <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
-                    Option 2: Using pipx (recommended for CLI tools)
+                    Installation
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     pipx provides an isolated environment for CLI tools:
