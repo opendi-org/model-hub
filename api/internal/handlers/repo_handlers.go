@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -1172,8 +1173,20 @@ func ValidateModel() gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
 			return
 		}
-		if err := database.ValidateCDM(raw); err != nil {
+		issues, err := database.ValidateCDMWithIssues(raw)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if len(issues) > 0 {
+			suffix := "s"
+			if len(issues) == 1 {
+				suffix = ""
+			}
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   fmt.Sprintf("CDM validation failed (%d issue%s).", len(issues), suffix),
+				"details": issues,
+			})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"valid": true})

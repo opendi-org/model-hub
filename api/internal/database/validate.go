@@ -15,10 +15,14 @@ package database
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -26,6 +30,17 @@ import (
 
 	"opendi.org/model-hub/api/internal/models/cdm"
 )
+
+// ValidationIssue is a machine-readable validation diagnostic.
+// Used by HTTP handlers/clients to render actionable feedback.
+type ValidationIssue struct {
+	Phase        string `json:"phase"`                  // schema | reference
+	InstancePath string `json:"instancePath"`           // JSON pointer-like path
+	SchemaPath   string `json:"schemaPath,omitempty"`   // keyword path (schema phase)
+	Message      string `json:"message"`                // human-readable issue text
+	Line         int    `json:"line,omitempty"`         // 1-based line in source JSON
+	Column       int    `json:"column,omitempty"`       // 1-based column in source JSON
+}
 
 // ── Schema path ───────────────────────────────────────────────────────────────
 
@@ -288,4 +303,258 @@ func ValidateCDM(raw []byte) error {
 		return fmt.Errorf("reference validation: %w", err)
 	}
 	return nil
+}
+
+// ValidateCDMWithIssues runs schema+reference validation and returns structured
+// issues for invalid documents. It returns (nil, nil) when valid.
+// Returned error indicates validator infrastructure/processing failures.
+func ValidateCDMWithIssues(raw []byte) ([]ValidationIssue, error) {
+	schemaIssues, err := schemaValidationIssues(raw)
+	if err != nil {
+		return nil, fmt.Errorf("schema validation: %w", err)
+	}
+	if len(schemaIssues) > 0 {
+		return schemaIssues, nil
+	}
+
+	var m cdm.CausalDecisionModel
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("parsing CDM: %w", err)
+	}
+	if err := validateRefs(&m); err != nil {
+		return []ValidationIssue{referenceValidationIssue(raw, err)}, nil
+	}
+	return nil, nil
+}
+
+func schemaValidationIssues(raw []byte) ([]ValidationIssue, error) {
+	schema, err := getCompiledSchema()
+	if err != nil {
+		return nil, fmt.Errorf("loading CDM schema: %w", err)
+	}
+	v, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("parsing CDM JSON: %w", err)
+	}
+	if err := schema.Validate(v); err != nil {
+		var verr *jsonschema.ValidationError
+		if !errors.As(err, &verr) {
+			return nil, fmt.Errorf("CDM schema validation failed: %w", err)
+		}
+		pointerLC := buildJSONPointerLineMap(raw)
+		out := verr.BasicOutput()
+		issues := []ValidationIssue{}
+		appendIssuesFromOutput(*out, pointerLC, &issues)
+		if len(issues) == 0 {
+			issues = append(issues, ValidationIssue{
+				Phase:   "schema",
+				Message: verr.Error(),
+			})
+		}
+		return issues, nil
+	}
+	return nil, nil
+}
+
+func appendIssuesFromOutput(
+	u jsonschema.OutputUnit,
+	pointerLC map[string]lineCol,
+	issues *[]ValidationIssue,
+) {
+	if u.Error != nil {
+		issue := ValidationIssue{
+			Phase:        "schema",
+			InstancePath: u.InstanceLocation,
+			SchemaPath:   u.KeywordLocation,
+			Message:      u.Error.String(),
+		}
+		if lc, ok := pointerLC[issue.InstancePath]; ok {
+			issue.Line = lc.line
+			issue.Column = lc.column
+		}
+		*issues = append(*issues, issue)
+	}
+	for _, ch := range u.Errors {
+		appendIssuesFromOutput(ch, pointerLC, issues)
+	}
+}
+
+type lineCol struct {
+	line   int
+	column int
+}
+
+func buildJSONPointerLineMap(raw []byte) map[string]lineCol {
+	lineStarts := []int{0}
+	for i, b := range raw {
+		if b == '\n' {
+			lineStarts = append(lineStarts, i+1)
+		}
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	state := pointerWalker{
+		dec:        dec,
+		raw:        raw,
+		prevOffset: 0,
+		lineStarts: lineStarts,
+		out:        map[string]lineCol{},
+	}
+	if err := state.parseValue(""); err != nil {
+		return map[string]lineCol{}
+	}
+	return state.out
+}
+
+type pointerWalker struct {
+	dec        *json.Decoder
+	raw        []byte
+	prevOffset int
+	lineStarts []int
+	out        map[string]lineCol
+}
+
+func (w *pointerWalker) parseValue(pointer string) error {
+	start := skipJSONWhitespace(w.raw, w.prevOffset)
+	tok, err := w.dec.Token()
+	if err != nil {
+		return err
+	}
+	w.prevOffset = int(w.dec.InputOffset())
+	if _, exists := w.out[pointer]; !exists {
+		w.out[pointer] = w.offsetToLineCol(start)
+	}
+
+	delim, isDelim := tok.(json.Delim)
+	if !isDelim {
+		return nil
+	}
+	switch delim {
+	case '{':
+		for w.dec.More() {
+			// key token
+			keyTok, err := w.dec.Token()
+			if err != nil {
+				return err
+			}
+			w.prevOffset = int(w.dec.InputOffset())
+			key, _ := keyTok.(string)
+			if err := w.parseValue(joinJSONPointer(pointer, key)); err != nil {
+				return err
+			}
+		}
+		_, err := w.dec.Token() // consume '}'
+		w.prevOffset = int(w.dec.InputOffset())
+		return err
+	case '[':
+		idx := 0
+		for w.dec.More() {
+			if err := w.parseValue(fmt.Sprintf("%s/%d", pointer, idx)); err != nil {
+				return err
+			}
+			idx++
+		}
+		_, err := w.dec.Token() // consume ']'
+		w.prevOffset = int(w.dec.InputOffset())
+		return err
+	default:
+		return nil
+	}
+}
+
+func (w *pointerWalker) offsetToLineCol(offset int) lineCol {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(w.raw) {
+		offset = len(w.raw)
+	}
+	i := sort.Search(len(w.lineStarts), func(i int) bool {
+		return w.lineStarts[i] > offset
+	}) - 1
+	if i < 0 {
+		i = 0
+	}
+	lineStart := w.lineStarts[i]
+	return lineCol{
+		line:   i + 1,
+		column: (offset - lineStart) + 1,
+	}
+}
+
+func skipJSONWhitespace(raw []byte, i int) int {
+	for i < len(raw) {
+		switch raw[i] {
+		case ' ', '\t', '\n', '\r':
+			i++
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+func joinJSONPointer(base, seg string) string {
+	escaped := strings.ReplaceAll(strings.ReplaceAll(seg, "~", "~0"), "/", "~1")
+	return base + "/" + escaped
+}
+
+var (
+	refPathTailRe   = regexp.MustCompile(` for ([A-Za-z0-9_.\[\]]+)$`)
+	invalidJSONRe   = regexp.MustCompile(`^([A-Za-z0-9_.\[\]]+): invalid JSON:`)
+	pathTokenExprRe = regexp.MustCompile(`([A-Za-z0-9_]+)|\[(\d+)\]`)
+)
+
+func referenceValidationIssue(raw []byte, err error) ValidationIssue {
+	msg := err.Error()
+	issue := ValidationIssue{
+		Phase:   "reference",
+		Message: msg,
+	}
+	pathExpr := ""
+	if m := refPathTailRe.FindStringSubmatch(msg); len(m) == 2 {
+		pathExpr = m[1]
+	} else if m := invalidJSONRe.FindStringSubmatch(msg); len(m) == 2 {
+		pathExpr = m[1]
+	}
+	if pathExpr == "" {
+		return issue
+	}
+
+	ptr := pathExprToPointer(pathExpr)
+	issue.InstancePath = ptr
+	if ptr == "" {
+		return issue
+	}
+
+	if lc, ok := buildJSONPointerLineMap(raw)[ptr]; ok {
+		issue.Line = lc.line
+		issue.Column = lc.column
+	}
+	return issue
+}
+
+func pathExprToPointer(pathExpr string) string {
+	if pathExpr == "" {
+		return ""
+	}
+	matches := pathTokenExprRe.FindAllStringSubmatch(pathExpr, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	segs := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if m[1] != "" {
+			segs = append(segs, m[1])
+		} else if m[2] != "" {
+			if _, err := strconv.Atoi(m[2]); err == nil {
+				segs = append(segs, m[2])
+			}
+		}
+	}
+	if len(segs) == 0 {
+		return ""
+	}
+	return "/" + strings.Join(segs, "/")
 }
