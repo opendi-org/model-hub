@@ -24,7 +24,7 @@ export const NotificationProvider = ({ children }) => {
         onClose={closeNotification}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert onClose={closeNotification} severity={notification.severity} variant="filled" sx={{ width: '100%' }}>
+        <Alert onClose={closeNotification} severity={notification.severity} variant="filled" sx={{ width: '100%', color: '#ffffff' }}>
           {notification.message}
         </Alert>
       </Snackbar>

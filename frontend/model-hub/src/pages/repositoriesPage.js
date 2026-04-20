@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -64,6 +64,7 @@ const RepositoriesPage = () => {
   const { showNotification } = useNotification();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('updated');
@@ -79,10 +80,27 @@ const RepositoriesPage = () => {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [publicConfirmOpen, setPublicConfirmOpen] = useState(false);
 
+  const updateSearchInUrl = (nextValue) => {
+    const nextParams = new URLSearchParams(searchParams);
+    const trimmed = nextValue.trim();
+    if (trimmed) {
+      nextParams.set('q', trimmed);
+    } else {
+      nextParams.delete('q');
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
+
   // Refresh repositories when navigating back to this page
   useEffect(() => {
     refreshRepositories();
   }, [location.pathname, refreshRepositories]);
+
+  // Keep search input synced with URL query param (for navbar-driven search).
+  useEffect(() => {
+    const queryFromUrl = searchParams.get('q') ?? '';
+    setSearchQuery(queryFromUrl);
+  }, [searchParams]);
 
   const filtered = useMemo(() => {
     let result = repositories.filter((r) => {
@@ -284,7 +302,11 @@ const RepositoriesPage = () => {
             size="small"
             placeholder="Search repositories..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              setSearchQuery(nextValue);
+              updateSearchInUrl(nextValue);
+            }}
             slotProps={{
               input: {
                 startAdornment: (
@@ -320,6 +342,11 @@ const RepositoriesPage = () => {
             </Select>
           </FormControl>
         </Box>
+
+        {/* Count */}
+        <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+          {filtered.length} {filtered.length === 1 ? 'repository' : 'repositories'}
+        </Typography>
       </Box>
 
       {/* Loading skeleton */}
