@@ -1126,7 +1126,7 @@ const RepositoryDetailsPage = () => {
 
       {/* Add Tag Dialog */}
       <Dialog open={addOpen} onClose={handleAddClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Tag</DialogTitle>
+        <DialogTitle>{tagEditTarget ? 'Edit Tag' : 'Add Tag'}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
           {addError && <Alert severity="error">{addError}</Alert>}
           <TextField
@@ -1249,7 +1249,7 @@ const RepositoryDetailsPage = () => {
         <DialogActions>
           <Button onClick={handleAddClose} disabled={addSubmitting}>Cancel</Button>
           <Button variant="contained" onClick={handleAddSubmit} disabled={addSubmitting}>
-            {addSubmitting ? <CircularProgress size={20} /> : addMode === 'upload' ? 'Upload & Create Tag' : 'Create Tag From Existing'}
+            {addSubmitting ? <CircularProgress size={20} /> : tagEditTarget ? 'Update Tag' : (addMode === 'upload' ? 'Upload & Create Tag' : 'Create Tag From Existing')}
           </Button>
         </DialogActions>
       </Dialog>
