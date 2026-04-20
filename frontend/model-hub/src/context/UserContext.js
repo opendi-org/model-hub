@@ -3,6 +3,13 @@ import APIClient from '../util/ApiClient';
 
 const UserContext = createContext();
 
+const normalizeUser = (userData) => {
+  if (!userData) return userData;
+  if (userData.picture) return userData;
+  if (userData.avatarURL) return { ...userData, picture: userData.avatarURL };
+  return userData;
+};
+
 export const UserProvider = ({ children }) => {
   // Initialize from localStorage if available
   const [user, setUser] = useState(() => {
@@ -13,12 +20,13 @@ export const UserProvider = ({ children }) => {
 
   // Create a wrapper for setUser that also updates localStorage
   const setUserWithPersistence = (userData) => {
-    setUser(userData);
-    if (userData) {
-      localStorage.setItem('user', JSON.stringify(userData));
+    const normalized = normalizeUser(userData);
+    setUser(normalized);
+    if (normalized) {
+      localStorage.setItem('user', JSON.stringify(normalized));
       // Check if token is in the userData and store it
-      if (userData.token) {
-        sessionStorage.setItem('auth_token', userData.token);
+      if (normalized.token) {
+        sessionStorage.setItem('auth_token', normalized.token);
       }
     } else {
       localStorage.removeItem('user');

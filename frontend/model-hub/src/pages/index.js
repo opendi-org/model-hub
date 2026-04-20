@@ -35,7 +35,6 @@ const Home = () => {
     const [repositories, setRepositories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
-    const [visibility, setVisibility] = useState('');
     const [sortBy, setSortBy] = useState('updated');
     const [sortOrder, setSortOrder] = useState('desc');
     const theme = useTheme();
@@ -46,7 +45,9 @@ const Home = () => {
         setLoading(true);
         APIClient.globalSearch('', 'public', owner || '')
             .then(data => {
-                setRepositories(Array.isArray(data) ? data : data.repositories || []);
+                const allRepos = Array.isArray(data) ? data : data.repositories || [];
+                // Defensive guard: Home should only display public repositories.
+                setRepositories(allRepos.filter((repo) => repo?.visibility === 'public'));
             })
             .catch(error => {
                 console.error('There was a problem fetching repositories:', error);
@@ -66,11 +67,6 @@ const Home = () => {
                        (r.description || '').toLowerCase().includes(q) ||
                        (r.owner || '').toLowerCase().includes(q);
             });
-        }
-
-        // Filter by visibility
-        if (visibility) {
-            result = result.filter((r) => r.visibility === visibility);
         }
 
         // Sort
@@ -106,7 +102,7 @@ const Home = () => {
         });
 
         return result;
-    }, [repositories, searchQuery, visibility, sortBy, sortOrder]);
+    }, [repositories, searchQuery, sortBy, sortOrder]);
 
     return (
         <Box sx={{ minHeight: '100vh', backgroundColor: theme.palette.background.default }}>
@@ -195,18 +191,6 @@ const Home = () => {
                         }}
                         sx={{ minWidth: 240 }}
                     />
-                    <FormControl size="small" sx={{ minWidth: 140 }}>
-                        <InputLabel>Visibility</InputLabel>
-                        <Select
-                            value={visibility}
-                            label="Visibility"
-                            onChange={(e) => setVisibility(e.target.value)}
-                        >
-                            <MenuItem value="">All</MenuItem>
-                            <MenuItem value="public">Public</MenuItem>
-                            <MenuItem value="private">Private</MenuItem>
-                        </Select>
-                    </FormControl>
                     <FormControl size="small" sx={{ minWidth: 120 }}>
                         <InputLabel>Sort By</InputLabel>
                         <Select
