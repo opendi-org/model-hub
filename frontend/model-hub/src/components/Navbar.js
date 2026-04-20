@@ -74,7 +74,7 @@ export default function Navbar() {
             <AppBar position="static">
                 <Toolbar sx={{ gap: 0.5, minHeight: '60px !important' }}>
                     {/* Logo */}
-                    <NavLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', gap: 10, flexShrink: 0 }}>
+                    <NavLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', gap: 4, flexShrink: 0 }}>
                         {logoError ? (
                             <Box
                                 sx={{
