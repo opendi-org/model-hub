@@ -5,12 +5,11 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import opendiIcon from '../opendi-icon.png';
 import * as React from 'react';
-import { alpha, styled, useTheme } from '@mui/material/styles';
+import { styled, useTheme } from '@mui/material/styles';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
-import InputBase from '@mui/material/InputBase';
 import MenuItem from '@mui/material/MenuItem';
 import Menu from '@mui/material/Menu';
 import Button from '@mui/material/Button';
@@ -18,7 +17,6 @@ import IconButton from '@mui/material/IconButton';
 import Avatar from '@mui/material/Avatar';
 import Divider from '@mui/material/Divider';
 import Tooltip from '@mui/material/Tooltip';
-import SearchIcon from '@mui/icons-material/Search';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useUser } from '../context/UserContext';
@@ -41,50 +39,6 @@ const NavButton = styled(Button)(() => ({
     },
 }));
 
-const Search = styled('div')(({ theme }) => ({
-    position: 'relative',
-    borderRadius: 20,
-    backgroundColor: alpha('#ffffff', 0.08),
-    border: '1px solid rgba(255,255,255,0.2)',
-    '&:hover': {
-        backgroundColor: alpha('#ffffff', 0.12),
-        borderColor: 'rgba(255,255,255,0.35)',
-    },
-    '&:focus-within': {
-        backgroundColor: alpha('#ffffff', 0.14),
-        borderColor: 'rgba(255,255,255,0.5)',
-    },
-    marginLeft: theme.spacing(2),
-    width: '100%',
-    maxWidth: 340,
-    transition: 'background-color 0.2s, border-color 0.2s',
-}));
-
-const SearchIconWrapper = styled('div')(({ theme }) => ({
-    padding: theme.spacing(0, 1.5),
-    height: '100%',
-    position: 'absolute',
-    pointerEvents: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: 'rgba(255,255,255,0.6)',
-}));
-
-const StyledInputBase = styled(InputBase)(() => ({
-    color: '#ffffff',
-    width: '100%',
-    '& .MuiInputBase-input': {
-        padding: '7px 12px 7px 0',
-        paddingLeft: `calc(1em + 30px)`,
-        width: '100%',
-        '&::placeholder': {
-            color: 'rgba(255,255,255,0.55)',
-            opacity: 1,
-        },
-    },
-}));
-
 export default function Navbar() {
     const { user, logout } = useUser();
     const { mode, toggleColorMode } = useColorMode();
@@ -92,7 +46,6 @@ export default function Navbar() {
     const [anchorEl, setAnchorEl] = React.useState(null);
     const [logoError, setLogoError] = React.useState(false);
     const [imageError, setImageError] = React.useState(false);
-    const [repoQuery, setRepoQuery] = React.useState('');
     const navigate = useNavigate();
 
     const handleMenuOpen = (event) => {
@@ -107,15 +60,6 @@ export default function Navbar() {
         logout();
         handleMenuClose();
         navigate('/', { replace: true });
-    };
-
-    const handleRepoSearch = () => {
-        const term = repoQuery.trim();
-        if (!term) {
-            navigate('/repositories');
-            return;
-        }
-        navigate(`/repositories?q=${encodeURIComponent(term)}`);
     };
 
     const getInitials = () => {
@@ -175,25 +119,6 @@ export default function Navbar() {
                             OpenDI
                         </Typography>
                     </NavLink>
-
-                    <Box sx={{ display: { xs: 'none', md: 'block' }, flex: 1, maxWidth: 360 }}>
-                        <Search>
-                            <SearchIconWrapper>
-                                <SearchIcon fontSize="small" />
-                            </SearchIconWrapper>
-                            <StyledInputBase
-                                placeholder="Search repositories..."
-                                inputProps={{ 'aria-label': 'search repositories' }}
-                                value={repoQuery}
-                                onChange={(e) => setRepoQuery(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        handleRepoSearch();
-                                    }
-                                }}
-                            />
-                        </Search>
-                    </Box>
 
                     <Box sx={{ flexGrow: 1 }} />
 
