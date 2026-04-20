@@ -40,15 +40,15 @@ const UserPage = () => {
     return (
         <Container sx={{ py: 4 }}>
             {user && (
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 5, p: 3, backgroundColor: 'grey.100', borderRadius: 2, boxShadow: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 5, p: 3, backgroundColor: 'background.paper', borderRadius: 2, boxShadow: 1 }}>
                     <Avatar 
                         src={user.picture} 
                         alt={user.username} 
                         sx={{ width: 64, height: 64, mr: 2 }} 
                     />
                     <Box>
-                        <Typography variant="h5" component="h1">{user.username}</Typography>
-                        <Typography variant="body1" color="text.secondary">{user.email}</Typography>
+                        <Typography variant="h5" component="h1" color="text.primary">{user.username}</Typography>
+                        <Typography variant="body1" color="text.primary">{user.email}</Typography>
                     </Box>
                 </Box>
             )}
