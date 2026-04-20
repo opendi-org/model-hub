@@ -44,6 +44,7 @@ export default function Navbar() {
     const { mode, toggleColorMode } = useColorMode();
     const theme = useTheme();
     const [anchorEl, setAnchorEl] = React.useState(null);
+    const [logoError, setLogoError] = React.useState(false);
     const [imageError, setImageError] = React.useState(false);
     const navigate = useNavigate();
 
@@ -73,12 +74,38 @@ export default function Navbar() {
             <AppBar position="static">
                 <Toolbar sx={{ gap: 0.5, minHeight: '60px !important' }}>
                     {/* Logo */}
-                    <NavLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', gap: 8, flexShrink: 0 }}>
-                        <img
-                            src={opendiIcon}
-                            alt="OpenDI Logo"
-                            style={{ height: 36 }}
-                        />
+                    <NavLink to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', gap: 4, flexShrink: 0 }}>
+                        {logoError ? (
+                            <Box
+                                sx={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 1.5,
+                                    display: 'grid',
+                                    placeItems: 'center',
+                                    bgcolor: 'rgba(255,255,255,0.15)',
+                                    color: '#ffffff',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 700,
+                                }}
+                            >
+                                OD
+                            </Box>
+                        ) : (
+                            <img
+                                src={opendiIcon}
+                                alt="OpenDI Logo"
+                                onError={() => setLogoError(true)}
+                                style={{
+                                    width: 150,
+                                    height: 48,
+                                    objectFit: 'contain',
+                                    mixBlendMode: 'lighten',
+                                    opacity: 0.97,
+                                    filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.3))',
+                                }}
+                            />
+                        )}
                         <Typography
                             variant="h6"
                             sx={{
@@ -97,6 +124,7 @@ export default function Navbar() {
 
                     {/* Nav links */}
                     <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 0.5, alignItems: 'center' }}>
+                        <NavButton component={NavLink} to="/">Home</NavButton>
                         <NavButton component={NavLink} to="/repositories">My Repositories</NavButton>
                         <NavButton component={NavLink} to="/cli-tool">CLI Tool</NavButton>
                         <NavButton href="https://opendi.org" target="_blank" rel="noopener noreferrer">About</NavButton>
