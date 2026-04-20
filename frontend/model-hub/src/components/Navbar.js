@@ -156,7 +156,9 @@ export default function Navbar() {
                                     width: 150,
                                     height: 48,
                                     objectFit: 'contain',
-                                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))',
+                                    mixBlendMode: 'lighten',
+                                    opacity: 0.97,
+                                    filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.3))',
                                 }}
                             />
                         )}
