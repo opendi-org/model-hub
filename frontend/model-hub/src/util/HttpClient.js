@@ -6,7 +6,11 @@ async function handleResponse(response) {
     if (isJson) {
       const errorData = await response.json().catch(() => ({}));
       if (errorData && errorData.error) {
-        throw new Error(errorData.error);
+        const err = new Error(errorData.error);
+        if (Array.isArray(errorData.details)) {
+          err.details = errorData.details;
+        }
+        throw err;
       }
       throw new Error(`HTTP ${response.status}`);
     }

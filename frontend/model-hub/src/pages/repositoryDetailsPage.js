@@ -215,6 +215,23 @@ const RepositoryDetailsPage = () => {
     return '';
   };
 
+  const formatValidationError = (err, fallback) => {
+    const details = Array.isArray(err?.details) ? err.details : [];
+    const base = err?.message || fallback;
+    if (!details.length) return base;
+
+    const lines = details.slice(0, 20).map((d) => {
+      const path = d?.instancePath || '/';
+      const msg = d?.message || 'Validation error';
+      const line = Number.isInteger(d?.line) && d.line > 0 ? d.line : null;
+      const col = Number.isInteger(d?.column) && d.column > 0 ? d.column : null;
+      const loc = line ? (col ? `line ${line}, col ${col}` : `line ${line}`) : '';
+      return `- ${loc ? `${loc} — ` : ''}${path}: ${msg}`;
+    });
+    const more = details.length > 20 ? `\n...and ${details.length - 20} more issue(s).` : '';
+    return `${base}\n${lines.join('\n')}${more}`;
+  };
+
   // If the user changes the name to a non-existing tag, drop overwrite.
   useEffect(() => {
     if (!tagNameAlreadyExists && addOverwrite && !tagEditTarget) {
@@ -393,7 +410,7 @@ const RepositoryDetailsPage = () => {
       } else if (msg.toLowerCase().includes('tag already exists')) {
         setAddError('Tag already exists. Enable overwrite to replace it.');
       } else {
-        setAddError(msg || 'Failed to create tag.');
+        setAddError(formatValidationError(err, 'Failed to create tag.'));
       }
     } finally {
       setAddSubmitting(false);
@@ -1100,7 +1117,7 @@ const RepositoryDetailsPage = () => {
       <Dialog open={addOpen} onClose={handleAddClose} maxWidth="sm" fullWidth>
         <DialogTitle>Add Tag</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-          {addError && <Alert severity="error">{addError}</Alert>}
+          {addError && <Alert severity="error" sx={{ whiteSpace: 'pre-wrap' }}>{addError}</Alert>}
           <TextField
             label="Tag Name"
             value={tagName}
