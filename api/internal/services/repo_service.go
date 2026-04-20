@@ -91,17 +91,14 @@ func ListRepositories(db *gorm.DB, params ListRepositoriesParams) (*dto.ListRepo
 		// Only show repositories shared with user (collaborator)
 		dbQuery = dbQuery.Where("id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)", params.UserID)
 	case "all":
-		// if params.IsAuthenticated {
-		// 	dbQuery = dbQuery.Where(
-		// 		"visibility = 'public' OR owner_id = ? OR id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)",
-		// 		params.UserID, params.UserID,
-		// 	)
-		// } else {
-		// 	dbQuery = dbQuery.Where("visibility = 'public'")
-		// }
-
-		// Show all public repositories
-		dbQuery = dbQuery.Where("visibility = ?", "public")
+		if params.IsAuthenticated {
+			dbQuery = dbQuery.Where(
+				"visibility = 'public' OR owner_id = ? OR id IN (SELECT repo_id FROM hub_collaborators WHERE user_id = ?)",
+				params.UserID, params.UserID,
+			)
+		} else {
+			dbQuery = dbQuery.Where("visibility = 'public'")
+		}
 	default:
 		return nil, errors.New("invalid scope")
 	}

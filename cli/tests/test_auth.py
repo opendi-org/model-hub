@@ -108,8 +108,9 @@ def test_open_login_url_absolute() -> None:
 
 def test_open_login_url_browser_fails(capsys) -> None:
     with patch("webbrowser.open", return_value=False):
-        auth.open_login_url("http://api", "/login/abc")
-    assert "http://api/login/abc" in capsys.readouterr().out
+        result = auth.open_login_url("http://api", "/login/abc")
+    assert result == "http://api/login/abc"
+    assert capsys.readouterr().out == ""
 
 
 # ── poll_cli_token ────────────────────────────────────────────────────────────

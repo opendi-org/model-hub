@@ -8,5 +8,10 @@ dist/
 *.egg-info/
 *.egg
 
+# tests / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
 # OAuth client secrets (bundled at build time, never committed)
 client_secret.json

@@ -32,19 +32,19 @@ def test_load_access_token_returns_none_when_empty() -> None:
         assert credential_storage.load_access_token() is None
 
 
-# ── delete ────────────────────────────────────────────────────────────────────
+# ── delete_access_token ───────────────────────────────────────────────────────
 
 
-def test_delete_returns_true_when_token_exists() -> None:
-    """delete() returns True when the token entry was deleted."""
+def test_delete_access_token_returns_true_when_token_exists() -> None:
+    """delete_access_token() returns True when the token entry was deleted."""
     with patch("opendi.credential_storage.keyring.delete_password"):
-        assert credential_storage.delete() is True
+        assert credential_storage.delete_access_token() is True
 
 
-def test_delete_returns_false_when_no_token_stored() -> None:
-    """delete() returns False when no token is stored."""
+def test_delete_access_token_returns_false_when_no_token_stored() -> None:
+    """delete_access_token() returns False when no token is stored."""
     with patch(
         "opendi.credential_storage.keyring.delete_password",
         side_effect=keyring.errors.PasswordDeleteError(),
     ):
-        assert credential_storage.delete() is False
+        assert credential_storage.delete_access_token() is False
