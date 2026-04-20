@@ -53,14 +53,8 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             UNIQUE(owner, repo, tag)
         )
     """)
-    # Partial unique index so repo_id+tag is also unique when repo_id is known
-    conn.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_pulled_models_repo_tag
-        ON pulled_models(repo_id, tag)
-        WHERE repo_id IS NOT NULL
-    """)
-
-    # Migrate existing databases that are missing new columns
+    # Migrate existing databases that are missing newer columns.
+    # IMPORTANT: run migrations before creating indexes that depend on them.
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(pulled_models)").fetchall()}
     if "digest" not in cols:
         conn.execute("ALTER TABLE pulled_models ADD COLUMN digest TEXT")
@@ -68,6 +62,14 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE pulled_models ADD COLUMN repo_id INTEGER")
     if "stale" not in cols:
         conn.execute("ALTER TABLE pulled_models ADD COLUMN stale INTEGER NOT NULL DEFAULT 0")
+
+    # Partial unique index so repo_id+tag is also unique when repo_id is known.
+    # This must come after the repo_id migration above for older DB files.
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pulled_models_repo_tag
+        ON pulled_models(repo_id, tag)
+        WHERE repo_id IS NOT NULL
+    """)
     conn.commit()
 
 
