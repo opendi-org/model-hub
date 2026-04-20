@@ -578,6 +578,9 @@ const RepositoryDetailsPage = () => {
     try {
       const data = await APIClient.listCollaborators(repo.owner, repo.slug);
       setCollaborators(data.collaborators || []);
+      // Also refresh the main repo data to ensure collaborators list is up-to-date
+      const repoData = await APIClient.getRepositoryByOwnerSlug(repo.owner, repo.slug);
+      setRepo(repoData);
       setCollaboratorsOpen(true);
     } catch (err) {
       setCollabError(err.message || 'Failed to load collaborators.');
@@ -593,27 +596,28 @@ const RepositoryDetailsPage = () => {
       setCollabError('Username is required.');
       return;
     }
+    if (newCollabUsername.trim() === repo?.owner) {
+      setCollabError('Cannot add the repository owner as a collaborator.');
+      return;
+    }
+    if (newCollabUsername.trim() === user?.username) {
+      setCollabError('Cannot share repository with yourself.');
+      return;
+    }
     setCollabSubmitting(true);
     setCollabError('');
     try {
-      const result = await APIClient.addCollaborator(
+      await APIClient.addCollaborator(
         repo.owner,
         repo.slug,
         newCollabUsername.trim(),
         newCollabRole
       );
-      setCollaborators((prev) => {
-        const existing = prev.findIndex((c) => c.username === newCollabUsername.trim());
-        if (existing >= 0) {
-          const updated = [...prev];
-          updated[existing] = result;
-          return updated;
-        }
-        return [...prev, result];
-      });
       setNewCollabUsername('');
       setNewCollabRole('read');
       showNotification('Collaborator added', 'success');
+      // Refresh collaborators from server to ensure consistency
+      await refreshCollaborators();
     } catch (err) {
       setCollabError(err.message || 'Failed to add collaborator.');
     } finally {
@@ -633,13 +637,15 @@ const RepositoryDetailsPage = () => {
     try {
       setCollabSubmitting(true);
       await APIClient.removeCollaborator(repo.owner, repo.slug, removeCollabUsername);
-      setCollaborators((prev) => prev.filter((c) => c.username !== removeCollabUsername));
       const successMsg = isRemovingSelf 
         ? 'You have left the repository' 
         : 'Collaborator removed';
       showNotification(successMsg, 'success');
       if (isRemovingSelf) {
         navigate('/repositories');
+      } else {
+        // Refresh collaborators from server to ensure consistency for other users viewing
+        await refreshCollaborators();
       }
     } catch (err) {
       showNotification(err.message || 'Failed to remove collaborator.', 'error');
@@ -654,14 +660,28 @@ const RepositoryDetailsPage = () => {
     setRemoveCollabUsername('');
   };
 
+  // Helper to refresh collaborators from server
+  const refreshCollaborators = async () => {
+    try {
+      const data = await APIClient.listCollaborators(repo.owner, repo.slug);
+      setCollaborators(data.collaborators || []);
+      // Also update repo's collaborators
+      setRepo((prev) => ({
+        ...prev,
+        collaborators: data.collaborators || [],
+      }));
+    } catch (err) {
+      console.error('Failed to refresh collaborators:', err);
+    }
+  };
+
   const handleUpdateCollaboratorRole = async (username, newRole) => {
     setEditCollabSubmitting(true);
     try {
       await APIClient.addCollaborator(repo.owner, repo.slug, username, newRole);
-      setCollaborators((prev) =>
-        prev.map((c) => (c.username === username ? { ...c, role: newRole } : c))
-      );
       showNotification(`${username}'s role updated to ${newRole}`, 'success');
+      // Refresh collaborators from server to ensure consistency
+      await refreshCollaborators();
     } catch (err) {
       showNotification(err.message || 'Failed to update collaborator role.', 'error');
     } finally {
@@ -937,11 +957,13 @@ const RepositoryDetailsPage = () => {
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 2 }}>
+          {/* View Lineage - available to all users */}
+          <Button size="small" onClick={handleLineageOpen} variant="outlined">
+            View Lineage
+          </Button>
+
           {user && user.username === repo?.owner && (
             <>
-              <Button size="small" onClick={handleLineageOpen} variant="outlined">
-                View Lineage
-              </Button>
               <Button size="small" onClick={handleForkOpen} variant="outlined">
                 Fork
               </Button>
@@ -955,9 +977,6 @@ const RepositoryDetailsPage = () => {
           )}
           {user && user.username !== repo?.owner && (
             <>
-              <Button size="small" onClick={handleLineageOpen} variant="outlined">
-                View Lineage
-              </Button>
               <Button size="small" onClick={handleForkOpen} variant="outlined">
                 Fork
               </Button>
@@ -1442,23 +1461,24 @@ const RepositoryDetailsPage = () => {
                   value={newCollabRole}
                   exclusive
                   onChange={(_, val) => { if (val) setNewCollabRole(val); }}
-                size="small"
-              >
-                <ToggleButton value="read">Read</ToggleButton>
-                <ToggleButton value="write">Write</ToggleButton>
-                <ToggleButton value="admin">Admin</ToggleButton>
-              </ToggleButtonGroup>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={handleAddCollaborator}
-                disabled={collabSubmitting}
-                startIcon={<PersonAddIcon />}
-              >
-                Add
-              </Button>
+                  size="small"
+                >
+                  <ToggleButton value="read">Read</ToggleButton>
+                  <ToggleButton value="write">Write</ToggleButton>
+                  {/* Only owners can grant admin role */}
+                  {canEditRepo && <ToggleButton value="admin">Admin</ToggleButton>}
+                </ToggleButtonGroup>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={handleAddCollaborator}
+                  disabled={collabSubmitting}
+                  startIcon={<PersonAddIcon />}
+                >
+                  Add
+                </Button>
+              </Box>
             </Box>
-          </Box>
           )}
 
           {/* Collaborators List */}
@@ -1472,11 +1492,18 @@ const RepositoryDetailsPage = () => {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {collaborators.map((collab) => {
                   const isCurrentUser = user && user.username === collab.username;
-                  // Owner and admin can remove anyone, read/write-level can only remove themselves
-                  const canRemove = isCurrentUser || canEditRepo || currentUserCollabRole === 'admin';
+                  const isOwner = collab.username === repo?.owner;
+                  const isAdmin = collab.role === 'admin';
+                  // Can remove if: removing self, owner removing anyone, or admin removing non-owner non-admins
+                  const canRemove = isCurrentUser || canEditRepo || (currentUserCollabRole === 'admin' && !isOwner && !isAdmin);
+                  const canEditRole = (canEditRepo || currentUserCollabRole === 'admin') && !isCurrentUser && !isOwner && (!isAdmin || canEditRepo);
                   const buttonLabel = isCurrentUser ? 'Leave' : 'Remove';
                   const buttonTooltip = isCurrentUser 
                     ? 'Remove yourself as a collaborator' 
+                    : isOwner
+                    ? 'Cannot remove the repository owner'
+                    : !canEditRepo && isAdmin
+                    ? 'Only the owner can remove admins'
                     : 'Remove this collaborator';
 
                   return (
@@ -1496,9 +1523,10 @@ const RepositoryDetailsPage = () => {
                           {collab.username}
                         </Typography>
                         {isCurrentUser && <Typography variant="caption" sx={{ ml: 0.5 }}>(You)</Typography>}
+                        {isOwner && <Typography variant="caption" sx={{ ml: 0.5, fontWeight: 500 }}>(Owner)</Typography>}
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {(canEditRepo || currentUserCollabRole === 'admin') && !isCurrentUser ? (
+                        {canEditRole ? (
                           <Select
                             value={collab.role}
                             onChange={(e) => handleUpdateCollaboratorRole(collab.username, e.target.value)}
@@ -1508,7 +1536,7 @@ const RepositoryDetailsPage = () => {
                           >
                             <MenuItem value="read">Read</MenuItem>
                             <MenuItem value="write">Write</MenuItem>
-                            <MenuItem value="admin">Admin</MenuItem>
+                            {canEditRepo && <MenuItem value="admin">Admin</MenuItem>}
                           </Select>
                         ) : (
                           <Typography variant="caption" color="text.secondary">
@@ -1525,6 +1553,19 @@ const RepositoryDetailsPage = () => {
                                 disabled={collabSubmitting}
                               >
                                 {buttonLabel}
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        )}
+                        {!canRemove && (isOwner || !canEditRole) && (
+                          <Tooltip title={buttonTooltip}>
+                            <span>
+                              <Button
+                                size="small"
+                                color="error"
+                                disabled
+                              >
+                                Remove
                               </Button>
                             </span>
                           </Tooltip>
@@ -1747,10 +1788,6 @@ const RepositoryDetailsPage = () => {
         <DialogActions>
           <Button onClick={handleLineageClose}>Close</Button>
         </DialogActions>
-      </Dialog>
-            </Box>
-          )}
-        </DialogContent>
       </Dialog>
 
       {/* Compare Tags Dialog */}
