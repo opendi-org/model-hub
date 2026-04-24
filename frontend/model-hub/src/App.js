@@ -12,6 +12,7 @@ import Home from "./pages";
 import ModelPage from './pages/modelPage';
 import CliDownloadPage from './pages/cliPage';
 import AuthCallback from './pages/AuthCallback';
+import CliApprovedPage from './pages/cliApprovedPage';
 import LoginPage from './pages/login'
 import SigninPage from './pages/signin';
 import SignupPage from './pages/signup';
@@ -20,7 +21,6 @@ import { getTheme } from './Theme';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import UserPage from "./pages/user";
-import NotFoundPage from "./pages/NotFound";
 import RepositoriesPage from "./pages/repositoriesPage";
 import RepositoryDetailsPage from "./pages/repositoryDetailsPage";
 import { UserProvider } from './context/UserContext';
@@ -69,6 +69,7 @@ function App() {
                 <Route path="/signin" element={<SigninPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/auth/cli-approved" element={<CliApprovedPage />} />
                 <Route path="/user" element={<UserPage />} />
               </Routes>
               </Router>

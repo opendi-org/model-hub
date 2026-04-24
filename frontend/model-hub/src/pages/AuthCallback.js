@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Box, CircularProgress, Typography, Alert } from '@mui/material';
+import { Box, CircularProgress, Typography } from '@mui/material';
 import { useUser } from '../context/UserContext';
 import APIClient from '../util/ApiClient';
 
@@ -36,21 +36,35 @@ const AuthCallback = () => {
         const userData = await APIClient.getCurrentUser();
         console.log('User data from /auth/me:', userData);
         setUser(userData);
+
+        const cliCode = data.cliCode || searchParams.get('cli_code');
+        if (cliCode) {
+          navigate('/auth/cli-approved', {
+            replace: true,
+            state: {
+              message: 'CLI login approved. You can return to your terminal.',
+            },
+          });
+          return;
+        }
+
         navigate('/', { replace: true });
       } catch (err) {
         console.error('Auth error:', err);
         const errorMsg = err.message || 'Authentication failed';
         const encodedError = encodeURIComponent(errorMsg);
+        const cliCode = err.cliCode || searchParams.get('cli_code');
+        const cliCodeQuery = cliCode ? `&cli_code=${encodeURIComponent(cliCode)}` : '';
         
         // Determine which page to redirect to based on error message
         let redirectPath = '/signin';
         if (errorMsg.includes('account not found')) {
-          redirectPath = `/signup?error=${encodedError}`;
+          redirectPath = `/signup?error=${encodedError}${cliCodeQuery}`;
         } else if (errorMsg.includes('account already exists')) {
-          redirectPath = `/signin?error=${encodedError}`;
+          redirectPath = `/signin?error=${encodedError}${cliCodeQuery}`;
         } else {
           // Default to signin with error
-          redirectPath = `/signin?error=${encodedError}`;
+          redirectPath = `/signin?error=${encodedError}${cliCodeQuery}`;
         }
         
         // Redirect immediately with error in query params
@@ -59,7 +73,7 @@ const AuthCallback = () => {
     };
 
     handleCallback();
-  }, []);
+  }, [searchParams, setUser, navigate]);
 
   if (error) {
     return (

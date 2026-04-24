@@ -85,6 +85,14 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		cliErr := func(status int, msg string) {
+			if state.Mode == "cli" && state.CLICode != "" {
+				c.JSON(status, gin.H{"error": msg, "cli_code": state.CLICode})
+				return
+			}
+			c.JSON(status, gin.H{"error": msg})
+		}
+
 		identity, err := services.ExchangeGoogleCode(c.Request.Context(), code, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL)
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "google login failed"})
@@ -107,15 +115,15 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			}, username)
 			if err != nil {
 				if errors.Is(err, services.ErrUsernameRequired) || errors.Is(err, services.ErrInvalidUsername) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					cliErr(http.StatusBadRequest, err.Error())
 					return
 				}
 				if errors.Is(err, services.ErrUsernameAlreadyTaken) {
-					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+					cliErr(http.StatusConflict, err.Error())
 					return
 				}
 				if errors.Is(err, services.ErrAccountAlreadyExists) {
-					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+					cliErr(http.StatusConflict, err.Error())
 					return
 				}
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
@@ -131,7 +139,7 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			})
 			if err != nil {
 				if errors.Is(err, services.ErrAccountNotFound) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					cliErr(http.StatusBadRequest, err.Error())
 					return
 				}
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
@@ -165,6 +173,12 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			AccessToken: token,
 			TokenType:   "Bearer",
 			ExpiresIn:   int64(ttl.Seconds()),
+			CliCode: func() string {
+				if state.Mode == "cli" {
+					return state.CLICode
+				}
+				return ""
+			}(),
 		})
 	}
 }

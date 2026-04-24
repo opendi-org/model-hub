@@ -15,6 +15,7 @@ const Signin = () => {
   const theme = useTheme();
   const [searchParams] = useSearchParams();
   const [error, setError] = useState(null);
+  const cliCode = searchParams.get('cli_code');
 
   useEffect(() => {
     // Check if there's an error message from the callback
@@ -26,7 +27,7 @@ const Signin = () => {
 
   const handleGoogleSignin = () => {
     // Sign in without a username - backend will check if account exists
-    window.location.href = APIClient.getGoogleLoginUrl();
+    window.location.href = APIClient.getGoogleLoginUrl(undefined, cliCode);
   };
 
   return (

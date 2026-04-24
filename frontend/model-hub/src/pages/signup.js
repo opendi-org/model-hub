@@ -15,6 +15,7 @@ import APIClient from '../util/ApiClient';
 const Signup = () => {
   const theme = useTheme();
   const [searchParams] = useSearchParams();
+  const cliCode = searchParams.get('cli_code');
   const [username, setUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [redirectError, setRedirectError] = useState(null);
@@ -34,7 +35,7 @@ const Signup = () => {
       return;
     }
     setUsernameError('');
-    window.location.href = APIClient.getGoogleLoginUrl(normalized);
+    window.location.href = APIClient.getGoogleLoginUrl(normalized, cliCode);
   };
 
   return (

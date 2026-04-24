@@ -16,6 +16,7 @@ type TokenResponse struct {
 	AccessToken string `json:"accessToken"`
 	TokenType   string `json:"tokenType"`
 	ExpiresIn   int64  `json:"expiresIn"`
+	CliCode     string `json:"cliCode,omitempty"`
 }
 
 type MeResponse struct {
@@ -36,12 +37,12 @@ type AuthClaims struct {
 
 // Internal OAuth state claims used during Google redirect/callback flow.
 type OAuthStateClaims struct {
-	Mode    string `json:"mode"`
-	CLICode string `json:"cliCode,omitempty"`
+	Mode     string `json:"mode"`
+	CLICode  string `json:"cliCode,omitempty"`
 	Username string `json:"username,omitempty"`
-	Nonce   string `json:"nonce"`
-	Exp     int64  `json:"exp"`
-	Iat     int64  `json:"iat"`
+	Nonce    string `json:"nonce"`
+	Exp      int64  `json:"exp"`
+	Iat      int64  `json:"iat"`
 }
 
 // Google identity extracted from verified Google token response.
