@@ -646,10 +646,6 @@
 - [Access Denied] If the user doesn’t have write access to the specified repository, an appropriate error message is displayed.
 - [Not Found] If the specified repository or tag doesn’t exist, an appropriate error message is displayed.
 
----
-
-## Local Actions
-
 ### [UC 31] CLI Validate Model
 
 **Main Flow**
