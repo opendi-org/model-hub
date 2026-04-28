@@ -57,11 +57,11 @@ const renderInRouter = (ui) =>
 
 // ── CLI Tool ─────────────────────────────────────────────────────────────────
 describe('CLI Tool page (authenticated)', () => {
-  test('shows full CLI docs and hides the login gate', () => {
+  test('shows full CLI docs', () => {
     renderInRouter(<CliDownloadPage />);
     expect(screen.getByRole('heading', { name: /openDI CLI/i })).toBeInTheDocument();
-    expect(screen.getByText(/pip install opendi/i)).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /login required/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /getting started/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/pipx install opendi/i).length).toBeGreaterThan(0);
   });
 });
 

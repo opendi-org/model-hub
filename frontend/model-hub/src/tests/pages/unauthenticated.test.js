@@ -76,12 +76,12 @@ describe('Sign Up page (unauthenticated)', () => {
 
 // ── CLI Tool ─────────────────────────────────────────────────────────────────
 describe('CLI Tool page (unauthenticated)', () => {
-  test('shows login gate and hides CLI docs', () => {
+  test('shows CLI docs without requiring login', () => {
     renderInRouter(<CliDownloadPage />);
-    expect(screen.getByRole('heading', { name: /login required/i })).toBeInTheDocument();
-    expect(screen.getByText(/you need to be logged in/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /login with google/i })).toBeInTheDocument();
-    expect(screen.queryByText(/pip install opendi/i)).not.toBeInTheDocument();
+    // Page is public — no login gate
+    expect(screen.queryByRole('heading', { name: /login required/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /openDI CLI/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /getting started/i })).toBeInTheDocument();
   });
 });
 
