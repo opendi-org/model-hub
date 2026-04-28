@@ -1,23 +1,43 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+/**
+ * Navbar tests — sign-out interaction.
+ * Note: unauthenticated appearance is covered in unauthenticated.test.js;
+ *       authenticated appearance is covered in authenticated.test.js.
+ */
+
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import Navbar from '../../components/Navbar';
-import { UserProvider } from '../../context/UserContext';
-import { NotificationProvider } from '../../context/NotificationContext';
+
+const mockLogout = jest.fn();
+jest.mock('../../context/UserContext', () => ({
+  useUser: () => ({
+    user: { username: 'testuser', email: 'test@example.com', picture: null },
+    loading: false,
+    logout: mockLogout,
+  }),
+  UserProvider: ({ children }) => children,
+}));
+
+jest.mock('../../App', () => ({
+  useColorMode: () => ({ mode: 'light', toggleColorMode: jest.fn() }),
+  ColorModeContext: { Provider: ({ children }) => children },
+}));
 
 jest.mock('../../util/ApiClient');
 
+import Navbar from '../../components/Navbar';
+
 beforeEach(() => {
-  jest.clearAllMocks();
+  mockLogout.mockClear();
 });
 
-describe('Navbar — unauthenticated', () => {
-  test.todo('shows Login link when no user is logged in');
-  test.todo('does not show username or logout button');
-});
-
-describe('Navbar — authenticated', () => {
-  test.todo('shows username when user is logged in');
-  test.todo('shows logout button');
-  test.todo('clears user context on logout');
+// ── Sign out ──────────────────────────────────────────────────────────────────
+describe('Navbar — sign out', () => {
+  test('calls logout when Sign out menu item is clicked', () => {
+    render(<MemoryRouter><Navbar /></MemoryRouter>);
+    // MUI Tooltip propagates its title as aria-label onto the wrapped button
+    fireEvent.click(screen.getByRole('button', { name: 'testuser' }));
+    fireEvent.click(screen.getByText(/sign out/i));
+    expect(mockLogout).toHaveBeenCalled();
+  });
 });

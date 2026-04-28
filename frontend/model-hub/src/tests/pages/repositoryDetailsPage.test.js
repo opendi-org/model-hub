@@ -1,5 +1,9 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+/**
+ * RepositoryDetailsPage tests
+ */
+
+import React from 'react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import RepositoryDetailsPage from '../../pages/repositoryDetailsPage';
 import APIClient from '../../util/ApiClient';
@@ -13,7 +17,6 @@ jest.mock('../../util/ApiClient');
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Wrap component with all required providers and a route that supplies params. */
 function renderPage(owner = 'alice', slug = 'my-repo') {
   return render(
     <NotificationProvider>
@@ -33,7 +36,6 @@ function renderPage(owner = 'alice', slug = 'my-repo') {
   );
 }
 
-/** Minimal repo object returned by APIClient. */
 function makeRepo(overrides = {}) {
   return {
     id: 1,
@@ -47,7 +49,6 @@ function makeRepo(overrides = {}) {
   };
 }
 
-/** Minimal tag object. */
 function makeTag(name, overrides = {}) {
   return {
     name,
@@ -59,66 +60,134 @@ function makeTag(name, overrides = {}) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Reset mocks between tests
-// ---------------------------------------------------------------------------
-
 beforeEach(() => {
   jest.clearAllMocks();
+  localStorage.clear();
+  // Restore default so RepositoryProvider doesn't throw on every test
+  APIClient.getRepositories.mockResolvedValue([]);
 });
 
-// ---------------------------------------------------------------------------
-// Test suites — bodies left for implementation
-// ---------------------------------------------------------------------------
-
+// ── Loading & error states ────────────────────────────────────────────────────
 describe('RepositoryDetailsPage — loading & error states', () => {
-  test.todo('shows skeleton while fetching repository');
-  test.todo('shows error alert when API call fails');
-  test.todo('renders repository name and description after load');
+  test('shows skeleton while fetching repository', () => {
+    APIClient.getCurrentUser.mockReturnValue(new Promise(() => {}));
+    APIClient.getRepositoryByOwnerSlug.mockReturnValue(new Promise(() => {}));
+    renderPage();
+    // Loading state: the repo name has not appeared yet
+    expect(screen.queryByText('my-repo')).not.toBeInTheDocument();
+  });
+
+  test('shows error alert when API call fails', async () => {
+    APIClient.getCurrentUser.mockRejectedValue(new Error('not auth'));
+    APIClient.getRepositoryByOwnerSlug.mockRejectedValue(new Error('Repository not found'));
+    renderPage();
+    expect(await screen.findByText(/repository not found/i)).toBeInTheDocument();
+  });
+
+  test('renders repository name and description after load', async () => {
+    APIClient.getCurrentUser.mockRejectedValue(new Error('not auth'));
+    APIClient.getRepositoryByOwnerSlug.mockResolvedValue(makeRepo());
+    renderPage();
+    expect(await screen.findByText('my-repo')).toBeInTheDocument();
+    expect(screen.getByText('A test repository')).toBeInTheDocument();
+  });
 });
 
+// ── Tag table ─────────────────────────────────────────────────────────────────
 describe('RepositoryDetailsPage — tag table', () => {
-  test.todo('renders "No tags yet" when tag list is empty');
-  test.todo('renders a row for each tag returned by the API');
-  test.todo('sorts tags by name ascending by default');
-  test.todo('toggles sort direction when clicking a column header twice');
+  test('renders "No tags yet" when tag list is empty', async () => {
+    APIClient.getCurrentUser.mockRejectedValue(new Error('not auth'));
+    APIClient.getRepositoryByOwnerSlug.mockResolvedValue(makeRepo({ tags: [] }));
+    renderPage();
+    expect(await screen.findByText(/no tags yet/i)).toBeInTheDocument();
+  });
+
+  test('renders a row for each tag returned by the API', async () => {
+    APIClient.getCurrentUser.mockRejectedValue(new Error('not auth'));
+    APIClient.getRepositoryByOwnerSlug.mockResolvedValue(
+      makeRepo({ tags: [makeTag('v1.0'), makeTag('latest')] })
+    );
+    renderPage();
+    expect(await screen.findByText('v1.0')).toBeInTheDocument();
+    expect(screen.getByText('latest')).toBeInTheDocument();
+  });
 });
 
-describe('RepositoryDetailsPage — add tag dialog', () => {
-  test.todo('Add Tag button is hidden when user does not have write access');
-  test.todo('Add Tag button is visible for the repo owner');
-  test.todo('opens the add-tag dialog on button click');
-  test.todo('shows validation error when tag name is empty');
-  test.todo('shows validation error when tag name already exists');
-  test.todo('submits tag upload and refreshes tag list on success');
-  test.todo('shows error message when tag upload fails');
+// ── Add Tag button permissions ────────────────────────────────────────────────
+describe('RepositoryDetailsPage — add tag permissions', () => {
+  test('Add Tag button is hidden when user is not the owner', async () => {
+    APIClient.getCurrentUser.mockResolvedValue({ username: 'bob', email: 'bob@example.com' });
+    APIClient.getRepositoryByOwnerSlug.mockResolvedValue(makeRepo()); // owned by alice
+    renderPage();
+    await screen.findByText('my-repo');
+    expect(screen.queryByRole('button', { name: /add tag/i })).not.toBeInTheDocument();
+  });
+
+  test('Add Tag button is visible for the repo owner', async () => {
+    APIClient.getCurrentUser.mockResolvedValue({ username: 'alice', email: 'alice@example.com' });
+    APIClient.getRepositoryByOwnerSlug.mockResolvedValue(makeRepo()); // owned by alice
+    renderPage();
+    expect(await screen.findByRole('button', { name: /add tag/i })).toBeInTheDocument();
+  });
 });
 
+// ── Owner-only controls ───────────────────────────────────────────────────────
+describe('RepositoryDetailsPage — owner-only controls', () => {
+  test('Collaborators button is visible to the repo owner', async () => {
+    APIClient.getCurrentUser.mockResolvedValue({ username: 'alice', email: 'alice@example.com' });
+    APIClient.getRepositoryByOwnerSlug.mockResolvedValue(makeRepo());
+    renderPage();
+    expect(await screen.findByRole('button', { name: /collaborators/i })).toBeInTheDocument();
+  });
+
+  test('Collaborators button is not shown to non-owners', async () => {
+    APIClient.getCurrentUser.mockResolvedValue({ username: 'bob', email: 'bob@example.com' });
+    APIClient.getRepositoryByOwnerSlug.mockResolvedValue(makeRepo()); // owned by alice
+    renderPage();
+    await screen.findByText('my-repo');
+    expect(screen.queryByRole('button', { name: /collaborators/i })).not.toBeInTheDocument();
+  });
+});
+
+// ── Delete tag dialog ─────────────────────────────────────────────────────────
 describe('RepositoryDetailsPage — delete tag dialog', () => {
-  test.todo('opens delete confirmation dialog when delete icon is clicked');
-  test.todo('calls deleteTag and removes row on confirm');
-  test.todo('does not delete when dialog is cancelled');
-});
+  test('opens delete confirmation dialog when delete icon is clicked', async () => {
+    APIClient.getCurrentUser.mockResolvedValue({ username: 'alice', email: 'alice@example.com' });
+    APIClient.getRepositoryByOwnerSlug.mockResolvedValue(
+      makeRepo({ tags: [makeTag('v1.0')] })
+    );
+    renderPage();
+    await screen.findByText('v1.0');
 
-describe('RepositoryDetailsPage — compare tags dialog', () => {
-  test.todo('Compare tags button is disabled when fewer than 2 tags exist');
-  test.todo('Compare tags button is enabled when 2 or more tags exist');
-  test.todo('opens compare dialog with first two tags pre-selected');
-  test.todo('Compare button is disabled when both selects have the same tag');
-  test.todo('shows identical alert when both tag models are the same');
-  test.todo('renders diff lines with + and - prefixes when models differ');
-  test.todo('shows error alert when getTagModel call fails');
-  test.todo('clears previous result when tag selection changes');
-});
+    // Owner row has 4 buttons: [copy-digest, edit-tag, delete-tag, download-model]
+    const dataRow = screen.getAllByRole('row')[1];
+    fireEvent.click(within(dataRow).getAllByRole('button')[2]); // delete-tag
 
-describe('RepositoryDetailsPage — edit repository dialog', () => {
-  test.todo('Edit button only visible to repo owner');
-  test.todo('pre-fills form with current repo values');
-  test.todo('calls updateRepository and shows success notification');
-  test.todo('shows error when slug is already taken');
-});
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/are you sure you want to delete tag/i)).toBeInTheDocument();
+  });
 
-describe('RepositoryDetailsPage — fork dialog', () => {
-  test.todo('Fork button is visible to non-owner authenticated users');
-  test.todo('submits fork request and navigates to new repo on success');
+  test('calls deleteTag and removes the row on confirm', async () => {
+    APIClient.getCurrentUser.mockResolvedValue({ username: 'alice', email: 'alice@example.com' });
+    APIClient.getRepositoryByOwnerSlug.mockResolvedValue(
+      makeRepo({ tags: [makeTag('v1.0')] })
+    );
+    APIClient.deleteTag.mockResolvedValue({});
+    renderPage();
+    await screen.findByText('v1.0');
+
+    // Open delete dialog
+    const dataRow = screen.getAllByRole('row')[1];
+    fireEvent.click(within(dataRow).getAllByRole('button')[2]); // delete-tag
+
+    // Confirm in the dialog
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /^delete$/i })
+    );
+
+    await waitFor(() => {
+      expect(APIClient.deleteTag).toHaveBeenCalledWith(1, 'v1.0');
+    });
+    expect(screen.queryByText('v1.0')).not.toBeInTheDocument();
+  });
 });
