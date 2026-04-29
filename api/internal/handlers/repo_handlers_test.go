@@ -749,8 +749,8 @@ func TestPutTagModel_NoWritePermission(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
-// TestGetTagModel_DownloadAndETag tests downloading a model and ETag cache validation
-func TestGetTagModel_DownloadAndETag(t *testing.T) {
+// TestGetTagModel_DownloadAlwaysReturnsModel tests downloading a model payload.
+func TestGetTagModel_DownloadAlwaysReturnsModel(t *testing.T) {
 	db := testDB(t)
 	cleanupTestDB(t, db)
 	defer cleanupTestDB(t, db)
@@ -787,27 +787,14 @@ func TestGetTagModel_DownloadAndETag(t *testing.T) {
 		GetTagModel(db)(c)
 	})
 
-	// Fresh download — should return 200 with ETag header
+	// Fresh download — should return 200 with model body.
 	getReq, _ := http.NewRequest("GET", "/repositories/testuser/test-repo/tags/v1.0/model", nil)
 	getW := httptest.NewRecorder()
 	getRouter.ServeHTTP(getW, getReq)
 	assert.Equal(t, http.StatusOK, getW.Code)
-	assert.Equal(t, digest, getW.Header().Get("ETag"))
-
-	// Conditional request with matching ETag — should return 304
-	cachedReq, _ := http.NewRequest("GET", "/repositories/testuser/test-repo/tags/v1.0/model", nil)
-	cachedReq.Header.Set("If-None-Match", digest)
-	cachedW := httptest.NewRecorder()
-	getRouter.ServeHTTP(cachedW, cachedReq)
-	assert.Equal(t, http.StatusNotModified, cachedW.Code)
-
-	// Conditional request with stale ETag — should return 200 with new model
-	staleReq, _ := http.NewRequest("GET", "/repositories/testuser/test-repo/tags/v1.0/model", nil)
-	staleReq.Header.Set("If-None-Match", "stale-digest-that-does-not-match")
-	staleW := httptest.NewRecorder()
-	getRouter.ServeHTTP(staleW, staleReq)
-	assert.Equal(t, http.StatusOK, staleW.Code)
-	assert.Equal(t, digest, staleW.Header().Get("ETag"))
+	assert.NotEmpty(t, getW.Body.Bytes())
+	assert.Contains(t, getW.Body.String(), "{")
+	assert.NotEmpty(t, digest)
 }
 
 // TestGetTagModel_NotFound tests downloading a non-existent tag

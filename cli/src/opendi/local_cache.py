@@ -13,7 +13,7 @@ Schema (v2):
     repo        TEXT NOT NULL          -- display only (slug)
     tag         TEXT NOT NULL
     content     TEXT NOT NULL          -- raw JSON string
-    digest      TEXT                   -- ETag from hub (used for If-None-Match on re-pull)
+    digest      TEXT                   -- model digest from hub responses
     pulled_at   TEXT NOT NULL          -- ISO-8601 UTC timestamp
     stale       INTEGER NOT NULL DEFAULT 0  -- set to 1 by delete tag/repo; cleared on re-pull
     UNIQUE(owner, repo, tag)           -- primary dedup key; also see partial index below

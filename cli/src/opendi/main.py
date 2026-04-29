@@ -214,7 +214,7 @@ def _pull_to_cache(
     *,
     silent: bool = False,
 ) -> str:
-    """Resolve repo_id, check ETag cache, fetch model and populate local cache.
+    """Resolve repo, refresh metadata, and fetch model only when needed.
 
     Returns the JSON content string.
     Raises typer.Exit(1) on any network or HTTP error.
@@ -251,9 +251,56 @@ def _pull_to_cache(
     canonical_owner: str = repo_data.get("owner", owner)
     canonical_slug: str = repo_data.get("slug", repo_slug)
 
-    # Step 2 — check local cache for an existing entry to supply If-None-Match
+    # Step 2 — compare metadata digest (when available)
     cached = local_cache.get_model_info(canonical_owner, canonical_slug, tag, repo_id=repo_id)
     cached_digest = cached["digest"] if cached else None
+    previous_owner = str(cached.get("owner", "")) if cached else None
+    previous_slug = str(cached.get("repo", "")) if cached else None
+    remote_digest: str | None = None
+    tags = repo_data.get("tags")
+    if isinstance(tags, list):
+        for item in tags:
+            if isinstance(item, dict) and item.get("name") == tag:
+                maybe_digest = item.get("digest")
+                if isinstance(maybe_digest, str) and maybe_digest.strip():
+                    remote_digest = maybe_digest.strip()
+                break
+
+    ref = f"{canonical_owner}/{canonical_slug}:{tag}"
+    if (
+        cached is not None
+        and remote_digest is not None
+        and cached_digest is not None
+        and cached_digest == remote_digest
+    ):
+        local_cache.save_model(
+            canonical_owner,
+            canonical_slug,
+            tag,
+            cached["content"],
+            digest=remote_digest,
+            repo_id=repo_id,
+            stale=0,
+        )
+        if not silent:
+            typer.echo(typer.style(f"{ref} already up to date.", dim=True))
+            # Metadata can still change even when digest is unchanged.
+            if previous_slug and previous_slug != canonical_slug:
+                typer.echo(
+                    typer.style(
+                        f"  metadata updated: slug {previous_slug} -> {canonical_slug}",
+                        fg=typer.colors.YELLOW,
+                    )
+                )
+            if previous_owner and previous_owner != canonical_owner:
+                typer.echo(
+                    typer.style(
+                        f"  metadata updated: owner {previous_owner} -> {canonical_owner}",
+                        fg=typer.colors.RED,
+                        bold=True,
+                    )
+                )
+        return cached["content"]
 
     # Step 3 — fetch model
     tag_enc = urllib.parse.quote(tag, safe="")
@@ -263,8 +310,6 @@ def _pull_to_cache(
         f"/tags/{tag_enc}/model"
     )
     fetch_headers = _auth_headers()
-    if cached_digest:
-        fetch_headers["If-None-Match"] = cached_digest
 
     logger.debug("Fetching model %s/%s:%s", canonical_owner, canonical_slug, tag)
     try:
@@ -275,13 +320,6 @@ def _pull_to_cache(
     except requests.Timeout:
         typer.echo("Request timed out. Please try again.", err=True)
         raise typer.Exit(1)
-
-    ref = f"{canonical_owner}/{canonical_slug}:{tag}"
-
-    if model_resp.status_code == 304:
-        if not silent:
-            typer.echo(typer.style(f"{ref} already up to date.", dim=True))
-        return cached["content"]  # type: ignore[index]
 
     if model_resp.status_code == 404:
         typer.echo(f"Model not found: {ref}", err=True)
@@ -297,7 +335,7 @@ def _pull_to_cache(
         raise typer.Exit(1)
 
     content = model_resp.text
-    new_digest = model_resp.headers.get("ETag") or model_resp.headers.get("etag")
+    new_digest = remote_digest
 
     local_cache.save_model(
         canonical_owner,
@@ -315,6 +353,23 @@ def _pull_to_cache(
             typer.style("Pulled", fg=typer.colors.GREEN, bold=True)
             + f" {ref}  {size_str}  digest: {digest_str}"
         )
+        if cached is not None and cached_digest and new_digest and cached_digest != new_digest:
+            typer.echo(typer.style("  metadata updated: digest changed", dim=True))
+        if previous_slug and previous_slug != canonical_slug:
+            typer.echo(
+                typer.style(
+                    f"  metadata updated: slug {previous_slug} -> {canonical_slug}",
+                    fg=typer.colors.YELLOW,
+                )
+            )
+        if previous_owner and previous_owner != canonical_owner:
+            typer.echo(
+                typer.style(
+                    f"  metadata updated: owner {previous_owner} -> {canonical_owner}",
+                    fg=typer.colors.RED,
+                    bold=True,
+                )
+            )
 
     return content
 
@@ -466,7 +521,7 @@ def search(
 def pull(
     name: str = typer.Argument(..., help=shared.HELP_ARG_MODEL_REF),
 ) -> None:
-    """Pull a model from the hub into the local cache (ETag-based refresh).
+    """Pull a model from the hub into the local cache.
 
     Ref must include a tag. Forms: owner/repo:tag, repo:tag (when logged in),
     or id@<repo_id>:<tag> (e.g. id@42:v1, id@[42]:v1).

@@ -66,7 +66,7 @@ func UploadModel(db *gorm.DB, repoID uint, tagName string, raw []byte, createdBy
 // DownloadModelResult holds the outcome of a successful model download.
 type DownloadModelResult struct {
 	Model  *cdm.CausalDecisionModel
-	Digest string // tag.ModelUUID — suitable for use as an ETag
+	Digest string // tag.ModelUUID content digest
 }
 
 // DownloadModel retrieves the CDM for the named tag in the given repository.
