@@ -431,13 +431,33 @@ def _repo_ok(owner="alice", slug="my-model", repo_id=42):
     return m
 
 
-def _model_ok(content='{"meta": {}}', etag="digest-abc"):
+def _repo_ok_with_tag_digest(
+    owner="alice",
+    slug="my-model",
+    repo_id=42,
+    tag="v1.0",
+    digest="digest-abc",
+):
+    """Mock repo response that includes tag metadata digest."""
+    m = MagicMock()
+    m.status_code = 200
+    m.ok = True
+    m.json.return_value = {
+        "id": repo_id,
+        "owner": owner,
+        "slug": slug,
+        "tags": [{"name": tag, "digest": digest}],
+    }
+    return m
+
+
+def _model_ok(content='{"meta": {}}', digest="digest-abc"):
     """Mock model fetch response."""
     m = MagicMock()
     m.status_code = 200
     m.ok = True
     m.text = content
-    m.headers = {"ETag": etag}
+    m.headers = {"ETag": digest}
     return m
 
 
@@ -470,18 +490,82 @@ def test_pull_unauthenticated_public_repo() -> None:
     mock_save.assert_called_once()
 
 
-def test_pull_already_up_to_date() -> None:
-    """opendi pull shows 'already up to date' on 304."""
-    cached = {"digest": "digest-abc", "content": '{"cached": true}'}
-    model_304 = MagicMock(status_code=304, ok=True)
+def test_pull_fetches_model_and_writes_cache() -> None:
+    """opendi pull fetches model payload and writes cache metadata/content."""
     with (
         _logged_in(),
-        patch("opendi.main.requests.get", side_effect=[_repo_ok(), model_304]),
+        patch("opendi.main.requests.get", side_effect=[_repo_ok(), _model_ok()]),
+        patch("opendi.main.local_cache.get_model_info", return_value=None),
+        patch("opendi.main.local_cache.save_model") as mock_save,
+    ):
+        result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
+    assert result.exit_code == 0
+    assert "Pulled" in result.output
+    mock_save.assert_called_once()
+
+
+def test_pull_up_to_date_uses_metadata_digest_without_model_fetch() -> None:
+    """opendi pull skips model download when metadata digest matches cache."""
+    cached = {"digest": "digest-abc", "content": '{"cached": true}'}
+    with (
+        _logged_in(),
+        patch("opendi.main.requests.get", side_effect=[_repo_ok_with_tag_digest()]) as mock_get,
         patch("opendi.main.local_cache.get_model_info", return_value=cached),
+        patch("opendi.main.local_cache.save_model") as mock_save,
     ):
         result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
     assert result.exit_code == 0
     assert "up to date" in result.output
+    assert mock_get.call_count == 1
+    mock_save.assert_called_once_with(
+        "alice",
+        "my-model",
+        "v1.0",
+        '{"cached": true}',
+        digest="digest-abc",
+        repo_id=42,
+        stale=0,
+    )
+
+
+def test_pull_up_to_date_prints_slug_owner_metadata_updates() -> None:
+    """opendi pull reports slug/owner metadata updates on digest match."""
+    cached = {
+        "digest": "digest-abc",
+        "content": '{"cached": true}',
+        "owner": "old-owner",
+        "repo": "old-slug",
+    }
+    with (
+        _logged_in(),
+        patch(
+            "opendi.main.requests.get",
+            side_effect=[_repo_ok_with_tag_digest(owner="alice", slug="my-model", digest="digest-abc")],
+        ),
+        patch("opendi.main.local_cache.get_model_info", return_value=cached),
+        patch("opendi.main.local_cache.save_model"),
+    ):
+        result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
+    assert result.exit_code == 0
+    assert "metadata updated: slug old-slug -> my-model" in result.output
+    assert "metadata updated: owner old-owner -> alice" in result.output
+
+
+def test_pull_reports_digest_metadata_update_on_changed_model() -> None:
+    """opendi pull reports digest metadata update when model changes."""
+    cached = {"digest": "digest-old", "content": '{"cached": true}', "owner": "alice", "repo": "my-model"}
+    with (
+        _logged_in(),
+        patch(
+            "opendi.main.requests.get",
+            side_effect=[_repo_ok_with_tag_digest(digest="digest-new"), _model_ok(digest="digest-new")],
+        ),
+        patch("opendi.main.local_cache.get_model_info", return_value=cached),
+        patch("opendi.main.local_cache.save_model"),
+    ):
+        result = runner.invoke(app, ["pull", "alice/my-model:v1.0"])
+    assert result.exit_code == 0
+    assert "metadata updated: digest changed" in result.output
 
 
 def test_pull_not_found() -> None:

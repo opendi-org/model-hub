@@ -1042,12 +1042,6 @@ func GetTagModel(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.Header("ETag", result.Digest)
-		if c.GetHeader("If-None-Match") == result.Digest {
-			c.Status(http.StatusNotModified)
-			return
-		}
-
 		c.JSON(http.StatusOK, result.Model)
 	}
 }

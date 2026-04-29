@@ -19,9 +19,12 @@ export default class APIClient {
   }
 
   /** Full URL for Google OAuth login redirect. Backend serves /auth/... at root (no /api prefix). */
-  static getGoogleLoginUrl(username) {
-    const qs = username ? `?username=${encodeURIComponent(username)}` : "";
-    return `${HTTPClient.baseURL}/v0/auth/login/google/start${qs}`;
+  static getGoogleLoginUrl(username, cliCode) {
+    const params = new URLSearchParams();
+    if (username) params.set('username', username);
+    if (cliCode) params.set('cli_code', cliCode);
+    const qs = params.toString();
+    return `${HTTPClient.baseURL}/v0/auth/login/google/start${qs ? `?${qs}` : ''}`;
   }
 
   /** GET /auth/google/callback - exchange code/state for user; throws with error message on failure. */
@@ -29,7 +32,13 @@ export default class APIClient {
     const url = `${HTTPClient.baseURL}/v0/auth/login/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
     const response = await fetch(url, { method: "GET", credentials: "include" });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Authentication failed");
+    if (!response.ok) {
+      const error = new Error(data.error || "Authentication failed");
+      if (data.cli_code) {
+        error.cliCode = data.cli_code;
+      }
+      throw error;
+    }
     return data;
   }
 

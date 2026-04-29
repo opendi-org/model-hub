@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -49,7 +51,7 @@ func GoogleStart(cfg *config.Config) gin.HandlerFunc {
 		cliCode := strings.TrimSpace(c.Query("cli_code"))
 		username := strings.TrimSpace(c.Query("username"))
 		if cliCode != "" {
-			if ok := tryApproveCLIWithExistingSession(c, cliCode); ok {
+			if ok := tryApproveCLIWithExistingSession(c, cliCode, cfg.GoogleRedirectURL); ok {
 				return
 			}
 		}
@@ -85,6 +87,14 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		cliErr := func(status int, msg string) {
+			if state.Mode == "cli" && state.CLICode != "" {
+				c.JSON(status, gin.H{"error": msg, "cli_code": state.CLICode})
+				return
+			}
+			c.JSON(status, gin.H{"error": msg})
+		}
+
 		identity, err := services.ExchangeGoogleCode(c.Request.Context(), code, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL)
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "google login failed"})
@@ -107,15 +117,15 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			}, username)
 			if err != nil {
 				if errors.Is(err, services.ErrUsernameRequired) || errors.Is(err, services.ErrInvalidUsername) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					cliErr(http.StatusBadRequest, err.Error())
 					return
 				}
 				if errors.Is(err, services.ErrUsernameAlreadyTaken) {
-					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+					cliErr(http.StatusConflict, err.Error())
 					return
 				}
 				if errors.Is(err, services.ErrAccountAlreadyExists) {
-					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+					cliErr(http.StatusConflict, err.Error())
 					return
 				}
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
@@ -131,7 +141,7 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			})
 			if err != nil {
 				if errors.Is(err, services.ErrAccountNotFound) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					cliErr(http.StatusBadRequest, err.Error())
 					return
 				}
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
@@ -165,6 +175,12 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			AccessToken: token,
 			TokenType:   "Bearer",
 			ExpiresIn:   int64(ttl.Seconds()),
+			CliCode: func() string {
+				if state.Mode == "cli" {
+					return state.CLICode
+				}
+				return ""
+			}(),
 		})
 	}
 }
@@ -250,7 +266,7 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(buf)[:n], nil
 }
 
-func tryApproveCLIWithExistingSession(c *gin.Context, cliCode string) bool {
+func tryApproveCLIWithExistingSession(c *gin.Context, cliCode string, googleRedirectURL string) bool {
 	user, _ := middleware.GetCurrentUser(c)
 	if user == nil {
 		return false
@@ -269,9 +285,28 @@ func tryApproveCLIWithExistingSession(c *gin.Context, cliCode string) bool {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to approve cli session"})
 		return true
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "approved",
-		"message": "CLI login approved. You can return to your terminal.",
-	})
+	c.Redirect(http.StatusTemporaryRedirect, frontendCLIApprovedURL(googleRedirectURL))
 	return true
+}
+
+func frontendCLIApprovedURL(googleRedirectURL string) string {
+	u, err := url.Parse(strings.TrimSpace(googleRedirectURL))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "/auth/cli-approved"
+	}
+
+	p := path.Clean(u.Path)
+	if strings.HasSuffix(p, "/auth/callback") {
+		p = strings.TrimSuffix(p, "/auth/callback")
+	} else {
+		p = path.Dir(p)
+	}
+	if p == "." || p == "/" {
+		u.Path = "/auth/cli-approved"
+	} else {
+		u.Path = path.Join(p, "auth", "cli-approved")
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }

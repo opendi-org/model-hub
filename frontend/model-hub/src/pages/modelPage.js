@@ -86,26 +86,6 @@ function Ownership({
         }
     };
 
-    const handleAcceptDecline = async (accept) => {
-        setStatus('pending');
-        const action = accept ? 'Accepting' : 'Declining';
-        setMessage(`${action} ownership transfer request...`);
-
-        try {
-            await APIClient.deleteTransfer(tag, accept);
-            setStatus('success');
-            const successMsg = accept
-                ? 'Ownership transfer accepted successfully.'
-                : 'Ownership transfer declined successfully.';
-            setMessage(successMsg);
-            onTransferUpdate(null);
-        } catch (error) {
-            console.error('Error during accept/decline:', error);
-            setStatus('error');
-            setMessage(error.message || 'A network error occurred during the accept/decline API call.');
-        }
-    };
-
     return (
         <div>
             <Stack spacing={2}>
@@ -402,7 +382,7 @@ const ModelPage = () => {
     const [modalIsOpen, setModalIsOpen] = useState(false);
     const [shares, setShares] = useState([]); // [{email: "...", level: "..."}, ...]
     const [searchTerm, setSearchTerm] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
+    // eslint-disable-next-line no-unused-vars
     const [error, setError] = useState(null);
     const privacyTag = model?.addons?.tag;
 
@@ -484,15 +464,12 @@ const ModelPage = () => {
     useEffect(() => {
         if (modalIsOpen && privacyTag) {
             const fetchShares = async () => {
-                setIsLoading(true);
                 setError(null);
                 try {
                     const data = await APIClient.getModelPrivacy(privacyTag);
                     setShares(data.shares || []);
                 } catch (err) {
                     setError(err.message);
-                } finally {
-                    setIsLoading(false);
                 }
             };
             fetchShares();
@@ -574,12 +551,13 @@ const ModelPage = () => {
     function CollapsedParentLineage() {
         const [lineage, setLineage] = React.useState(null);
 
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         React.useEffect(() => {
             if (!model?.addons?.tag) return;
             APIClient.getModelLineage(model.addons.tag)
                 .then(data => setLineage(data))
                 .catch(error => console.error('Error fetching lineage:', error));
-        }, [model]);
+        }, []);
 
         if (!lineage) {
             return;
@@ -622,12 +600,13 @@ const ModelPage = () => {
     function ModelChildren() {
         const [children, setChildren] = React.useState(null);
 
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         React.useEffect(() => {
             if (!model?.addons?.tag) return;
             APIClient.getModelChildren(model.addons.tag)
                 .then(data => setChildren(data))
                 .catch(error => console.error('Error fetching children:', error));
-        }, [model]);
+        }, []);
 
         if (!children || children.length === 0) {
             return;

@@ -21,7 +21,7 @@
 | `DELETE` | `/v0/repositories/:owner/:slug` | Delete a repository |
 | `GET` | `/v0/repositories/:owner/:slug/tags` | List tags (metadata only) |
 | `GET` | `/v0/repositories/:owner/:slug/tags/:tag` | Get tag metadata only (digest, size, timestamps) |
-| `GET` | `/v0/repositories/:owner/:slug/tags/:tag/model` | Get full CDM JSON at tag (ETag for cache) |
+| `GET` | `/v0/repositories/:owner/:slug/tags/:tag/model` | Get full CDM JSON at tag |
 | `PUT` | `/v0/repositories/:owner/:slug/tags/:tag` | Create/overwrite tag (body: upload model or retag from existing tag/digest) |
 | `DELETE` | `/v0/repositories/:owner/:slug/tags/:tag` | Delete a tag |
 | `GET` | `/v0/repositories/:owner/:slug/collaborators` | List collaborators |
@@ -38,5 +38,5 @@
 - **Auth MVP:** Access token TTL is 7 days. Web uses `HttpOnly` cookie; API also accepts `Authorization: Bearer` for CLI/non-browser clients.
 - **Refresh:** Refresh token flow is deferred and has no public endpoint in the current MVP.
 - **List:** `GET /v0/repositories` (no path segment) and `GET /v0/repositories/:owner` use query param `scope` (`mine`, `shared-with-me`, `all`) and optional `q`, `owner`. Unauthenticated callers see only public repos.
-- **Tag:** `GET .../tags/:tag` returns metadata only; `GET .../tags/:tag/model` returns full CDM JSON with `ETag` (e.g. digest). `PUT .../tags/:tag` accepts either an upload (CDM JSON) or a retag (reference to existing tag or digest).
+- **Tag:** `GET .../tags/:tag` returns metadata only; `GET .../tags/:tag/model` returns full CDM JSON. `PUT .../tags/:tag` accepts either an upload (CDM JSON) or a retag (reference to existing tag or digest).
 - **By ID / CLI alias:** Every endpoint under **Repositories (owner/slug)** has an ID-based alias for stable references (e.g. CLI). Replace the `/v0/repositories/:owner/:slug` prefix with `/v0/repo/:id` while keeping the trailing path the same. For example: `GET /v0/repositories/:owner/:slug` ↔ `GET /v0/repo/:id`, `GET /v0/repositories/:owner/:slug/tags` ↔ `GET /v0/repo/:id/tags`.
