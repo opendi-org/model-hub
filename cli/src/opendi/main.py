@@ -98,7 +98,7 @@ def login() -> None:
                     f"{typer.style(username or 'you', fg=typer.colors.GREEN, bold=True)}."
                 )
                 return
-            except Exception:
+            except auth.AuthAPIError:
                 credential_storage.delete_access_token()
                 shared.current_token = None
 
@@ -123,7 +123,7 @@ def login() -> None:
     except TimeoutError:
         typer.echo("Login timed out. Please try again.", err=True)
         raise typer.Exit(1)
-    except Exception as e:
+    except (auth.AuthAPIError, RuntimeError) as e:
         typer.echo(f"Login failed: {e}", err=True)
         raise typer.Exit(1)
 
@@ -135,10 +135,13 @@ def whoami() -> None:
     token = _require_access_token()
     try:
         me = auth.get_current_user(api_base, token)
-    except Exception:
+    except auth.AuthAPIError:
         credential_storage.delete_access_token()
         shared.current_token = None
         shared.echo_opendi_login_hint("Session expired. Run ", " to sign in again.")
+        raise typer.Exit(1)
+    except RuntimeError as e:
+        typer.echo(f"Failed to verify session: {e}", err=True)
         raise typer.Exit(1)
     username = me.get("username")
     email = me.get("email")

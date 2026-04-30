@@ -4,6 +4,7 @@ import json
 import tempfile
 from unittest.mock import MagicMock, patch
 
+from opendi import auth
 from typer.testing import CliRunner
 
 from opendi.main import app
@@ -188,7 +189,7 @@ def test_whoami_session_expired() -> None:
     """opendi whoami exits 1 and clears token when /me call fails."""
     with (
         _logged_in(),
-        patch("opendi.main.auth.get_current_user", side_effect=Exception("unauthorized")),
+        patch("opendi.main.auth.get_current_user", side_effect=auth.AuthAPIError("unauthorized", 401)),
         patch("opendi.main.credential_storage.delete_access_token") as mock_delete,
     ):
         result = runner.invoke(app, ["whoami"])

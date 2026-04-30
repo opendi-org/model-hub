@@ -7,12 +7,14 @@ Domain command modules read it at call time via ``from opendi.cmds import shared
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import logging
 import os
 import re
 import shutil
 import textwrap
+import urllib.parse
 from typing import NamedTuple
 
 import requests
@@ -32,7 +34,23 @@ current_token: str | None = None
 
 
 def api_base_url() -> str:
-    return os.environ.get("OPENDI_API_URL", "http://localhost:8080").rstrip("/")
+    raw_url = os.environ.get("OPENDI_API_URL", "http://localhost:8080").rstrip("/")
+    parsed = urllib.parse.urlparse(raw_url)
+    if parsed.scheme == "http":
+        host = (parsed.hostname or "").lower()
+        is_local_host = host in {"localhost", "127.0.0.1", "::1"}
+        if not is_local_host:
+            try:
+                is_local_host = ipaddress.ip_address(host).is_loopback
+            except ValueError:
+                is_local_host = False
+        if not is_local_host:
+            typer.echo(
+                "Warning: OPENDI_API_URL uses insecure HTTP for a non-local host. "
+                "Use HTTPS to avoid exposing credentials over plaintext transport.",
+                err=True
+            )
+    return raw_url
 
 
 def auth_headers(content_type: str | None = None) -> dict[str, str]:

@@ -85,3 +85,13 @@ def test_col_widths_uses_visible_length_for_styled_cells() -> None:
     )
     assert widths[0] == max(len("TAG"), len("longtag"))
     assert widths[1] == len("deadbeef")
+
+
+def test_api_base_url_warns_for_insecure_remote_http(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("OPENDI_API_URL", "http://example.com:8080")
+    assert shared.api_base_url() == "http://example.com:8080"
+    captured = capsys.readouterr()
+    assert "Warning: OPENDI_API_URL uses insecure HTTP" in captured.err
