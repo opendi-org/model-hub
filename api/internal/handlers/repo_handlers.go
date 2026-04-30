@@ -19,6 +19,20 @@ import (
 	"opendi.org/model-hub/api/internal/services"
 )
 
+const maxJSONBodyBytes int64 = 10 << 20 // 10 MiB
+
+func readLimitedRequestBody(c *gin.Context, maxBytes int64) ([]byte, error) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+	raw, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return nil, errors.New("request body is empty")
+	}
+	return raw, nil
+}
+
 // CreateRepository handles UC-03: Create Repository
 // POST /v0/repositories
 // Requires: RequireAuthentication middleware.
@@ -874,13 +888,13 @@ func PutTagModel(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		raw, err := io.ReadAll(c.Request.Body)
+		raw, err := readLimitedRequestBody(c, maxJSONBodyBytes)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
-			return
-		}
-		if len(raw) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
+			if strings.Contains(err.Error(), "request body too large") {
+				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -1200,13 +1214,13 @@ func isValidSlug(slug string) bool {
 // Auth optional — works for anyone. Returns 200 on valid, 400 with error on invalid.
 func ValidateModel() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		raw, err := io.ReadAll(c.Request.Body)
+		raw, err := readLimitedRequestBody(c, maxJSONBodyBytes)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
-			return
-		}
-		if len(raw) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
+			if strings.Contains(err.Error(), "request body too large") {
+				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		issues, err := database.ValidateCDMWithIssues(raw)

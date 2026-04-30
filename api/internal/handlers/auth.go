@@ -171,8 +171,12 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		middleware.SetAuthCookie(c, token, ttl)
+		accessToken := ""
+		if state.Mode == "cli" {
+			accessToken = token
+		}
 		c.JSON(http.StatusOK, dto.TokenResponse{
-			AccessToken: token,
+			AccessToken: accessToken,
 			TokenType:   "Bearer",
 			ExpiresIn:   int64(ttl.Seconds()),
 			CliCode: func() string {

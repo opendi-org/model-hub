@@ -28,18 +28,9 @@ import (
 //
 // ──────────────────────────────────────────────────────────────────────────────
 
-// TODO: Implement actual authentication logic here
-// GetCurrentUser should extract the authenticated user from the request context
-// by validating credentials (e.g., JWT token from Authorization header).
-//
-// Implementation guidance:
-//  1. Extract token from Authorization header (Bearer scheme)
-//  2. Validate token signature and expiry
-//  3. Extract user claims (typically user ID or email)
-//  4. Query database for hub.User record
-//  5. Cache in context using SetCurrentUser() for subsequent access
-//  6. Return error if token invalid, expired, or user not found
-//
+// Authentication extraction/verification is implemented in auth_context.go.
+// This file contains authorization helpers and permission hierarchy checks.
+
 
 // ── Helper functions ──────────────────────────────────────────────────────────
 

@@ -13,7 +13,7 @@ type CLILoginResponse struct {
 }
 
 type TokenResponse struct {
-	AccessToken string `json:"accessToken"`
+	AccessToken string `json:"accessToken,omitempty"`
 	TokenType   string `json:"tokenType"`
 	ExpiresIn   int64  `json:"expiresIn"`
 	CliCode     string `json:"cliCode,omitempty"`

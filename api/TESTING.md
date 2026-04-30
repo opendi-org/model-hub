@@ -21,7 +21,13 @@ failing.
 ### Fast local run (may skip DB-backed integration tests)
 
 ```bash
-go test ./...
+go test -v ./...
+```
+
+To explicitly see whether integration tests were skipped:
+
+```bash
+go test -v ./... | rg "SKIP|database not available"
 ```
 
 ### Full DB-backed run with Docker Compose
@@ -29,9 +35,9 @@ go test ./...
 From repo root:
 
 ```bash
-docker compose -p openditest -f compose.yaml --env-file .env up -d db
-docker compose -p openditest -f compose.yaml --env-file .env run --build --rm -T api go test -p 1 -v ./...
-docker compose -p openditest -f compose.yaml --env-file .env down
+docker compose -p openditest -f compose.dev.yaml --env-file .env up -d db
+docker compose -p openditest -f compose.dev.yaml --env-file .env run --build --rm -T api go test -p 1 -v ./...
+docker compose -p openditest -f compose.dev.yaml --env-file .env down
 ```
 
 Notes:
