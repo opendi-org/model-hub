@@ -18,7 +18,7 @@ FROM gcr.io/distroless/static:nonroot
 WORKDIR /app
 
 COPY --from=build /opendi-api .
-COPY --from=build --chown=nonroot:nonroot /app/cdm-json-schema ./cdm-json-schema
+COPY --from=build --chown=nonroot:nonroot /app/cdm-json-schema/ ./cdm-json-schema/
 
 USER nonroot:nonroot
 

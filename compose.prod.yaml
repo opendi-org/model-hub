@@ -9,8 +9,8 @@ services:
     build:
       context: ./frontend/model-hub/
       dockerfile: Dockerfile.prod
-    environment:
-      REACT_APP_API_URL: ${API_URL}
+      args:
+        - REACT_APP_API_URL=${API_URL}
     restart: unless-stopped
     depends_on:
       - api
@@ -77,8 +77,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ${SSL_CERT_PATH}:/etc/nginx/certs/cert.crt:ro
+      - ./nginx.conf.template:/etc/nginx/nginx.conf:ro
+      - ${SSL_CRT_PATH}:/etc/nginx/certs/cert.crt:ro
       - ${SSL_KEY_PATH}:/etc/nginx/certs/cert.key:ro
     restart: unless-stopped
     depends_on:

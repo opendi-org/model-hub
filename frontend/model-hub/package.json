@@ -17,7 +17,8 @@
     "react-dropzone": "^14.4.1",
     "react-json-tree": "^0.20.0",
     "react-router-dom": "^7.13.0",
-    "react-scripts": "^5.0.1"
+    "react-scripts": "^5.0.1",
+    "web-vitals": "^5.1.0"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -44,7 +45,6 @@
     ]
   },
   "devDependencies": {
-    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
-    "web-vitals": "^5.1.0"
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11"
   }
 }

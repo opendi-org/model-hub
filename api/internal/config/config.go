@@ -6,7 +6,8 @@ import (
 	"strconv"
 )
 
-// Config holds runtime configuration.
+// Config holds all runtime configuration sourced from environment variables.
+// Every field maps directly to a variable defined in docker-compose.
 type Config struct {
 	// Database
 	DBHostname string
@@ -16,7 +17,8 @@ type Config struct {
 	DBPassword string
 
 	// Server
-	Port int // MODEL_HUB_PORT
+	Address string // MODEL_HUB_ADDRESS
+	Port    int    // MODEL_HUB_PORT
 
 	// Auth
 	JWTSecret          string
@@ -38,7 +40,7 @@ func (c *Config) DSN() string {
 
 // ListenAddr returns the host:port string for the HTTP server.
 func (c *Config) ListenAddr() string {
-	return fmt.Sprintf("0.0.0.0:%d", c.Port)
+	return fmt.Sprintf("%s:%d", c.Address, c.Port)
 }
 
 // LoadConfig reads all required environment variables and returns a Config.
@@ -76,6 +78,13 @@ func LoadConfig() (*Config, error) {
 		DBUsername: require("DB_USERNAME"),
 		DBPassword: require("DB_PASSWORD"),
 
+		Address: func() string {
+			v := os.Getenv("MODEL_HUB_ADDRESS")
+			if v == "" {
+				return "0.0.0.0"
+			}
+			return v
+		}(),
 		Port: requireInt("MODEL_HUB_PORT", 8080),
 
 		JWTSecret:          require("JWT_SECRET"),
