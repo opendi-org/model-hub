@@ -1,0 +1,25 @@
+# Stage 1: build
+FROM golang:1.26-alpine AS build
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /opendi-api \
+    ./cmd/api
+
+# Stage 2: serve the binary
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /app
+
+COPY --from=build /opendi-api .
+COPY --from=build --chown=nonroot:nonroot /app/cdm-json-schema ./cdm-json-schema
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/app/opendi-api"]

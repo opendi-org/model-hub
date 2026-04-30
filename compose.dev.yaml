@@ -2,42 +2,46 @@ services:
   web:
     build:
       context: ./frontend/model-hub/
+      dockerfile: Dockerfile.dev
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: http://localhost:8080
+      REACT_APP_API_URL: ${API_URL}
       WATCHPACK_POLLING: "true"
     volumes:
       - ./frontend/model-hub/src:/webapp/src
+    depends_on:
+      - api
 
   api:
     build:
       context: ./api
+      dockerfile: Dockerfile.dev
     depends_on:
       db:
         condition: service_healthy
-    env_file:
-      - .env
     environment:
+      # API config
+      MODEL_HUB_PORT: "8080"
+      DEV_MODE: true
+
+      # DB connection details
       DB_HOSTNAME: db
       DB_PORT: "5432"
       DB_NAME: ${DB_NAME}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
-      MODEL_HUB_ADDRESS: api
-      MODEL_HUB_PORT: "8080"
+
+      # auth details
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
-      DEV_MODE: true
     ports:
       - "8080:8080"
 
   db:
     image: postgres:18-alpine
-    env_file:
-      - .env
     environment:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
