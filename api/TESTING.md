@@ -35,9 +35,9 @@ go test -v ./... | rg "SKIP|database not available"
 From repo root:
 
 ```bash
-docker compose -p openditest -f compose.dev.yaml --env-file .env up -d db
-docker compose -p openditest -f compose.dev.yaml --env-file .env run --build --rm -T api go test -p 1 -v ./...
-docker compose -p openditest -f compose.dev.yaml --env-file .env down
+docker compose -p openditest -f compose.dev.yaml up -d db
+docker compose -p openditest -f compose.dev.yaml run --build --rm -T api go test -p 1 -v ./...
+docker compose -p openditest -f compose.dev.yaml down
 ```
 
 Notes:
@@ -45,4 +45,5 @@ Notes:
 - Use `-p openditest` to keep test containers isolated from your normal stack.
 - Use `go test -p 1` for the Docker-backed integration run to avoid cross-package migration races.
 - `docker compose ... down` (without `-v`) keeps DB volumes intact.
-- If fixture-based tests are skipped in CI, ensure schema/example files are present (e.g. submodule content checked out).
+- If fixture-based tests are skipped, ensure submodule content is checked out:
+  - `git submodule update --init --recursive`
