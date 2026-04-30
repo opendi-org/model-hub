@@ -26,9 +26,10 @@ async function handleResponse(response) {
 }
 
 export default class HTTPClient {
-  // React exposes env via process.env.REACT_APP_API_URL.
-  // Default to local API port for dev when env is not set.
-  static baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+  // Injected by Vite in build/dev. Falls back to relative /api behind reverse proxy.
+  static baseURL = (typeof __API_URL__ !== 'undefined' && __API_URL__)
+    ? __API_URL__
+    : '/api';
 
   // GET request (credentials: include so session cookies are sent)
   static async get(url) {

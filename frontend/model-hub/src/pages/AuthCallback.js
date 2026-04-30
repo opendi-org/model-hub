@@ -26,15 +26,9 @@ const AuthCallback = () => {
     
       try {
         const data = await APIClient.handleGoogleCallback(code, state);
-        console.log('Full auth response:', data);
-        if (data.access_token) {
-          sessionStorage.setItem('auth_token', data.access_token);
-          console.log('Token stored in sessionStorage');
-        }
         
-        // Fetch user data from /auth/me now that token is set
+        // Fetch user data from /auth/me after callback to refresh UI context.
         const userData = await APIClient.getCurrentUser();
-        console.log('User data from /auth/me:', userData);
         setUser(userData);
 
         const cliCode = data.cliCode || searchParams.get('cli_code');

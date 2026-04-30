@@ -17,6 +17,7 @@ import LoginPage from './pages/login'
 import SigninPage from './pages/signin';
 import SignupPage from './pages/signup';
 import Navbar from './components/Navbar';
+import NotFound from './pages/NotFound';
 import { getTheme } from './Theme';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -71,6 +72,7 @@ function App() {
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/auth/cli-approved" element={<CliApprovedPage />} />
                 <Route path="/user" element={<UserPage />} />
+                <Route path="*" element={<NotFound />} />
               </Routes>
               </Router>
             </RepositoryProvider>
