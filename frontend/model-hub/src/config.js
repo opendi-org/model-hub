@@ -1,3 +1,5 @@
-const API_URL = process.env.REACT_APP_API_URL || "http://129.213.115.50:8080";
+const API_URL = typeof __API_URL__ !== 'undefined' && __API_URL__
+  ? __API_URL__
+  : '/api';
 
 export default API_URL;

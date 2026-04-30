@@ -255,7 +255,6 @@ const ModelPage = () => {
 
             try {
                 const data = await APIClient.getModelVersionByTagAndCommit(model.addons.tag, commit.version - 1);
-                console.log(commit['diff'])
                 setLastVersionOfModel(data);
             } catch (error) {
                 console.error('There was a problem with the fetch operation:', error);
@@ -277,7 +276,6 @@ const ModelPage = () => {
                     const prevData = await APIClient.getModelVersionByTagAndCommit(model.addons.tag, selectedVersion - 1);
                     setPrevVersionModel(prevData);
                 } catch {
-                    if (selectedVersion === 1) console.log("Fetching version 0 (original state)");
                     setPrevVersionModel("No previous version");
                 }
             } catch (error) {
@@ -323,13 +321,10 @@ const ModelPage = () => {
     }
 
     const onDrop = useCallback(async (acceptedFiles) => {
-        console.log(acceptedFiles);
-
         const file = acceptedFiles[0];
 
         try {
-            const result = await APIClient.updateModelWithFile(file);
-            console.log("Updated success:", result);
+            await APIClient.updateModelWithFile(file);
             setUploadStatus("success");
             setErrorMessage("");
             handleClose();
@@ -363,7 +358,6 @@ const ModelPage = () => {
         }
 
         let currentShares = data.shares || [];
-        console.log(newIsPublic, currentShares);
         if (newIsPublic) {
             currentShares = currentShares.filter(share => share.level === 'write');
         }
@@ -438,7 +432,6 @@ const ModelPage = () => {
 
         try {
             await APIClient.updateModelPrivacy(privacyTag, bodyData);
-            console.log("Share settings updated successfully.");
             closeModal();
         } catch (error) {
             console.error("Network or other error:", error);
@@ -452,7 +445,6 @@ const ModelPage = () => {
 
         try {
             await APIClient.updateModelPrivacy(privacyTag, bodyData);
-            console.log("Share removed successfully.");
             setShares(newSharesList);
         } catch (error) {
             console.error("API Error removing share:", error);

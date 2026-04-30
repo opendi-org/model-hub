@@ -49,12 +49,14 @@ type ValidationIssue struct {
 var cdmSchemaPath = defaultCDMSchemaPath()
 
 func defaultCDMSchemaPath() string {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return "./cdm-json-schema/schema-source/Causal-Decision-Model.json"
-	}
-	// internal/database/validate.go -> api/
-	return filepath.Join(filepath.Dir(thisFile), "..", "..", "cdm-json-schema", "schema-source", "Causal-Decision-Model.json")
+    _, thisFile, _, ok := runtime.Caller(0)
+    if ok {
+        p := filepath.Join(filepath.Dir(thisFile), "..", "..", "cdm-json-schema", "schema-source", "Causal-Decision-Model.json")
+        if _, err := os.Stat(p); err == nil {
+            return p
+        }
+    }
+    return "./cdm-json-schema/schema-source/Causal-Decision-Model.json"
 }
 
 // schemaURLPrefix is the $id prefix used in OpenDI schema files.

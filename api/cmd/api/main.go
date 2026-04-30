@@ -47,6 +47,16 @@ func main() {
 
 	// ── Router ────────────────────────────────────────────────────────────────
 	r := gin.New()
+	if cfg.DevMode {
+		if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+			log.Fatalf("failed to configure trusted proxies: %v", err)
+		}
+	} else {
+		// In production we terminate TLS and forward through nginx; do not trust arbitrary proxy headers.
+		if err := r.SetTrustedProxies(nil); err != nil {
+			log.Fatalf("failed to configure trusted proxies: %v", err)
+		}
+	}
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.Use(middleware.CORS(cfg.DevMode))

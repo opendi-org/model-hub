@@ -24,13 +24,8 @@ export const UserProvider = ({ children }) => {
     setUser(normalized);
     if (normalized) {
       localStorage.setItem('user', JSON.stringify(normalized));
-      // Check if token is in the userData and store it
-      if (normalized.token) {
-        sessionStorage.setItem('auth_token', normalized.token);
-      }
     } else {
       localStorage.removeItem('user');
-      sessionStorage.removeItem('auth_token');
     }
   };
 
@@ -48,15 +43,9 @@ export const UserProvider = ({ children }) => {
     const checkAuth = async () => {
       try {
         const userData = await APIClient.getCurrentUser();
-        console.log('Loaded user from /auth/me:', userData);
-        if (userData.token) {
-          sessionStorage.setItem('auth_token', userData.token);
-        }
         setUserWithPersistence(userData);
       } catch (err) {
-        console.log('/auth/me failed:', err);
         localStorage.removeItem('user');
-        sessionStorage.removeItem('auth_token');
       } finally {
         setLoading(false);
       }
