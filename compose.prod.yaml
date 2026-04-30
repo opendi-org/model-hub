@@ -10,7 +10,7 @@ services:
       context: ./frontend/model-hub/
       dockerfile: Dockerfile.prod
       args:
-        - REACT_APP_API_URL=${API_URL}
+        - VITE_API_URL=${API_URL}
     restart: unless-stopped
     depends_on:
       - api

@@ -6,8 +6,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: ${API_URL}
-      WATCHPACK_POLLING: "true"
+      VITE_API_URL: ${API_URL}
     volumes:
       - ./frontend/model-hub/src:/webapp/src
     depends_on:
