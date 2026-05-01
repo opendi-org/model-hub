@@ -3,3 +3,7 @@
 // expect(element).toHaveTextContent(/react/i)
 // learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
+
+// Vitest compatibility: expose vi as jest so test files don't need changes
+globalThis.jest = vi;
