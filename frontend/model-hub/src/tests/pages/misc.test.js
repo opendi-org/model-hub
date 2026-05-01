@@ -8,9 +8,9 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 jest.mock('../../util/ApiClient');
 
-const mockSetUser = jest.fn();
+let mockUserValue = { user: null, loading: false, logout: jest.fn(), setUser: jest.fn() };
 jest.mock('../../context/UserContext', () => ({
-  useUser: () => ({ user: null, loading: false, setUser: mockSetUser, logout: jest.fn() }),
+  useUser: () => mockUserValue,
   UserProvider: ({ children }) => children,
 }));
 
@@ -26,7 +26,7 @@ function LocationDisplay() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockSetUser.mockClear();
+  mockUserValue = { user: null, loading: false, logout: jest.fn(), setUser: jest.fn() };
 });
 
 // ── NotFound ──────────────────────────────────────────────────────────────────
@@ -51,23 +51,23 @@ describe('NotFound page', () => {
 
 // ── UserPage ──────────────────────────────────────────────────────────────────
 describe('UserPage', () => {
-  test('shows loading state initially', () => {
-    APIClient.getCurrentUser.mockReturnValue(new Promise(() => {}));
+  test('shows loading state while auth is pending', () => {
+    mockUserValue = { user: null, loading: true, logout: jest.fn() };
     render(<MemoryRouter><UserPage /></MemoryRouter>);
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
-  test('shows username and email after data loads', async () => {
-    APIClient.getCurrentUser.mockResolvedValue({ username: 'testuser', email: 'test@example.com', picture: null });
+  test('shows sign-in prompt when no user is logged in', () => {
+    mockUserValue = { user: null, loading: false, logout: jest.fn(), setUser: jest.fn() };
     render(<MemoryRouter><UserPage /></MemoryRouter>);
-    expect(await screen.findByText('testuser')).toBeInTheDocument();
-    expect(screen.getByText('test@example.com')).toBeInTheDocument();
+    expect(screen.getByText(/please sign in/i)).toBeInTheDocument();
   });
 
-  test('shows error message when API call fails', async () => {
-    APIClient.getCurrentUser.mockRejectedValue(new Error('Unauthorized'));
+  test('shows username and email for logged-in user', () => {
+    mockUserValue = { user: { username: 'testuser', email: 'test@example.com', picture: null }, loading: false, logout: jest.fn() };
     render(<MemoryRouter><UserPage /></MemoryRouter>);
-    expect(await screen.findByText(/unauthorized/i)).toBeInTheDocument();
+    expect(screen.getByText('testuser')).toBeInTheDocument();
+    expect(screen.getByText('test@example.com')).toBeInTheDocument();
   });
 });
 

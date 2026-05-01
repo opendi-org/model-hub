@@ -30,6 +30,7 @@ const mockRepositoriesContext = {
   changeScope: jest.fn(),
   addRepository: jest.fn(),
   removeRepository: jest.fn(),
+  refreshRepositories: jest.fn(),
 };
 
 jest.mock('../../context/RepositoryContext', () => ({

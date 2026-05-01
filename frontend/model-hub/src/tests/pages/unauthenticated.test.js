@@ -24,6 +24,7 @@ jest.mock('../../context/RepositoryContext', () => ({
     changeScope: jest.fn(),
     addRepository: jest.fn(),
     removeRepository: jest.fn(),
+    refreshRepositories: jest.fn(),
   }),
   RepositoryProvider: ({ children }) => children,
 }));
