@@ -1,4 +1,5 @@
 // Stub for react-json-tree (ESM-only package, not needed in unit tests)
-const React = require('react');
+import React from 'react';
 const JSONTree = () => React.createElement('div', { 'data-testid': 'json-tree' });
-module.exports = { JSONTree };
+export { JSONTree };
+export default JSONTree;

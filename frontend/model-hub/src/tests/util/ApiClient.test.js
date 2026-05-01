@@ -5,7 +5,7 @@
 import APIClient from '../../util/ApiClient';
 import HTTPClient from '../../util/HttpClient';
 
-jest.mock('../../util/HttpClient');
+vi.mock('../../util/HttpClient');
 
 beforeEach(() => {
   jest.clearAllMocks();

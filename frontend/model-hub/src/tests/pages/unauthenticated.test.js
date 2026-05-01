@@ -9,14 +9,14 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-jest.mock('../../util/ApiClient');
+vi.mock('../../util/ApiClient');
 
-jest.mock('../../context/UserContext', () => ({
+vi.mock('../../context/UserContext', () => ({
   useUser: () => ({ user: null, loading: false, logout: jest.fn() }),
   UserProvider: ({ children }) => children,
 }));
 
-jest.mock('../../context/RepositoryContext', () => ({
+vi.mock('../../context/RepositoryContext', () => ({
   useRepositories: () => ({
     repositories: [],
     loading: false,
@@ -29,13 +29,13 @@ jest.mock('../../context/RepositoryContext', () => ({
   RepositoryProvider: ({ children }) => children,
 }));
 
-jest.mock('../../context/NotificationContext', () => ({
+vi.mock('../../context/NotificationContext', () => ({
   useNotification: () => ({ showNotification: jest.fn() }),
   NotificationProvider: ({ children }) => children,
 }));
 
 const mockToggleColorMode = jest.fn();
-jest.mock('../../App', () => ({
+vi.mock('../../App', () => ({
   useColorMode: () => ({ mode: 'light', toggleColorMode: mockToggleColorMode }),
   ColorModeContext: { Provider: ({ children }) => children },
 }));

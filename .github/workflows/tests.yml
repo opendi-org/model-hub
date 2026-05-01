@@ -31,7 +31,7 @@ jobs:
         run: pytest tests/ -v
 
   frontend-tests:
-    name: Frontend Tests (Jest)
+    name: Frontend Tests (Vitest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +48,7 @@ jobs:
 
       - name: Run tests
         working-directory: frontend/model-hub
-        run: CI=true npm test -- --watchAll=false
+        run: npm test
 
   api-tests:
     name: API Tests (Go)

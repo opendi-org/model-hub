@@ -6,8 +6,8 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-jest.mock('../../util/ApiClient');
-jest.mock('../../context/UserContext', () => ({
+vi.mock('../../util/ApiClient');
+vi.mock('../../context/UserContext', () => ({
   useUser: () => ({ user: null, loading: false, logout: jest.fn() }),
   UserProvider: ({ children }) => children,
 }));

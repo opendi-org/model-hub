@@ -56,6 +56,9 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./src/setupTests.js'],
+      alias: {
+        'react-json-tree': new URL('./src/__mocks__/react-json-tree.js', import.meta.url).pathname,
+      },
     },
   };
 });

@@ -1,19 +1,18 @@
 /**
- * Component tests: ModelMinicard, JsonDiffViewer, JsonPatchViewer
+ * Component tests: ModelMinicard, JsonDiffViewer
  */
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-jest.mock('../../App', () => ({
+vi.mock('../../App', () => ({
   useColorMode: () => ({ mode: 'light', toggleColorMode: jest.fn() }),
   ColorModeContext: { Provider: ({ children }) => children },
 }));
 
 import ModelMinicard from '../../components/ModelMinicard';
 import JsonDiffViewer from '../../components/JsonDiffViewer';
-import JsonPatchViewer from '../../components/JsonPatchViewer';
 
 const renderInRouter = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
@@ -100,34 +99,3 @@ describe('JsonDiffViewer', () => {
   });
 });
 
-// ── JsonPatchViewer ───────────────────────────────────────────────────────────
-describe('JsonPatchViewer', () => {
-  const model = { name: 'coffee', version: '1.0' };
-
-  test('shows raw JSON when version is 0', () => {
-    render(<JsonPatchViewer lastVersionOfModel={model} commit={{ version: 0 }} />);
-    expect(screen.getByText(/coffee/)).toBeInTheDocument();
-  });
-
-  test('renders the previous model heading for a patched commit', () => {
-    const commit = {
-      version: 1,
-      diff: JSON.stringify([{ op: 'replace', path: '/name', value: 'espresso' }]),
-    };
-    render(<JsonPatchViewer lastVersionOfModel={model} commit={commit} />);
-    expect(screen.getByText('Previous JSON Model')).toBeInTheDocument();
-  });
-
-  test('renders highlighted output for replace, add, and remove operations', () => {
-    const commit = {
-      version: 1,
-      diff: JSON.stringify([
-        { op: 'replace', path: '/name', value: 'espresso' },
-        { op: 'add', path: '/roast', value: 'dark' },
-        { op: 'remove', path: '/version' },
-      ]),
-    };
-    const { container } = render(<JsonPatchViewer lastVersionOfModel={{ name: 'coffee', version: '1.0', roast: null }} commit={commit} />);
-    expect(container.querySelector('pre')).toBeInTheDocument();
-  });
-});

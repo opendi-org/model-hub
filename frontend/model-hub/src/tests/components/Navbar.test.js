@@ -9,7 +9,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const mockLogout = jest.fn();
-jest.mock('../../context/UserContext', () => ({
+vi.mock('../../context/UserContext', () => ({
   useUser: () => ({
     user: { username: 'testuser', email: 'test@example.com', picture: null },
     loading: false,
@@ -18,12 +18,12 @@ jest.mock('../../context/UserContext', () => ({
   UserProvider: ({ children }) => children,
 }));
 
-jest.mock('../../App', () => ({
+vi.mock('../../App', () => ({
   useColorMode: () => ({ mode: 'light', toggleColorMode: jest.fn() }),
   ColorModeContext: { Provider: ({ children }) => children },
 }));
 
-jest.mock('../../util/ApiClient');
+vi.mock('../../util/ApiClient');
 
 import Navbar from '../../components/Navbar';
 

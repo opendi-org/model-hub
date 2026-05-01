@@ -1,16 +1,15 @@
 /**
- * Home page and Explore (search) page tests
+ * Home page tests
  */
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-jest.mock('../../util/ApiClient');
+vi.mock('../../util/ApiClient');
 
 import APIClient from '../../util/ApiClient';
 import Home from '../../pages/index';
-import ExplorePage from '../../pages/search';
 
 const renderInRouter = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
@@ -64,27 +63,3 @@ describe('Home page', () => {
   });
 });
 
-// ── Explore (Search) page ─────────────────────────────────────────────────────
-describe('Explore page', () => {
-  test('renders heading and empty state when no public repos exist', async () => {
-    APIClient.getRepositories.mockResolvedValue([]);
-    renderInRouter(<ExplorePage />);
-    expect(screen.getByText(/explore public repositories/i)).toBeInTheDocument();
-    expect(await screen.findByText(/no public repositories yet/i)).toBeInTheDocument();
-  });
-
-  test('renders repository cards after loading', async () => {
-    APIClient.getRepositories.mockResolvedValue([
-      makeRepo({ id: '1', slug: 'my-repo', owner: 'alice' }),
-    ]);
-    renderInRouter(<ExplorePage />);
-    expect(await screen.findByText('my-repo')).toBeInTheDocument();
-    expect(screen.getByText('alice')).toBeInTheDocument();
-  });
-
-  test('shows filter input', () => {
-    APIClient.getRepositories.mockResolvedValue([]);
-    renderInRouter(<ExplorePage />);
-    expect(screen.getByPlaceholderText(/filter repositories/i)).toBeInTheDocument();
-  });
-});

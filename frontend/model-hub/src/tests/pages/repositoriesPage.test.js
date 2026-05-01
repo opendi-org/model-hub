@@ -12,7 +12,7 @@ import { UserProvider } from '../../context/UserContext';
 import { RepositoryProvider } from '../../context/RepositoryContext';
 import { NotificationProvider } from '../../context/NotificationContext';
 
-jest.mock('../../util/ApiClient');
+vi.mock('../../util/ApiClient');
 
 function LocationDisplay() {
   const location = useLocation();

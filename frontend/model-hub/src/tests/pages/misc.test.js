@@ -6,10 +6,10 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
-jest.mock('../../util/ApiClient');
+vi.mock('../../util/ApiClient');
 
 let mockUserValue = { user: null, loading: false, logout: jest.fn(), setUser: jest.fn() };
-jest.mock('../../context/UserContext', () => ({
+vi.mock('../../context/UserContext', () => ({
   useUser: () => mockUserValue,
   UserProvider: ({ children }) => children,
 }));
