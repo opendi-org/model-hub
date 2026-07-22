@@ -1,0 +1,14 @@
+services:
+  db:
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: modelhub_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d modelhub_test"]
+
+  api:
+    environment:
+      DB_NAME: modelhub_test
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
