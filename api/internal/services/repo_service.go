@@ -66,10 +66,12 @@ type ListRepositoriesParams struct {
 	Q               string
 	Owner           string
 	IsAuthenticated bool
-	UserID          uint
-	Visibility      string
-	SortOrder       string
-	SortBy          string
+	// UserID is only meaningful when IsAuthenticated is true.
+	// Value is not guaranteed to be consistent when IsAuthenticated=false
+	UserID     uint
+	Visibility string
+	SortOrder  string
+	SortBy     string
 }
 
 // ListRepositories queries repositories according to scope, search, and owner filters.
