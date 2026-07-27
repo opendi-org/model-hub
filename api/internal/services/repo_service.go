@@ -62,16 +62,14 @@ func CreateRepository(db *gorm.DB, ownerID uint, req dto.CreateRepositoryRequest
 
 // ListRepositoriesParams carries the inputs for listing/searching repositories.
 type ListRepositoriesParams struct {
-	Scope           string
+	Scope           string // "mine", "shared-with-me", "all". Others are invalid.
 	Q               string
 	Owner           string
 	IsAuthenticated bool
-	// UserID is only meaningful when IsAuthenticated is true.
-	// Value is not guaranteed to be consistent when IsAuthenticated=false
-	UserID     uint
-	Visibility string
-	SortOrder  string
-	SortBy     string
+	UserID          uint   // UserID is only meaningful when IsAuthenticated is true. Value is not guaranteed to be consistent when IsAuthenticated=false
+	Visibility      string // "public", "private", ""
+	SortOrder       string // Ascending or descending. "asc" is ascending. Everything else becomes descending.
+	SortBy          string
 }
 
 // ListRepositories queries repositories according to scope, search, and owner filters.

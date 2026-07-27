@@ -75,6 +75,8 @@ func ListRepositories(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query dto.SearchRepositoriesQuery
 		if err := c.ShouldBindQuery(&query); err != nil {
+			// Likely unreachable but left for best practice.
+			// SearchRepositoriesQuery is all strings with no binding tags.
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -217,6 +219,8 @@ func GlobalSearch(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var query dto.SearchRepositoriesQuery
 		if err := c.ShouldBindQuery(&query); err != nil {
+			// Likely unreachable but left for best practice.
+			// SearchRepositoriesQuery is all strings with no binding tags.
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
