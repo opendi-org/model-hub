@@ -599,6 +599,261 @@ func TestDeleteRepository_NoPermission(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
+// TestGlobalSearch_Unauthenticated_OnlyPublicRepos tests that anonymous callers
+// only ever see public repositories, even when repos are owned by different users.
+func TestGlobalSearch_Unauthenticated_OnlyPublicRepos(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
+
+	// 2 public repos, 1 private
+	user1 := createTestUser(t, db, "user1")
+	user2 := createTestUser(t, db, "user2")
+	createTestRepository(t, db, user1.ID, "user1-public", "public")
+	createTestRepository(t, db, user1.ID, "user1-private", "private")
+	createTestRepository(t, db, user2.ID, "user2-public", "public")
+
+	router := gin.New()
+	router.GET("/search", GlobalSearch(db))
+
+	httpReq, _ := http.NewRequest("GET", "/search", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, httpReq)
+
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var response dto.ListRepositoriesResponse
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	// Results should include the 2 public repos, but not the private one
+	assert.Equal(t, int64(2), response.Total)
+	for _, repo := range response.Repositories {
+		assert.Equal(t, "public", repo.Visibility)
+	}
+}
+
+// TestGlobalSearch_Unauthenticated_VisibilityPrivate_ReturnsEmpty is a regression
+// test for issue #173: GET /v0/search?visibility=private must never leak private
+// repositories to unauthenticated callers.
+// Issue link: https://github.com/opendi-org/model-hub/issues/173
+func TestGlobalSearch_Unauthenticated_VisibilityPrivate_ReturnsEmpty(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
+
+	// 1 public repo, 1 private
+	user := createTestUser(t, db, "testuser")
+	createTestRepository(t, db, user.ID, "secret-repo", "private")
+	createTestRepository(t, db, user.ID, "public-repo", "public")
+
+	router := gin.New()
+	router.GET("/search", GlobalSearch(db))
+
+	// Private visibility requested
+	httpReq, _ := http.NewRequest("GET", "/search?visibility=private", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httpReq)
+
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var response dto.ListRepositoriesResponse
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	// Unauthenticated response should never contain private repos
+	assert.Equal(t, int64(0), response.Total)
+	assert.Empty(t, response.Repositories)
+}
+
+// TestGlobalSearch_Unauthenticated_VisibilityPrivate_WithOwner_ReturnsEmpty covers
+// the specific narrowing case given in #173. Leak should stay closed with scope narrowed
+// to one owner.
+// Issue link: https://github.com/opendi-org/model-hub/issues/173
+func TestGlobalSearch_Unauthenticated_VisibilityPrivate_WithOwner_ReturnsEmpty(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
+
+	// "alice" was the example name in #173
+	// Create private repos for alice
+	user := createTestUser(t, db, "alice")
+	createTestRepository(t, db, user.ID, "alice-secret-1", "private")
+	createTestRepository(t, db, user.ID, "alice-secret-2", "private")
+
+	router := gin.New()
+	router.GET("/search", GlobalSearch(db))
+
+	// Narrow scope to specific owner
+	httpReq, _ := http.NewRequest("GET", "/search?visibility=private&owner=alice", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httpReq)
+
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var response dto.ListRepositoriesResponse
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	// Unauthenticated response should never contain private repos
+	assert.Equal(t, int64(0), response.Total)
+	assert.Empty(t, response.Repositories)
+}
+
+// TestGlobalSearch_AuthenticatedUser_VisibilityPrivate_OnlyOwnRepos tests that an
+// authenticated caller using ?visibility=private only sees their own private repos,
+// never another user's.
+func TestGlobalSearch_AuthenticatedUser_VisibilityPrivate_OnlyOwnRepos(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
+
+	// Create private repos for two users
+	user1 := createTestUser(t, db, "user1")
+	user2 := createTestUser(t, db, "user2")
+	createTestRepository(t, db, user1.ID, "user1-private", "private")
+	createTestRepository(t, db, user2.ID, "user2-private", "private")
+
+	router := gin.New()
+	// Authenticate as user1
+	router.Use(func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user1)
+		c.Next()
+	})
+	router.GET("/search", GlobalSearch(db))
+
+	httpReq, _ := http.NewRequest("GET", "/search?visibility=private", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httpReq)
+
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var response dto.ListRepositoriesResponse
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	// User1 should only see private repos from User1, not User2.
+	assert.Equal(t, int64(1), response.Total)
+	if assert.Len(t, response.Repositories, 1) {
+		assert.Equal(t, "user1-private", response.Repositories[0].Slug)
+	}
+}
+
+// TestGlobalSearch_AuthenticatedCollaborator_SeesSharedPrivateRepo tests that a
+// collaborator (not the owner) can find a shared private repo via search.
+func TestGlobalSearch_AuthenticatedCollaborator_SeesSharedPrivateRepo(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{}, &hub.Collaborator{})
+
+	// Two repos: one shared, one not
+	owner := createTestUser(t, db, "owner")
+	collaborator := createTestUser(t, db, "collaborator")
+	sharedRepo := createTestRepository(t, db, owner.ID, "shared-private", "private")
+	createTestRepository(t, db, owner.ID, "not-shared-private", "private")
+
+	// Make the "collaborator" user a collaborator on the "owner" user's repo
+	if err := db.Create(&hub.Collaborator{RepoID: sharedRepo.ID, UserID: collaborator.ID, Role: "read"}).Error; err != nil {
+		t.Fatalf("failed to create collaborator: %v", err)
+	}
+
+	router := gin.New()
+	// Authenticate as collaborator
+	router.Use(func(c *gin.Context) {
+		middleware.SetCurrentUser(c, collaborator)
+		c.Next()
+	})
+	router.GET("/search", GlobalSearch(db))
+
+	httpReq, _ := http.NewRequest("GET", "/search?visibility=private", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httpReq)
+
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var response dto.ListRepositoriesResponse
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	// Collaborator should see the shared repo, but not the un-shared repo
+	assert.Equal(t, int64(1), response.Total)
+	if assert.Len(t, response.Repositories, 1) {
+		assert.Equal(t, "shared-private", response.Repositories[0].Slug)
+	}
+}
+
+// TestGlobalSearch_ScopeParamIgnored_NoAuthRequired tests that GlobalSearch always
+// behaves as scope=all. Unlike ListRepositories, it shouldn't reject unauthenticated
+// requests for scope=mine/shared-with-me, it should just ignore those settings.
+func TestGlobalSearch_ScopeParamIgnored_NoAuthRequired(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
+
+	// One repo so we have results to receive
+	user := createTestUser(t, db, "testuser")
+	createTestRepository(t, db, user.ID, "public-repo", "public")
+
+	router := gin.New()
+	router.GET("/search", GlobalSearch(db))
+
+	// Test both scope=mine and scope=shared-with-me
+	cases := []struct {
+		name               string
+		endpointWithParams string
+	}{
+		{"scope=mine", "/search?scope=mine"},
+		{"scope=shared-with-me", "/search?scope=shared-with-me"},
+	}
+
+	// Both should succeed despite being unauthenticated, and return
+	// the one public repo
+	expectedResponseCount := int64(1)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			httpReq, _ := http.NewRequest("GET", tc.endpointWithParams, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httpReq)
+
+			assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+			var response dto.ListRepositoriesResponse
+			json.Unmarshal(w.Body.Bytes(), &response)
+
+			assert.Equal(t, expectedResponseCount, response.Total)
+		})
+	}
+}
+
+// TestGlobalSearch_SearchFilter tests that q= parameter works via the shared ListRepositories service.
+// See TestListRepositories_SearchFilter
+func TestGlobalSearch_SearchFilter(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
+
+	// 3 repos with searchable names
+	user := createTestUser(t, db, "testuser")
+	createTestRepository(t, db, user.ID, "alpha-repo", "public")
+	createTestRepository(t, db, user.ID, "beta-repo", "public")
+	createTestRepository(t, db, user.ID, "beta-private-repo", "private")
+
+	router := gin.New()
+	router.GET("/search", GlobalSearch(db))
+
+	httpReq, _ := http.NewRequest("GET", "/search?q=beta", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httpReq)
+
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var response dto.ListRepositoriesResponse
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	// "beta" query should return the one public repo with slug containing "beta".
+	// the private repo containing "beta" should NOT be included
+	assert.Equal(t, int64(1), response.Total)
+	if assert.Len(t, response.Repositories, 1) {
+		assert.Equal(t, "beta-repo", response.Repositories[0].Slug)
+	}
+}
+
 // TestIsValidTagName tests the tag name validation helper
 func TestIsValidTagName(t *testing.T) {
 	tests := []struct {
