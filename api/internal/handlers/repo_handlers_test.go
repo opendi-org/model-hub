@@ -221,6 +221,69 @@ func TestCreateRepository_DuplicateSlug(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 }
 
+// TestCreateRepository_DuplicateSlugAcrossUniqueUsers tests that slug duplication respects user namespace.
+// Repo slugs should only be considered duplicates if both the repo slug itself AND the owning user collide.
+// In other words, the repo slug uniqueness constraint should be per-owner, not global.
+// Issue link: https://github.com/opendi-org/model-hub/issues/176
+func TestCreateRepository_DuplicateSlugAcrossUniqueUsers(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{})
+
+	// Create existing repos owned by user1. A couple private, a couple public.
+	user1 := createTestUser(t, db, "user1")
+	user2 := createTestUser(t, db, "user2")
+	createTestRepository(t, db, user1.ID, "existing-repo-private-1", "private")
+	createTestRepository(t, db, user1.ID, "existing-repo-private-2", "private")
+	createTestRepository(t, db, user1.ID, "existing-repo-public-1", "public")
+	createTestRepository(t, db, user1.ID, "existing-repo-public-2", "public")
+
+	router := gin.New()
+	router.POST("/repositories", func(c *gin.Context) {
+		middleware.SetCurrentUser(c, user2) // Authenticate as user2
+		CreateRepository(db)(c)
+	})
+
+	// These cases cover all possible scope combinations for user2 creating a new repo
+	// with a slug that user1 already created. user2 might be creating a public or private repo
+	// with a slug that user1 already used on an existing public or private repo.
+	cases := []struct {
+		name                  string
+		createdRepoSlug       string
+		createdRepoVisibility string
+	}{
+		{"private-repo-allowed-dupe-of-private", "existing-repo-private-1", "private"},
+		{"public-repo-allowed-dupe-of-private", "existing-repo-private-2", "public"},
+		{"private-repo-allowed-dupe-of-public", "existing-repo-public-1", "private"},
+		{"public-repo-allowed-dupe-of-public", "existing-repo-public-2", "public"},
+	}
+
+	// All cases should successfully create the repo, since all existing repos are owned by user1,
+	// and user2 is the one requesting the new repo creations.
+	expectedResponseCode := http.StatusCreated
+	expectedOwner := user2.Username
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reqData := dto.CreateRepositoryRequest{
+				Slug:       tc.createdRepoSlug,
+				Visibility: tc.createdRepoVisibility,
+			}
+			reqBody, _ := json.Marshal(reqData)
+			httpReq, _ := http.NewRequest("POST", "/repositories", bytes.NewReader(reqBody))
+			httpReq.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, httpReq)
+			assert.Equal(t, expectedResponseCode, w.Code)
+
+			var response dto.RepositoryListItem
+			json.Unmarshal(w.Body.Bytes(), &response)
+			assert.Equal(t, tc.createdRepoSlug, response.Slug)
+			assert.Equal(t, expectedOwner, response.Owner)
+		})
+	}
+}
+
 // TestCreateRepository_Unauthorized tests that unauthenticated users cannot create repos
 func TestCreateRepository_Unauthorized(t *testing.T) {
 	db := testDB(t)

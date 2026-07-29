@@ -43,7 +43,7 @@ const (
 
 type Repository struct {
 	gorm.Model
-	OwnerID      uint   `gorm:"not null"`
+	OwnerID      uint   `gorm:"uniqueIndex:idx_repo_ref;not null"`
 	Slug         string `gorm:"type:text;uniqueIndex:idx_repo_ref;not null"`
 	Description  string `gorm:"type:text"`
 	Visibility   string `gorm:"type:text;default:'private';not null"` // "public"|"private"
