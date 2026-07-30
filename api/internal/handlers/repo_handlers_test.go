@@ -95,6 +95,20 @@ func createTestRepository(t *testing.T, db *gorm.DB, ownerID uint, slug string, 
 	return repo
 }
 
+// createTestCollaborator registers a collaborator to a repo and returns the collaborator object
+func createTestCollaborator(t *testing.T, db *gorm.DB, repoID uint, userID uint, role string) *hub.Collaborator {
+	t.Helper()
+	collaborator := &hub.Collaborator{
+		RepoID: repoID,
+		UserID: userID,
+		Role:   role,
+	}
+	if err := db.Create(collaborator).Error; err != nil {
+		t.Fatalf("failed to create collaborator: %v", err)
+	}
+	return collaborator
+}
+
 // setupTestRouter sets up a Gin route for testing
 func setupTestRouter(db *gorm.DB) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -324,9 +338,7 @@ func TestListRepositories_AuthenticatedUser(t *testing.T) {
 	createTestRepository(t, db, user2.ID, "user2-public", "public")
 
 	// Make user1 a collaborator on user2's repo
-	if err := db.Create(&hub.Collaborator{RepoID: repo1.ID, UserID: user2.ID, Role: "write"}).Error; err != nil {
-		t.Fatalf("failed to create collaborator: %v", err)
-	}
+	createTestCollaborator(t, db, repo1.ID, user2.ID, "write")
 
 	router := gin.New()
 	// Set authenticated user (must be before route registration)
@@ -815,9 +827,7 @@ func TestGlobalSearch_AuthenticatedCollaborator_SeesSharedPrivateRepo(t *testing
 	createTestRepository(t, db, owner.ID, "not-shared-private", "private")
 
 	// Make the "collaborator" user a collaborator on the "owner" user's repo
-	if err := db.Create(&hub.Collaborator{RepoID: sharedRepo.ID, UserID: collaborator.ID, Role: "read"}).Error; err != nil {
-		t.Fatalf("failed to create collaborator: %v", err)
-	}
+	createTestCollaborator(t, db, sharedRepo.ID, collaborator.ID, "read")
 
 	router := gin.New()
 	// Authenticate as collaborator
