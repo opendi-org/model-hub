@@ -68,6 +68,7 @@ func testDB(t *testing.T) *gorm.DB {
 
 // createTestUser creates a test user in the database and returns it
 func createTestUser(t *testing.T, db *gorm.DB, username string) *hub.User {
+	t.Helper()
 	user := &hub.User{
 		Username:  username,
 		Email:     username + "@example.com",
@@ -81,6 +82,7 @@ func createTestUser(t *testing.T, db *gorm.DB, username string) *hub.User {
 
 // createTestRepository creates a test repository in the database
 func createTestRepository(t *testing.T, db *gorm.DB, ownerID uint, slug string, visibility string) *hub.Repository {
+	t.Helper()
 	repo := &hub.Repository{
 		OwnerID:     ownerID,
 		Slug:        slug,
@@ -1138,10 +1140,20 @@ func TestGetTagModel_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-// cleanupTestDB removes all test data from the database
+// cleanupTestDB removes all test data from the database. Children must be
+// deleted before the parents they reference (hub_cdm_tags and
+// hub_collaborators both FK into hub_repositories and hub_users) or the
+// deletes fail/leave orphaned rows that later break AutoMigrate's FK setup.
 func cleanupTestDB(t *testing.T, db *gorm.DB) {
-	db.Exec("DELETE FROM hub_cdm_tags")
-	db.Exec("DELETE FROM hub_repositories")
-	db.Exec("DELETE FROM hub_collaborators")
-	db.Exec("DELETE FROM hub_users")
+	t.Helper()
+	for _, stmt := range []string{
+		"DELETE FROM hub_cdm_tags",
+		"DELETE FROM hub_collaborators",
+		"DELETE FROM hub_repositories",
+		"DELETE FROM hub_users",
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatalf("cleanupTestDB: %s: %v", stmt, err)
+		}
+	}
 }
