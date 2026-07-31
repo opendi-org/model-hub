@@ -929,6 +929,79 @@ func TestGlobalSearch_SearchFilter(t *testing.T) {
 	}
 }
 
+// TestListCollaborators_ValidRequest tests requesting the collaborator list with valid data
+func TestListCollaborators_ValidRequest(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{}, &hub.Collaborator{})
+
+	// One repo with an owner and two collaborators
+	owner := createTestUser(t, db, "owner")
+	writeAccessCollaborator := createTestUser(t, db, "collaborator1")
+	readAccessCollaborator := createTestUser(t, db, "collaborator2")
+	sharedRepo := createTestRepository(t, db, owner.ID, "shared-repo", "private")
+	sharedRepo.Owner = *owner // Necessary so owner shows up in collaborator response
+
+	// Make both collab users a collaborator on the owner user's repo
+	collabEntry1 := createTestCollaborator(t, db, sharedRepo.ID, writeAccessCollaborator.ID, "write")
+	collabEntry2 := createTestCollaborator(t, db, sharedRepo.ID, readAccessCollaborator.ID, "read")
+
+	cases := []struct {
+		name                  string
+		signedIn              *hub.User
+		permissionTypeForUser string
+	}{
+		{"write-access-grants-collab-list-access", writeAccessCollaborator, middleware.PermissionWrite},
+		{"read-access-grants-collab-list-access", readAccessCollaborator, middleware.PermissionRead},
+	}
+
+	// Will use assert.ElementsMatch on the response collaborator info, but the shape of the response
+	// slightly differs from hub.Collaborator. Will store username/role fields from expected and actual
+	// in this test type for comparison.
+	type collabTestInfo struct {
+		Username string
+		Role     string
+	}
+	// Both tests should return a list with the same two collaborators in it
+	expectedCollaborators := []collabTestInfo{
+		{writeAccessCollaborator.Username, collabEntry1.Role},
+		{readAccessCollaborator.Username, collabEntry2.Role},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			router := gin.New()
+			router.GET("/repositories/:owner/:slug/collaborators", func(c *gin.Context) {
+				middleware.SetCurrentUser(c, tc.signedIn)
+				c.Set("repository", sharedRepo)
+				c.Set("permission", tc.permissionTypeForUser) // Ensure context reflects user perms for this repo
+				ListCollaborators(db)(c)
+			})
+
+			httpReq, _ := http.NewRequest("GET", "/repositories/owner/shared-repo/collaborators", nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, httpReq)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+
+			// Verify we see the expected collaborators
+			var response dto.ListCollaboratorsResponse
+			json.Unmarshal(w.Body.Bytes(), &response)
+
+			assert.Equal(t, owner.Username, response.Owner)
+			assert.Equal(t, len(expectedCollaborators), len(response.Collaborators))
+
+			var actualCollaborators []collabTestInfo
+			for _, c := range response.Collaborators {
+				actualCollaborators = append(actualCollaborators, collabTestInfo{c.Username, c.Role}) // Convert to comparison-friendly type
+			}
+
+			assert.ElementsMatch(t, expectedCollaborators, actualCollaborators)
+		})
+	}
+}
+
 // TestIsValidTagName tests the tag name validation helper
 func TestIsValidTagName(t *testing.T) {
 	tests := []struct {
