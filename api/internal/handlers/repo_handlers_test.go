@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -947,12 +948,11 @@ func TestListCollaborators_ValidRequest(t *testing.T) {
 	collabEntry2 := createTestCollaborator(t, db, sharedRepo.ID, readAccessCollaborator.ID, "read")
 
 	cases := []struct {
-		name                  string
-		signedIn              *hub.User
-		permissionTypeForUser string
+		name     string
+		signedIn *hub.User
 	}{
-		{"write-access-grants-collab-list-access", writeAccessCollaborator, middleware.PermissionWrite},
-		{"read-access-grants-collab-list-access", readAccessCollaborator, middleware.PermissionRead},
+		{"write-access-grants-collab-list-access", writeAccessCollaborator},
+		{"read-access-grants-collab-list-access", readAccessCollaborator},
 	}
 
 	// Will use assert.ElementsMatch on the response collaborator info, but the shape of the response
@@ -971,12 +971,17 @@ func TestListCollaborators_ValidRequest(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			router := gin.New()
-			router.GET("/repositories/:owner/:slug/collaborators", func(c *gin.Context) {
-				middleware.SetCurrentUser(c, tc.signedIn)
-				c.Set("repository", sharedRepo)
-				c.Set("permission", tc.permissionTypeForUser) // Ensure context reflects user perms for this repo
-				ListCollaborators(db)(c)
-			})
+			router.GET("/repositories/:owner/:slug/collaborators",
+				func(c *gin.Context) {
+					middleware.SetCurrentUser(c, tc.signedIn)
+					c.Next()
+				},
+				middleware.ResolveRepositoryByOwnerSlug(db),
+				middleware.CheckRepositoryAccess(db),
+				func(c *gin.Context) {
+					middleware.SetCurrentUser(c, tc.signedIn)
+					ListCollaborators(db)(c)
+				})
 
 			httpReq, _ := http.NewRequest("GET", "/repositories/owner/shared-repo/collaborators", nil)
 			w := httptest.NewRecorder()
@@ -998,6 +1003,89 @@ func TestListCollaborators_ValidRequest(t *testing.T) {
 			}
 
 			assert.ElementsMatch(t, expectedCollaborators, actualCollaborators)
+		})
+	}
+}
+
+// TestListCollaborators_PublicReposStillRequireCollabPerms is a regression test for
+// issue #177: GET /v0/repositories/:owner/:slug/collaborators should not leak the
+// the collaborator list for public repositories to all authenticated users. Should
+// require the requesting user to be on the collaborator list.
+// Issue link: https://github.com/opendi-org/model-hub/issues/177
+func TestListCollaborators_PublicReposStillRequireCollabPerms(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{}, &hub.Collaborator{})
+
+	// Two repos each with one collaborator. One public, one private. One non-collaborator user who shouldn't see either list.
+	owner := createTestUser(t, db, "owner")
+	collaborator := createTestUser(t, db, "contributor")
+	nonCollaborator := createTestUser(t, db, "noncollaborator")
+	sharedRepoPrivate := createTestRepository(t, db, owner.ID, "shared-repo-private", "private")
+	sharedRepoPublic := createTestRepository(t, db, owner.ID, "shared-repo-public", "public")
+	sharedRepoPrivate.Owner = *owner // Necessary so owner shows up in collaborator response
+	sharedRepoPublic.Owner = *owner
+
+	// Register one user as a collaborator but leave the other out, for both repos
+	collabEntryPrivate := createTestCollaborator(t, db, sharedRepoPrivate.ID, collaborator.ID, middleware.PermissionRead)
+	collabEntryPublic := createTestCollaborator(t, db, sharedRepoPublic.ID, collaborator.ID, middleware.PermissionRead)
+
+	// Will use assert.ElementsMatch on the response collaborator info, but the shape of the response
+	// slightly differs from hub.Collaborator. Will store username/role fields from expected and actual
+	// in this test type for comparison.
+	type collabTestInfo struct {
+		Username string
+		Role     string
+	}
+
+	cases := []struct {
+		name                  string
+		signedIn              *hub.User
+		repository            *hub.Repository
+		expectedStatusCode    int
+		expectedOwner         string
+		expectedCollaborators []collabTestInfo
+	}{
+		{"collaborator-can-see-collabs-private", collaborator, sharedRepoPrivate, http.StatusOK, owner.Username, []collabTestInfo{{collaborator.Username, collabEntryPrivate.Role}}},
+		{"collaborator-can-see-collabs-public", collaborator, sharedRepoPublic, http.StatusOK, owner.Username, []collabTestInfo{{collaborator.Username, collabEntryPublic.Role}}},
+		{"noncollaborator-cannot-see-collabs-private", nonCollaborator, sharedRepoPrivate, http.StatusForbidden, "", []collabTestInfo{}},
+		{"noncollaborator-cannot-see-collabs-public", nonCollaborator, sharedRepoPublic, http.StatusForbidden, "", []collabTestInfo{}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			router := gin.New()
+			router.GET("/repositories/:owner/:slug/collaborators",
+				func(c *gin.Context) {
+					middleware.SetCurrentUser(c, tc.signedIn)
+					c.Next()
+				},
+				middleware.ResolveRepositoryByOwnerSlug(db),
+				middleware.CheckRepositoryAccess(db),
+				func(c *gin.Context) {
+					ListCollaborators(db)(c)
+				})
+
+			httpReq, _ := http.NewRequest("GET", fmt.Sprintf("/repositories/owner/%s/collaborators", tc.repository.Slug), nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, httpReq)
+
+			assert.Equal(t, tc.expectedStatusCode, w.Code)
+
+			// Verify we see the expected collaborators
+			var response dto.ListCollaboratorsResponse
+			json.Unmarshal(w.Body.Bytes(), &response)
+
+			assert.Equal(t, tc.expectedOwner, response.Owner)
+			assert.Equal(t, len(tc.expectedCollaborators), len(response.Collaborators))
+
+			var actualCollaborators []collabTestInfo
+			for _, c := range response.Collaborators {
+				actualCollaborators = append(actualCollaborators, collabTestInfo{c.Username, c.Role}) // Convert to comparison-friendly type
+			}
+
+			assert.ElementsMatch(t, tc.expectedCollaborators, actualCollaborators)
 		})
 	}
 }
