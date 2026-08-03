@@ -979,7 +979,6 @@ func TestListCollaborators_ValidRequest(t *testing.T) {
 				middleware.ResolveRepositoryByOwnerSlug(db),
 				middleware.CheckRepositoryAccess(db),
 				func(c *gin.Context) {
-					middleware.SetCurrentUser(c, tc.signedIn)
 					ListCollaborators(db)(c)
 				})
 
