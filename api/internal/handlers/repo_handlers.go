@@ -661,9 +661,10 @@ func ListCollaborators(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		permission := middleware.GetRepositoryPermission(c)
+		isCollab := middleware.IsRepositoryCollaborator(c)
 
-		// Only show collaborators to owner and explicit collaborators (any role)
-		if permission != middleware.PermissionOwner && permission != middleware.PermissionAdmin && permission != middleware.PermissionWrite && permission != middleware.PermissionRead {
+		// Only show collaborators to owner and explicit collaborators
+		if permission != middleware.PermissionOwner && !isCollab {
 			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient access to view collaborators"})
 			return
 		}

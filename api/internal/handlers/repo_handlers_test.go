@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,6 +69,7 @@ func testDB(t *testing.T) *gorm.DB {
 
 // createTestUser creates a test user in the database and returns it
 func createTestUser(t *testing.T, db *gorm.DB, username string) *hub.User {
+	t.Helper()
 	user := &hub.User{
 		Username:  username,
 		Email:     username + "@example.com",
@@ -81,6 +83,7 @@ func createTestUser(t *testing.T, db *gorm.DB, username string) *hub.User {
 
 // createTestRepository creates a test repository in the database
 func createTestRepository(t *testing.T, db *gorm.DB, ownerID uint, slug string, visibility string) *hub.Repository {
+	t.Helper()
 	repo := &hub.Repository{
 		OwnerID:     ownerID,
 		Slug:        slug,
@@ -91,6 +94,20 @@ func createTestRepository(t *testing.T, db *gorm.DB, ownerID uint, slug string, 
 		t.Fatalf("failed to create test repository: %v", err)
 	}
 	return repo
+}
+
+// createTestCollaborator registers a collaborator to a repo and returns the collaborator object
+func createTestCollaborator(t *testing.T, db *gorm.DB, repoID uint, userID uint, role string) *hub.Collaborator {
+	t.Helper()
+	collaborator := &hub.Collaborator{
+		RepoID: repoID,
+		UserID: userID,
+		Role:   role,
+	}
+	if err := db.Create(collaborator).Error; err != nil {
+		t.Fatalf("failed to create collaborator: %v", err)
+	}
+	return collaborator
 }
 
 // setupTestRouter sets up a Gin route for testing
@@ -322,9 +339,7 @@ func TestListRepositories_AuthenticatedUser(t *testing.T) {
 	createTestRepository(t, db, user2.ID, "user2-public", "public")
 
 	// Make user1 a collaborator on user2's repo
-	if err := db.Create(&hub.Collaborator{RepoID: repo1.ID, UserID: user2.ID, Role: "write"}).Error; err != nil {
-		t.Fatalf("failed to create collaborator: %v", err)
-	}
+	createTestCollaborator(t, db, repo1.ID, user2.ID, "write")
 
 	router := gin.New()
 	// Set authenticated user (must be before route registration)
@@ -813,9 +828,7 @@ func TestGlobalSearch_AuthenticatedCollaborator_SeesSharedPrivateRepo(t *testing
 	createTestRepository(t, db, owner.ID, "not-shared-private", "private")
 
 	// Make the "collaborator" user a collaborator on the "owner" user's repo
-	if err := db.Create(&hub.Collaborator{RepoID: sharedRepo.ID, UserID: collaborator.ID, Role: "read"}).Error; err != nil {
-		t.Fatalf("failed to create collaborator: %v", err)
-	}
+	createTestCollaborator(t, db, sharedRepo.ID, collaborator.ID, "read")
 
 	router := gin.New()
 	// Authenticate as collaborator
@@ -914,6 +927,165 @@ func TestGlobalSearch_SearchFilter(t *testing.T) {
 	assert.Equal(t, int64(1), response.Total)
 	if assert.Len(t, response.Repositories, 1) {
 		assert.Equal(t, "beta-repo", response.Repositories[0].Slug)
+	}
+}
+
+// TestListCollaborators_ValidRequest tests requesting the collaborator list with valid data
+func TestListCollaborators_ValidRequest(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{}, &hub.Collaborator{})
+
+	// One repo with an owner and two collaborators
+	owner := createTestUser(t, db, "owner")
+	writeAccessCollaborator := createTestUser(t, db, "collaborator1")
+	readAccessCollaborator := createTestUser(t, db, "collaborator2")
+	sharedRepo := createTestRepository(t, db, owner.ID, "shared-repo", "private")
+	sharedRepo.Owner = *owner // Necessary so owner shows up in collaborator response
+
+	// Make both collab users a collaborator on the owner user's repo
+	collabEntry1 := createTestCollaborator(t, db, sharedRepo.ID, writeAccessCollaborator.ID, "write")
+	collabEntry2 := createTestCollaborator(t, db, sharedRepo.ID, readAccessCollaborator.ID, "read")
+
+	cases := []struct {
+		name     string
+		signedIn *hub.User
+	}{
+		{"write-access-grants-collab-list-access", writeAccessCollaborator},
+		{"read-access-grants-collab-list-access", readAccessCollaborator},
+	}
+
+	// Will use assert.ElementsMatch on the response collaborator info, but the shape of the response
+	// slightly differs from hub.Collaborator. Will store username/role fields from expected and actual
+	// in this test type for comparison.
+	type collabTestInfo struct {
+		Username string
+		Role     string
+	}
+	// Both tests should return a list with the same two collaborators in it
+	expectedCollaborators := []collabTestInfo{
+		{writeAccessCollaborator.Username, collabEntry1.Role},
+		{readAccessCollaborator.Username, collabEntry2.Role},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			router := gin.New()
+			router.GET("/repositories/:owner/:slug/collaborators",
+				func(c *gin.Context) {
+					middleware.SetCurrentUser(c, tc.signedIn)
+					c.Next()
+				},
+				middleware.ResolveRepositoryByOwnerSlug(db),
+				middleware.CheckRepositoryAccess(db),
+				func(c *gin.Context) {
+					ListCollaborators(db)(c)
+				})
+
+			httpReq, _ := http.NewRequest("GET", "/repositories/owner/shared-repo/collaborators", nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, httpReq)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+
+			// Verify we see the expected collaborators
+			var response dto.ListCollaboratorsResponse
+			json.Unmarshal(w.Body.Bytes(), &response)
+
+			assert.Equal(t, owner.Username, response.Owner)
+			assert.Equal(t, len(expectedCollaborators), len(response.Collaborators))
+
+			var actualCollaborators []collabTestInfo
+			for _, c := range response.Collaborators {
+				actualCollaborators = append(actualCollaborators, collabTestInfo{c.Username, c.Role}) // Convert to comparison-friendly type
+			}
+
+			assert.ElementsMatch(t, expectedCollaborators, actualCollaborators)
+		})
+	}
+}
+
+// TestListCollaborators_PublicReposStillRequireCollabPerms is a regression test for
+// issue #177: GET /v0/repositories/:owner/:slug/collaborators should not leak the
+// the collaborator list for public repositories to all authenticated users. Should
+// require the requesting user to be on the collaborator list.
+// Issue link: https://github.com/opendi-org/model-hub/issues/177
+func TestListCollaborators_PublicReposStillRequireCollabPerms(t *testing.T) {
+	db := testDB(t)
+	cleanupTestDB(t, db)
+	defer db.Migrator().DropTable(&hub.Repository{}, &hub.User{}, &hub.Collaborator{})
+
+	// Two repos each with one collaborator. One public, one private. One non-collaborator user who shouldn't see either list.
+	owner := createTestUser(t, db, "owner")
+	collaborator := createTestUser(t, db, "contributor")
+	nonCollaborator := createTestUser(t, db, "noncollaborator")
+	sharedRepoPrivate := createTestRepository(t, db, owner.ID, "shared-repo-private", "private")
+	sharedRepoPublic := createTestRepository(t, db, owner.ID, "shared-repo-public", "public")
+	sharedRepoPrivate.Owner = *owner // Necessary so owner shows up in collaborator response
+	sharedRepoPublic.Owner = *owner
+
+	// Register one user as a collaborator but leave the other out, for both repos
+	collabEntryPrivate := createTestCollaborator(t, db, sharedRepoPrivate.ID, collaborator.ID, middleware.PermissionRead)
+	collabEntryPublic := createTestCollaborator(t, db, sharedRepoPublic.ID, collaborator.ID, middleware.PermissionRead)
+
+	// Will use assert.ElementsMatch on the response collaborator info, but the shape of the response
+	// slightly differs from hub.Collaborator. Will store username/role fields from expected and actual
+	// in this test type for comparison.
+	type collabTestInfo struct {
+		Username string
+		Role     string
+	}
+
+	cases := []struct {
+		name                  string
+		signedIn              *hub.User
+		repository            *hub.Repository
+		expectedStatusCode    int
+		expectedOwner         string
+		expectedCollaborators []collabTestInfo
+	}{
+		{"collaborator-can-see-collabs-private", collaborator, sharedRepoPrivate, http.StatusOK, owner.Username, []collabTestInfo{{collaborator.Username, collabEntryPrivate.Role}}},
+		{"collaborator-can-see-collabs-public", collaborator, sharedRepoPublic, http.StatusOK, owner.Username, []collabTestInfo{{collaborator.Username, collabEntryPublic.Role}}},
+		{"noncollaborator-cannot-see-collabs-private", nonCollaborator, sharedRepoPrivate, http.StatusForbidden, "", []collabTestInfo{}},
+		{"noncollaborator-cannot-see-collabs-public", nonCollaborator, sharedRepoPublic, http.StatusForbidden, "", []collabTestInfo{}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			router := gin.New()
+			router.GET("/repositories/:owner/:slug/collaborators",
+				func(c *gin.Context) {
+					middleware.SetCurrentUser(c, tc.signedIn)
+					c.Next()
+				},
+				middleware.ResolveRepositoryByOwnerSlug(db),
+				middleware.CheckRepositoryAccess(db),
+				func(c *gin.Context) {
+					ListCollaborators(db)(c)
+				})
+
+			httpReq, _ := http.NewRequest("GET", fmt.Sprintf("/repositories/owner/%s/collaborators", tc.repository.Slug), nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, httpReq)
+
+			assert.Equal(t, tc.expectedStatusCode, w.Code)
+
+			// Verify we see the expected collaborators
+			var response dto.ListCollaboratorsResponse
+			json.Unmarshal(w.Body.Bytes(), &response)
+
+			assert.Equal(t, tc.expectedOwner, response.Owner)
+			assert.Equal(t, len(tc.expectedCollaborators), len(response.Collaborators))
+
+			var actualCollaborators []collabTestInfo
+			for _, c := range response.Collaborators {
+				actualCollaborators = append(actualCollaborators, collabTestInfo{c.Username, c.Role}) // Convert to comparison-friendly type
+			}
+
+			assert.ElementsMatch(t, tc.expectedCollaborators, actualCollaborators)
+		})
 	}
 }
 
@@ -1138,10 +1310,20 @@ func TestGetTagModel_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-// cleanupTestDB removes all test data from the database
+// cleanupTestDB removes all test data from the database. Children must be
+// deleted before the parents they reference (hub_cdm_tags and
+// hub_collaborators both FK into hub_repositories and hub_users) or the
+// deletes fail/leave orphaned rows that later break AutoMigrate's FK setup.
 func cleanupTestDB(t *testing.T, db *gorm.DB) {
-	db.Exec("DELETE FROM hub_cdm_tags")
-	db.Exec("DELETE FROM hub_repositories")
-	db.Exec("DELETE FROM hub_collaborators")
-	db.Exec("DELETE FROM hub_users")
+	t.Helper()
+	for _, stmt := range []string{
+		"DELETE FROM hub_cdm_tags",
+		"DELETE FROM hub_collaborators",
+		"DELETE FROM hub_repositories",
+		"DELETE FROM hub_users",
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatalf("cleanupTestDB: %s: %v", stmt, err)
+		}
+	}
 }
