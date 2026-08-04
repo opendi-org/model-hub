@@ -15,6 +15,7 @@ type Config struct {
 	DBName     string
 	DBUsername string
 	DBPassword string
+	DBSSLMode  string
 
 	// Server
 	Address string // MODEL_HUB_ADDRESS
@@ -33,8 +34,8 @@ type Config struct {
 // DSN returns a PostgreSQL connection string for GORM.
 func (c *Config) DSN() string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable TimeZone=UTC",
-		c.DBHostname, c.DBPort, c.DBUsername, c.DBPassword, c.DBName,
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s TimeZone=UTC",
+		c.DBHostname, c.DBPort, c.DBUsername, c.DBPassword, c.DBName, c.DBSSLMode,
 	)
 }
 
@@ -48,6 +49,14 @@ func (c *Config) ListenAddr() string {
 // sees all problems at once rather than one at a time.
 func LoadConfig() (*Config, error) {
 	var missing []string
+
+	optional := func(key, defaultValue string) string {
+		v := os.Getenv(key)
+		if v == "" {
+			return defaultValue
+		}
+		return v
+	}
 
 	require := func(key string) string {
 		v := os.Getenv(key)
@@ -77,15 +86,9 @@ func LoadConfig() (*Config, error) {
 		DBName:     require("DB_NAME"),
 		DBUsername: require("DB_USERNAME"),
 		DBPassword: require("DB_PASSWORD"),
-
-		Address: func() string {
-			v := os.Getenv("MODEL_HUB_ADDRESS")
-			if v == "" {
-				return "0.0.0.0"
-			}
-			return v
-		}(),
-		Port: requireInt("MODEL_HUB_PORT", 8080),
+		DBSSLMode:  optional("DB_SSL_MODE", "disable"),
+		Address:    optional("MODEL_HUB_ADDRESS", "0.0.0.0"),
+		Port:       requireInt("MODEL_HUB_PORT", 8080),
 
 		JWTSecret:          require("JWT_SECRET"),
 		GoogleClientID:     require("GOOGLE_CLIENT_ID"),

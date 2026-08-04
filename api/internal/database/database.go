@@ -19,6 +19,10 @@ func NewDB(cfg *config.Config) (*gorm.DB, error) {
 	logLevel := logger.Warn
 	if cfg.DevMode {
 		logLevel = logger.Info // log all SQL in dev
+	} else {
+		if cfg.DBSSLMode == "disable" {
+			log.Println("WARNING: DB_SSL_MODE is 'disable' in production mode. This is insecure! Recommend enabling SSL for production.")
+		}
 	}
 
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
