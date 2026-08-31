@@ -22,6 +22,38 @@ func TestDSN_UsesConfiguredSSLMode(t *testing.T) {
 	assert.Contains(t, dsn, "sslmode=verify-full")
 }
 
+func TestDSN_SetsRootCertPathWhenProvided(t *testing.T) {
+	cases := []struct {
+		name                 string
+		certPath             string
+		dsnShouldContainPath bool
+	}{
+		{"cert-path-provided", "/certs/db-ca.crt", true}, {"cert-path-not-provided", "", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{
+				DBHostname:    "db",
+				DBPort:        5432,
+				DBUsername:    "postgres",
+				DBPassword:    "secret",
+				DBName:        "model_hub",
+				DBSSLMode:     "verify-full",
+				DBSSLRootCert: tc.certPath,
+			}
+
+			dsn := cfg.DSN()
+
+			if tc.dsnShouldContainPath {
+				assert.Contains(t, dsn, "sslrootcert="+tc.certPath)
+			} else {
+				assert.NotContains(t, dsn, "sslrootcert=")
+			}
+		})
+	}
+}
+
 func TestLoadConfig_DBSSLMode(t *testing.T) {
 	// required vars LoadConfig() needs to succeed at all
 	t.Setenv("DB_HOSTNAME", "db")

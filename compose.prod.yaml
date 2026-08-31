@@ -36,13 +36,16 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_SSL_MODE: require
+      DB_SSL_MODE: verify-full
+      DB_SSL_ROOT_CERT: /certs/db-ca.crt
 
       # auth details
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
+    volumes:
+      - ${DB_SSL_CRT_PATH}:/certs/db-ca.crt:ro
     restart: unless-stopped
     expose:
       - "8080"

@@ -26,6 +26,7 @@ cd "$OUT_DIR"
 
 MSYS_NO_PATHCONV=1 openssl req -new -x509 -days 3650 -nodes \
   -subj "/CN=db" \
+  -addext "subjectAltName=DNS:db" \
   -keyout server.key \
   -out server.crt
 
