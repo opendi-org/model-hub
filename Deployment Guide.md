@@ -27,7 +27,11 @@ On the target VM, install and verify:
 
 - Docker Engine + Docker Compose plugin (`docker compose version`)
 - Git (`git --version`)
-- TLS certificate and key files for your production domain
+- TLS certificate and key files for your production domain.
+   - For prod, needs to be CA-issued.
+- TLS certificate and key files for your production DB. Common Name should be `db`.
+   - Use `db/generate-cert.sh` for db certs. It will set CN.
+   - Self-signed cert is fine for prod.
 - DNS A/AAAA record pointing your domain to this VM
 
 Use your distro/cloud standard install method for Docker.
@@ -67,12 +71,14 @@ Set all required values in `.env`:
 - `API_URL`
 - `SSL_CRT_PATH`
 - `SSL_KEY_PATH`
+- `DB_SSL_CRT_PATH`
+- `DB_SSL_KEY_PATH`
 
 Production-specific guidance:
 
 - `API_URL`: set to your public HTTPS API path, for example `https://your-domain.example/api`
 - `GOOGLE_REDIRECT_URL`: set to your public callback URL, for example `https://your-domain.example/auth/callback`
-- `SSL_CRT_PATH` and `SSL_KEY_PATH`: absolute paths on the VM that exist and are readable by Docker
+- `SSL_CRT_PATH` and `SSL_KEY_PATH`: (likely absolute) paths on the VM that exist and are readable by Docker
 
 ### 3.3 Start production stack
 
@@ -204,6 +210,12 @@ docker compose -f compose.prod.yaml logs --tail=100 nginx
 ```
 
 Most common cause is bad `SSL_CRT_PATH` / `SSL_KEY_PATH` or cert/key mismatch.
+
+
+### Problem: Server refused TLS connection, no encryption, or db not starting
+
+Similar to previous, check for bad `DB_SSL_CRT_PATH` / `DB_SSL_KEY_PATH` or cert/key mismatch for the db.  
+Consider re-generating DB certs via `generate-cert.sh`.
 
 ### Problem: Google login fails / redirect mismatch
 

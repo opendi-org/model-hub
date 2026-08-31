@@ -10,11 +10,13 @@ import (
 // Every field maps directly to a variable defined in docker-compose.
 type Config struct {
 	// Database
-	DBHostname string
-	DBPort     int
-	DBName     string
-	DBUsername string
-	DBPassword string
+	DBHostname    string
+	DBPort        int
+	DBName        string
+	DBUsername    string
+	DBPassword    string
+	DBSSLMode     string
+	DBSSLRootCert string
 
 	// Server
 	Address string // MODEL_HUB_ADDRESS
@@ -32,10 +34,16 @@ type Config struct {
 
 // DSN returns a PostgreSQL connection string for GORM.
 func (c *Config) DSN() string {
-	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable TimeZone=UTC",
-		c.DBHostname, c.DBPort, c.DBUsername, c.DBPassword, c.DBName,
+	dsn := fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s TimeZone=UTC",
+		c.DBHostname, c.DBPort, c.DBUsername, c.DBPassword, c.DBName, c.DBSSLMode,
 	)
+	if c.DBSSLRootCert != "" {
+		dsn += fmt.Sprintf(
+			" sslrootcert=%s", c.DBSSLRootCert,
+		)
+	}
+	return dsn
 }
 
 // ListenAddr returns the host:port string for the HTTP server.
@@ -48,6 +56,14 @@ func (c *Config) ListenAddr() string {
 // sees all problems at once rather than one at a time.
 func LoadConfig() (*Config, error) {
 	var missing []string
+
+	optional := func(key, defaultValue string) string {
+		v := os.Getenv(key)
+		if v == "" {
+			return defaultValue
+		}
+		return v
+	}
 
 	require := func(key string) string {
 		v := os.Getenv(key)
@@ -72,20 +88,15 @@ func LoadConfig() (*Config, error) {
 	devMode := os.Getenv("DEV_MODE") == "true"
 
 	cfg := &Config{
-		DBHostname: require("DB_HOSTNAME"),
-		DBPort:     requireInt("DB_PORT", 5432),
-		DBName:     require("DB_NAME"),
-		DBUsername: require("DB_USERNAME"),
-		DBPassword: require("DB_PASSWORD"),
-
-		Address: func() string {
-			v := os.Getenv("MODEL_HUB_ADDRESS")
-			if v == "" {
-				return "0.0.0.0"
-			}
-			return v
-		}(),
-		Port: requireInt("MODEL_HUB_PORT", 8080),
+		DBHostname:    require("DB_HOSTNAME"),
+		DBPort:        requireInt("DB_PORT", 5432),
+		DBName:        require("DB_NAME"),
+		DBUsername:    require("DB_USERNAME"),
+		DBPassword:    require("DB_PASSWORD"),
+		DBSSLMode:     optional("DB_SSL_MODE", "disable"),
+		DBSSLRootCert: optional("DB_SSL_ROOT_CERT", ""),
+		Address:       optional("MODEL_HUB_ADDRESS", "0.0.0.0"),
+		Port:          requireInt("MODEL_HUB_PORT", 8080),
 
 		JWTSecret:          require("JWT_SECRET"),
 		GoogleClientID:     require("GOOGLE_CLIENT_ID"),

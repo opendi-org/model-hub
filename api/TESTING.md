@@ -73,3 +73,57 @@ Notes:
   cross-package migration races.
 - If fixture-based tests are skipped, ensure submodule content is checked out:
   - `git submodule update --init --recursive`
+
+### Check certs for `db` and `api`
+
+Spin up a test production with just these services to check the connection.  
+From repo root:  
+```bash
+docker compose -p openditest-prod-db-api-certs -f compose.prod.yaml up db api --build
+```
+
+Expect output like this:
+```
+<CUT FOR LENGTH, THESE ARE THE LAST FEW LINES>
+db-1  | 2026-08-31 18:29:42.606 UTC [1] LOG:  database system is ready to accept connections
+Container openditest-prod-db-api-certs-db-1 Healthy 
+api-1  | 2026/08/31 18:29:46 running database migrations...
+api-1  | 2026/08/31 18:29:46 model-hub listening on 0.0.0.0:8080 (dev=false)
+```
+
+Test the connection:
+
+First, force `api` to open/use a connection via curl to an open endpoint:  
+```bash
+docker run --rm --network openditest-prod-db-api-certs_backend curlimages/curl -s http://api:8080/v0/search?q=test
+```
+
+For a new Compose project with no repositories matching the query "test", expect output like  this:
+```json
+{"repositories":[],"total":0}
+```
+
+Next, look for the connection among `db`'s current connections:
+```bash
+docker compose -p openditest-prod-db-api-certs -f compose.prod.yaml exec db psql -U postgres -d model_hub -c "SELECT pid, usename, ssl, client_addr FROM pg_stat_ssl JOIN pg_stat_activity USING (pid);"
+```
+**NOTE:** This `psql` command must run shortly after the prior `curl` command, before the `api` connection ages out of the pool.
+
+Expect output like this:
+```
+ pid | usename  | ssl | client_addr 
+-----+----------+-----+-------------
+  85 | postgres | t   | 172.22.0.3
+ 220 | postgres | f   | 
+(2 rows)
+```
+
+Here, row `pid=85` is the connection from `api`. `ssl=t`, so the connection is encrypted. The second process (`pid=220`) with no `client_addr` is the `psql` session's local socket connection.
+
+If you see errors during database initialization or at any other point in the process of running these commands, check the Prerequisites section of the Deployment Guide for info on generating certs. You'll likely need to generate new certs with `db/generate-cert.sh`.
+
+To clean up after:
+```bash
+docker compose -p openditest-prod-db-api-certs -f compose.prod.yaml down -v
+```
+**(this will also delete the database volume and any data stored there)**

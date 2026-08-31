@@ -47,6 +47,9 @@ go.work.sum
 .env*
 !.env.example
 
+# generated certs (private key material)
+/certs/
+
 #tmp files
 api/tmp/*
 api/tmp/main

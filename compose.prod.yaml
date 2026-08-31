@@ -36,12 +36,16 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSL_MODE: verify-full
+      DB_SSL_ROOT_CERT: /certs/db-ca.crt
 
       # auth details
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
+    volumes:
+      - ${DB_SSL_CRT_PATH}:/certs/db-ca.crt:ro
     restart: unless-stopped
     expose:
       - "8080"
@@ -51,12 +55,27 @@ services:
     networks:
       - backend
     image: postgres:18-alpine
+    entrypoint: ["sh", "/docker-entrypoint-ssl.sh"]
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/var/lib/postgresql/certs/server.crt
+      - -c
+      - ssl_key_file=/var/lib/postgresql/certs/server.key
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     environment:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - db_data:/var/lib/postgresql/18/docker
+      - ./db/docker-entrypoint-ssl.sh:/docker-entrypoint-ssl.sh:ro
+      - ./db/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ${DB_SSL_CRT_PATH}:/run/certs-ro/server.crt:ro
+      - ${DB_SSL_KEY_PATH}:/run/certs-ro/server.key:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
       interval: 5s
