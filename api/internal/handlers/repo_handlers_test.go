@@ -1320,6 +1320,7 @@ func cleanupTestDB(t *testing.T, db *gorm.DB) {
 		"DELETE FROM hub_cdm_tags",
 		"DELETE FROM hub_collaborators",
 		"DELETE FROM hub_repositories",
+		"DELETE FROM hub_cli_sessions",
 		"DELETE FROM hub_users",
 	} {
 		if err := db.Exec(stmt).Error; err != nil {
