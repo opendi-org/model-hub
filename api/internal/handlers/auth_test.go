@@ -14,6 +14,7 @@ import (
 	"opendi.org/model-hub/api/internal/dto"
 	"opendi.org/model-hub/api/internal/middleware"
 	"opendi.org/model-hub/api/internal/services"
+	"opendi.org/model-hub/api/internal/testsupport"
 )
 
 func TestFrontendCLIApprovedURL(t *testing.T) {
@@ -50,13 +51,13 @@ func TestFrontendCLIApprovedURL(t *testing.T) {
 }
 
 // TestCLIPoll_PendingSession_ReturnsAccepted Tests that a pending CLI auth session returns
-// HHTP status 202, accepted, when polled with CLIPoll
+// HTTP status 202, accepted, when polled with CLIPoll
 func TestCLIPoll_PendingSession_ReturnsAccepted(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	db := testDB(t)
+	db := testsupport.TestDB(t)
 
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	testsupport.CleanupTestDB(t, db)
+	defer testsupport.CleanupTestDB(t, db)
 
 	router := gin.New()
 	// Set JWT secret info. Must be set for CLIPoll to work
@@ -89,10 +90,10 @@ func TestCLIPoll_PendingSession_ReturnsAccepted(t *testing.T) {
 // pending state and into approved returns HTTP 200 and includes a token in its response
 func TestCLIPoll_ApprovedSession_ReturnsToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	db := testDB(t)
+	db := testsupport.TestDB(t)
 
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	testsupport.CleanupTestDB(t, db)
+	defer testsupport.CleanupTestDB(t, db)
 
 	router := gin.New()
 	// Set JWT secret info. Must be set for CLIPoll to work
@@ -107,7 +108,7 @@ func TestCLIPoll_ApprovedSession_ReturnsToken(t *testing.T) {
 	}
 
 	// Approve the pending session for a test user
-	user := createTestUser(t, db, "user-clipoll")
+	user := testsupport.CreateTestUser(t, db, "user-clipoll")
 	if err := auth.ApproveCLISession(sessionCode, user.ID); err != nil {
 		t.Fatalf("Error approving session: %v", err)
 	}
