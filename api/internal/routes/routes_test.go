@@ -1,14 +1,22 @@
 package routes
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 
 	"opendi.org/model-hub/api/internal/config"
+	"opendi.org/model-hub/api/internal/dto"
+	"opendi.org/model-hub/api/internal/services"
+	"opendi.org/model-hub/api/internal/testsupport"
 )
 
 func TestRegisterRoutes_AuthMeRequiresAuthentication(t *testing.T) {
@@ -31,3 +39,50 @@ func TestRegisterRoutes_AuthMeRequiresAuthentication(t *testing.T) {
 	}
 }
 
+func TestCLIPoll_RateLimitExceeded(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := testsupport.TestDB(t)
+
+	testsupport.CleanupTestDB(t, db)
+	defer testsupport.CleanupTestDB(t, db)
+
+	router := gin.New()
+	cfg := &config.Config{
+		JWTSecret: "test-secret",
+		DevMode:   true,
+	}
+	RegisterRoutes(router, db, cfg)
+
+	auth := services.NewAuthService(db)
+	sessionCode := "auth-session-TestCLIPoll_RateLimitExceeded"
+	if err := auth.CreateCLISession(sessionCode, time.Now().Add(time.Hour).UTC()); err != nil {
+		t.Fatalf("Error creating session: %v", err)
+	}
+
+	req := dto.CLIPollRequest{
+		Code: sessionCode,
+	}
+	body, _ := json.Marshal(req)
+
+	limit := 10
+
+	for i := 0; i < limit; i++ {
+		t.Run(fmt.Sprintf("limit-run-%d", i), func(t *testing.T) {
+			httpReq, _ := http.NewRequest("POST", "/v0/auth/cli/poll", bytes.NewReader(body))
+			httpReq.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httpReq)
+			// Endpoint should be found, but we haven't hit the limit yet
+			assert.NotEqual(t, http.StatusTooManyRequests, w.Code, w.Body)
+			assert.NotEqual(t, http.StatusNotFound, w.Code, w.Body)
+		})
+	}
+
+	t.Run("limit-run-final", func(t *testing.T) {
+		httpReq, _ := http.NewRequest("POST", "/v0/auth/cli/poll", bytes.NewReader(body))
+		httpReq.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httpReq)
+		assert.Equal(t, http.StatusTooManyRequests, w.Code, w.Body)
+	})
+}
