@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/didip/tollbooth/v8/limiter"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
@@ -190,7 +191,7 @@ func GoogleCallback(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 }
 
 // CLILogin starts pre-auth approval login for CLI clients.
-func CLILogin(db *gorm.DB) gin.HandlerFunc {
+func CLILogin(db *gorm.DB, cliPollLimiter *limiter.Limiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authSvc := services.NewAuthService(db)
 		code, err := randomHex(48)
@@ -206,9 +207,10 @@ func CLILogin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, dto.CLILoginResponse{
-			Code:      code,
-			LoginURL:  "/v0/auth/login/google/start?cli_code=" + code,
-			ExpiresIn: int64(time.Until(expiresAt).Seconds()),
+			Code:                code,
+			LoginURL:            "/v0/auth/login/google/start?cli_code=" + code,
+			ExpiresIn:           int64(time.Until(expiresAt).Seconds()),
+			PollIntervalSeconds: float64(1.0 / cliPollLimiter.GetMax()),
 		})
 	}
 }

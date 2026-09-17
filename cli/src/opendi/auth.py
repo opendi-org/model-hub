@@ -9,8 +9,6 @@ import webbrowser
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SECONDS = 2
-
 
 class AuthAPIError(RuntimeError):
     """HTTP error from the OpenDI API, carrying the response status code."""
@@ -50,12 +48,12 @@ def _json_request(
         raise AuthAPIError(message, e.code) from e
 
 
-def start_cli_login(api_base_url: str) -> tuple[str, str, int]:
-    """Create CLI login session and return (code, login_url, expires_in)."""
+def start_cli_login(api_base_url: str) -> tuple[str, str, int, float]:
+    """Create CLI login session and return (code, login_url, expires_in, poll_interval_seconds)."""
     logger.debug("Starting CLI login session at %s", api_base_url)
     data = _json_request("POST", f"{api_base_url}/v0/auth/cli/login")
     try:
-        return data["code"], data["loginUrl"], int(data["expiresIn"])
+        return data["code"], data["loginUrl"], int(data["expiresIn"]), float(data["pollIntervalSeconds"])
     except (KeyError, TypeError, ValueError) as e:
         raise RuntimeError(f"Unexpected login response from server: {data}") from e
 
@@ -73,16 +71,23 @@ def open_login_url(api_base_url: str, login_url: str) -> str:
     return absolute
 
 
-def poll_cli_token(api_base_url: str, code: str, timeout_seconds: int) -> str:
+def poll_cli_token(api_base_url: str, code: str, timeout_seconds: int, poll_interval_seconds: float) -> str:
     """Poll for approved CLI session and return access token."""
     deadline = time.time() + timeout_seconds
     attempt = 0
     while time.time() < deadline:
         attempt += 1
         logger.debug("Polling for CLI token (attempt %d)", attempt)
-        data = _json_request("POST", f"{api_base_url}/v0/auth/cli/poll", {"code": code})
+        try:
+            data = _json_request("POST", f"{api_base_url}/v0/auth/cli/poll", {"code": code})
+        except AuthAPIError as e:
+            if e.status == 429:
+                logger.debug("Rate limited, waiting %.1fs before retrying", poll_interval_seconds)
+                time.sleep(poll_interval_seconds)
+                continue
+            raise
         if data.get("status") == "pending":
-            time.sleep(POLL_INTERVAL_SECONDS)
+            time.sleep(poll_interval_seconds)
             continue
         token = data.get("accessToken")
         if token:

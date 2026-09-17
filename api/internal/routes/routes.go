@@ -88,14 +88,17 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		middleware.AuthenticateRequest(),
 	)
 
+	// Rate limiter object for the /auth/cli/poll endpoint
+	cliPollLimiter := middleware.NewLimiter(cfg.RateLimitCLIPollBurst, cfg.RateLimitCLIPollRequestsPerMinute)
+
 	// Auth: me, logout, Google OAuth, CLI login/poll
 	auth := v0.Group("/auth")
 	auth.GET("/me", middleware.RequireAuthentication(), handlers.AuthMe())
 	auth.POST("/logout", handlers.AuthLogout())
 	auth.GET("/login/google/start", handlers.GoogleStart(cfg))
 	auth.GET("/login/google/callback", handlers.GoogleCallback(db, cfg))
-	auth.POST("/cli/login", handlers.CLILogin(db))
-	auth.POST("/cli/poll", middleware.CheckRateLimit(middleware.NewLimiter(cfg.RateLimitCLIPollBurst, cfg.RateLimitCLIPollRequestsPerMinute)), handlers.CLIPoll(db))
+	auth.POST("/cli/login", handlers.CLILogin(db, cliPollLimiter))
+	auth.POST("/cli/poll", middleware.CheckRateLimit(cliPollLimiter), handlers.CLIPoll(db))
 
 	// Repositories - authenticated routes for listing/creating.
 	reposAuth := v0.Group("/repositories", middleware.RequireAuthentication())

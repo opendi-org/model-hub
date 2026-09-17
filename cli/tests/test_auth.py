@@ -82,12 +82,13 @@ def test_json_request_http_error_no_body() -> None:
 
 
 def test_start_cli_login_returns_tuple() -> None:
-    body = json.dumps({"code": "abc", "loginUrl": "/login", "expiresIn": 300})
+    body = json.dumps({"code": "abc", "loginUrl": "/login", "expiresIn": 300, "pollIntervalSeconds": 3.0})
     with patch("urllib.request.urlopen", return_value=_fake_response(body)):
-        code, url, exp = auth.start_cli_login("http://api")
+        code, url, exp, rate = auth.start_cli_login("http://api")
     assert code == "abc"
     assert url == "/login"
     assert exp == 300
+    assert rate == 3.0
 
 
 # ── open_login_url ────────────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ def test_open_login_url_browser_fails(capsys) -> None:
 def test_poll_cli_token_immediate() -> None:
     body = json.dumps({"accessToken": "tok123"})
     with patch("urllib.request.urlopen", return_value=_fake_response(body)):
-        token = auth.poll_cli_token("http://api", "code", 30)
+        token = auth.poll_cli_token("http://api", "code", 30, 3.0)
     assert token == "tok123"
 
 
@@ -130,7 +131,7 @@ def test_poll_cli_token_pending_then_success() -> None:
         patch("urllib.request.urlopen", side_effect=[_fake_response(pending), _fake_response(success)]),
         patch("time.sleep"),
     ):
-        token = auth.poll_cli_token("http://api", "code", 30)
+        token = auth.poll_cli_token("http://api", "code", 30, 3.0)
     assert token == "tok456"
 
 
@@ -138,9 +139,10 @@ def test_poll_cli_token_timeout() -> None:
     with (
         patch("time.time", side_effect=[0, 0, 999]),
         patch("urllib.request.urlopen", return_value=_fake_response(json.dumps({"status": "pending"}))),
+        patch("time.sleep"),
     ):
         try:
-            auth.poll_cli_token("http://api", "code", 1)
+            auth.poll_cli_token("http://api", "code", 1, 3.0)
             assert False, "should have raised"
         except TimeoutError:
             pass
@@ -150,7 +152,7 @@ def test_poll_cli_token_unknown_code_raises() -> None:
     err = _http_error(400, '{"error": "unknown code"}')
     with patch("urllib.request.urlopen", side_effect=err):
         try:
-            auth.poll_cli_token("http://api", "code", 30)
+            auth.poll_cli_token("http://api", "code", 30, 3.0)
             assert False, "should have raised"
         except RuntimeError as e:
             assert "unknown code" in str(e)

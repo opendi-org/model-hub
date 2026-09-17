@@ -102,10 +102,10 @@ def login() -> None:
                 credential_storage.delete_access_token()
                 shared.current_token = None
 
-        code, login_url, expires_in = auth.start_cli_login(api_base)
+        code, login_url, expires_in, poll_interval_seconds = auth.start_cli_login(api_base)
         absolute_url = auth.open_login_url(api_base, login_url)
         _print_login_browser_prompt(absolute_url)
-        token = auth.poll_cli_token(api_base, code, expires_in)
+        token = auth.poll_cli_token(api_base, code, expires_in, poll_interval_seconds)
         credential_storage.store_access_token(token)
         shared.current_token = token
         me = auth.get_current_user(api_base, token)

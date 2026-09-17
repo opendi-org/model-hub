@@ -7,9 +7,10 @@ type CLIPollRequest struct {
 }
 
 type CLILoginResponse struct {
-	Code      string `json:"code"`
-	LoginURL  string `json:"loginUrl"`
-	ExpiresIn int64  `json:"expiresIn"`
+	Code                string  `json:"code"`
+	LoginURL            string  `json:"loginUrl"`
+	ExpiresIn           int64   `json:"expiresIn"`
+	PollIntervalSeconds float64 `json:"pollIntervalSeconds"` //For CLIPoll's rate limit
 }
 
 type TokenResponse struct {

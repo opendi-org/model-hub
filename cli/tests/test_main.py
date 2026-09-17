@@ -73,7 +73,7 @@ def test_login_success() -> None:
     """opendi login stores token and prints success with username."""
     with (
         _logged_out(),
-        patch("opendi.main.auth.start_cli_login", return_value=("code123", "/login", 300)),
+        patch("opendi.main.auth.start_cli_login", return_value=("code123", "/login", 300, 3.0)),
         patch("opendi.main.auth.open_login_url", return_value="http://localhost/login"),
         patch("opendi.main.auth.poll_cli_token", return_value=_TOKEN),
         patch("opendi.main.auth.get_current_user", return_value={"username": "alice"}),
@@ -92,7 +92,7 @@ def test_login_success_no_username_fallback() -> None:
     """opendi login prints success without username when API returns no username."""
     with (
         _logged_out(),
-        patch("opendi.main.auth.start_cli_login", return_value=("code123", "/login", 300)),
+        patch("opendi.main.auth.start_cli_login", return_value=("code123", "/login", 300, 3.0)),
         patch("opendi.main.auth.open_login_url", return_value="http://localhost/login"),
         patch("opendi.main.auth.poll_cli_token", return_value=_TOKEN),
         patch("opendi.main.auth.get_current_user", return_value={}),
@@ -120,7 +120,7 @@ def test_login_timeout() -> None:
     """opendi login exits 1 with timeout message when polling times out."""
     with (
         _logged_out(),
-        patch("opendi.main.auth.start_cli_login", return_value=("code123", "/login", 300)),
+        patch("opendi.main.auth.start_cli_login", return_value=("code123", "/login", 300, 3.0)),
         patch("opendi.main.auth.open_login_url", return_value="http://localhost/login"),
         patch("opendi.main.auth.poll_cli_token", side_effect=TimeoutError()),
     ):
