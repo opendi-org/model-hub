@@ -1,5 +1,9 @@
 networks:
   frontend:
+    ipam:
+      driver: default
+      config:
+        - subnet: "10.89.0.0/28"
   backend:
     internal: true
 services:
@@ -87,7 +91,9 @@ services:
 
   nginx:
     networks:
-      - frontend
+      frontend:
+        ipv4_address: 10.89.0.10 # Used in main.go in call to r.SetTrustedProxies
+        
     image: nginx:1.29-alpine
     environment:
       - SSL_CERT_PATH=${SSL_CRT_PATH}

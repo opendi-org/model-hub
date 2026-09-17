@@ -53,7 +53,9 @@ func main() {
 		}
 	} else {
 		// In production we terminate TLS and forward through nginx; do not trust arbitrary proxy headers.
-		if err := r.SetTrustedProxies(nil); err != nil {
+		// nginx's IP is pinned in compose.prod.yaml to the string given here.
+		// This is so that the Gin context value c.ClientIP() actually contains the client IP.
+		if err := r.SetTrustedProxies([]string{"10.89.0.10"}); err != nil {
 			log.Fatalf("failed to configure trusted proxies: %v", err)
 		}
 	}
