@@ -28,6 +28,10 @@ type Config struct {
 	GoogleClientSecret string
 	GoogleRedirectURL  string
 
+	// Rate limits
+	RateLimitCLIPollBurst             int
+	RateLimitCLIPollRequestsPerMinute float64
+
 	// Runtime
 	DevMode bool
 }
@@ -85,6 +89,30 @@ func LoadConfig() (*Config, error) {
 		}
 		return n
 	}
+
+	optionalInt := func(key string, fallback int) int {
+		v := os.Getenv(key)
+		if v == "" {
+			return fallback
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fallback
+		}
+		return n
+	}
+
+	optionalFloat := func(key string, fallback float64) float64 {
+		v := os.Getenv(key)
+		if v == "" {
+			return fallback
+		}
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return fallback
+		}
+		return f
+	}
 	devMode := os.Getenv("DEV_MODE") == "true"
 
 	cfg := &Config{
@@ -102,6 +130,9 @@ func LoadConfig() (*Config, error) {
 		GoogleClientID:     require("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: require("GOOGLE_CLIENT_SECRET"),
 		GoogleRedirectURL:  require("GOOGLE_REDIRECT_URL"),
+
+		RateLimitCLIPollBurst:             optionalInt("RATE_LIMIT_CLIPOLL_BURST", 3),
+		RateLimitCLIPollRequestsPerMinute: optionalFloat("RATE_LIMIT_CLIPOLL_REQ_PER_MIN", 12),
 
 		DevMode: devMode,
 	}

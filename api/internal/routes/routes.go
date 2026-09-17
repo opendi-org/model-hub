@@ -95,7 +95,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	auth.GET("/login/google/start", handlers.GoogleStart(cfg))
 	auth.GET("/login/google/callback", handlers.GoogleCallback(db, cfg))
 	auth.POST("/cli/login", handlers.CLILogin(db))
-	auth.POST("/cli/poll", handlers.CLIPoll(db))
+	auth.POST("/cli/poll", middleware.CheckRateLimit(middleware.NewLimiter(cfg.RateLimitCLIPollBurst, cfg.RateLimitCLIPollRequestsPerMinute)), handlers.CLIPoll(db))
 
 	// Repositories - authenticated routes for listing/creating.
 	reposAuth := v0.Group("/repositories", middleware.RequireAuthentication())

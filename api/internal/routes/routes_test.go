@@ -47,9 +47,14 @@ func TestCLIPoll_RateLimitExceeded(t *testing.T) {
 	defer testsupport.CleanupTestDB(t, db)
 
 	router := gin.New()
+
+	limit := 3
+	reqPerMin := float64(600)
 	cfg := &config.Config{
-		JWTSecret: "test-secret",
-		DevMode:   true,
+		JWTSecret:                         "test-secret",
+		DevMode:                           true,
+		RateLimitCLIPollBurst:             limit,
+		RateLimitCLIPollRequestsPerMinute: reqPerMin,
 	}
 	RegisterRoutes(router, db, cfg)
 
@@ -64,8 +69,6 @@ func TestCLIPoll_RateLimitExceeded(t *testing.T) {
 	}
 	body, _ := json.Marshal(req)
 
-	limit := 10
-
 	for i := 0; i < limit; i++ {
 		t.Run(fmt.Sprintf("limit-run-%d", i), func(t *testing.T) {
 			httpReq, _ := http.NewRequest("POST", "/v0/auth/cli/poll", bytes.NewReader(body))
@@ -78,11 +81,26 @@ func TestCLIPoll_RateLimitExceeded(t *testing.T) {
 		})
 	}
 
-	t.Run("limit-run-final", func(t *testing.T) {
+	t.Run("limit-run-exceeded", func(t *testing.T) {
 		httpReq, _ := http.NewRequest("POST", "/v0/auth/cli/poll", bytes.NewReader(body))
 		httpReq.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httpReq)
 		assert.Equal(t, http.StatusTooManyRequests, w.Code, w.Body)
+	})
+
+	// Wait until we're back within the rate limit
+	waitTime := 1.0 / reqPerMin * float64(time.Minute)
+	waitBuffer := 10.0 * float64(time.Millisecond)
+	time.Sleep(time.Duration(waitTime + waitBuffer))
+
+	t.Run("limit-run-replenished", func(t *testing.T) {
+		httpReq, _ := http.NewRequest("POST", "/v0/auth/cli/poll", bytes.NewReader(body))
+		httpReq.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httpReq)
+		// Endpoint should be found, and we're back within the rate limit
+		assert.NotEqual(t, http.StatusTooManyRequests, w.Code, w.Body)
+		assert.NotEqual(t, http.StatusNotFound, w.Code, w.Body)
 	})
 }
